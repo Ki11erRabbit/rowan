@@ -141,7 +141,17 @@ pub enum Bytecode {
     /// Connect a signal from an object of the specified class to a method on another object of a specified class
     /// The top two stack values are used for this. The top object is connected to the bottom object's signal
     /// via the 2nd and 3rd Class Names + the Method Name
+    /// The parameters are as follows:
+    /// 1. The signal's name
+    /// 2. The class name of the signal
+    /// 3. The ancestor class name of the signal
+    /// 4. The method's name
     ConnectSignal(Symbol, Symbol, Symbol, Symbol),
+    /// Disconnect a signal from an object with the specified signal name and method name
+    /// The parameters are as follows:
+    /// 1. The signal's name
+    /// 2. The method's name
+    DisconnectSignal(Symbol, Symbol),
     /// Get a string reference from the string table
     /// These are like Rust's &'static str
     /// There isn't much to do with them other than pass them around to construct the String object
