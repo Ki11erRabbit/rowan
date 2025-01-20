@@ -3,3 +3,4 @@ members = [ "rowan", "rowan_shared","rowanc"]
 resolver = "2"
 
 [workspace.depencencies]
+rowan_shared = { path = "rowan_shared" }

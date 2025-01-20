@@ -3,7 +3,7 @@
 //! The file is structured in a way that allows for easy parsing and manipulation of class data.
 //!
 //! Here is the structure of the class file as binary data using a vaguely Rust-like format:
-//! ```rust
+//! ```ignore
 //! type StringIndex = u64;
 //! type BytecodeIndex = u64;
 //! type SignatureIndex = u64;
