@@ -59,9 +59,8 @@ enum TypeTag {
     I64,
     F32,
     F64,
-    Char, //U32
     Object, // u64
-    RawStr(Index), // Index into String Table
+    Str,
 }
 
 ```
@@ -88,7 +87,7 @@ struct VirtFunc {
     value: VirtFuncValue,
     responds_to: Option<Symbol>,
     arguments: Vec<TypeTag>,
-    ReturnType: TypeTag
+    returnType: TypeTag
 }
 
 enum VirtFuncValue {
@@ -115,6 +114,19 @@ struct SignalInfo {
 type StringIndex = u64;
 type BytecodeIndex = u64;
 
+enum TypeTag {
+    Void,
+    U8,
+    U16,
+    U32,
+    U64,
+    I8,
+    I16,
+    I32,
+    I64,
+    Str,
+    Object,
+}
 
 struct ClassFile {
     magic: u8,
@@ -130,13 +142,18 @@ struct ClassFile {
     members_names: [StringIndex; members_size],
     signals_count: u64,
     signals: [Signal; signals_count],
+    bytecode_table_size: u64,
     bytecode_table: [BytecodeEntry],
-    string_table: [StringEntry]
+    string_table_size: u64,
+    string_table: [StringEntry], // one indexed
+    signature_table_size: u64,
+    signature_table: [SignatureEntry]
 }
 
 struct VTable {
     size: u64,
-    names_bytecode: [(StringIndex, BytecodeIndex); size],
+    /// Name, Responds to (zero means doesn't respond), signature of function, index into bytecode table
+    functions: [(StringIndex, StringIndex, SignatureIndex, BytecodeIndex); size],
 }
 
 struct BytecodeEntry {
@@ -147,6 +164,11 @@ struct BytecodeEntry {
 struct StringEntry {
     size: u64,
     data: [u8],
+}
+
+struct SignatureEntry {
+    size: u64,
+    types: [TypeTag], // First value is always the return type
 }
 
 ```
@@ -228,6 +250,7 @@ enum Bytecode {
     EmitSignal(Symbol, Symbol), // Class Name, Signal Name
     EmitStaticSignal(Symbol, Symbol), // Class Name, Signal Name
     ConnectSignal(Symbol, Symbol, Symbol, Symbol), // Signal Name, Class Name, Class Name, Method Name. The top two stack values are used for this. The top object is connected to the bottom object's signal via the 2nd and 3rd Class Names + the Method Name
+    GetStrRef(Symbol),
     Return,
     ReturnVoid,
     StartBlock(usize),
