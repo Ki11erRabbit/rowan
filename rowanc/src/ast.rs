@@ -175,6 +175,7 @@ pub enum Type<'a> {
     Object(&'a str, Span),
     TypeArg(Box<Type<'a>>, Vec<Type<'a>>, Span),
     Function(Vec<Type<'a>>, Box<Type<'a>>, Span),
+    Tuple(Vec<Type<'a>>, Span),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
@@ -228,6 +229,19 @@ pub enum Statement<'a> {
         target: Expression<'a>,
         value: Expression<'a>,
         span: Span,
+    },
+    While {
+        label: Option<&'a str>,
+        test: Expression<'a>,
+        body: Vec<Statement<'a>>,
+        span: Span,
+    },
+    For {
+        label: Option<&'a str>,
+        bindings: Pattern<'a>,
+        bindings_type: Type<'a>,
+        iterable: Expression<'a>,
+        span: Span,
     }
 }
 
@@ -256,6 +270,37 @@ impl Statement<'_> {
             value,
             span
         }
+    }
+
+    pub fn new_while<'a>(
+        label: Option<&'a str>,
+        test: Expression<'a>,
+        body: Vec<Statement<'a>>,
+        span: Span,
+    ) -> Statement<'a> {
+        Statement::While {
+            label,
+            test,
+            body,
+            span
+        }
+    }
+
+    pub fn new_for<'a>(
+        label: Option<&'a str>,
+        bindings: Pattern<'a>,
+        bindings_type: Type<'a>,
+        iterable: Expression<'a>,
+        span: Span,
+    ) -> Statement<'a> {
+        Statement::For {
+            label,
+            bindings,
+            bindings_type,
+            iterable,
+            span
+        }
+
     }
 }
 
@@ -324,7 +369,14 @@ pub enum Expression<'a> {
         destination: Box<Expression<'a>>,
         signal_name: &'a str,
         span: Span,
-    }
+    },
+    Loop {
+        label: Option<&'a str>,
+        body: Vec<Statement<'a>>,
+        span: Span,
+    },
+    Continue(Option<&'a str>, Span),
+    Break(Option<&'a str>, Option<Box<Expression<'a>>>, Span),
 }
 
 impl Expression<'_> {
@@ -415,6 +467,19 @@ impl Expression<'_> {
             span,
         }
     }
+
+    pub fn new_loop_expression<'a>(
+        label: Option<&'a str>,
+        body: Vec<Statement<'a>>,
+        span: Span
+    ) -> Expression<'a> {
+        Expression::Loop {
+            label,
+            body,
+            span,
+        }
+    }
+        
 
 }
 

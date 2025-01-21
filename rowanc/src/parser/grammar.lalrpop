@@ -405,6 +405,13 @@ Type: Type<'a> = {
         Type::TypeArg(Box::new(ty), args, Span::new(start, end))
     },
     <f:FunctionType> => f,
+    <start: @L> "(" <ty:Type> <tys:("," <Type>)*> ")" <end: @R> => {
+        let mut v = vec![ty];
+        for t in tys.into_iter() {
+            v.push(t);
+        }
+        Type::Tuple(v, Span::new(start, end))
+    }
 };
 
 
@@ -463,6 +470,12 @@ Statement: Statement<'a> = {
     <start: @L> <expr:Expr> <end: @R> => {
 
         Statement::Expression(expr, Span::new(start, end))
+    },
+    <start: @L> <label:(<Identifier> ":")?> "while" <expr:Expr> <block:Block> <end: @R> => {
+        Statement::new_while(label, expr, block, Span::new(start, end))
+    },
+    <start: @L> <label:(<Identifier> ":")?> "for" <bindings:Pattern> ":" <ty:Type> "in" <expr:Expr> <block:Block> <end: @R> => {
+        Statement::new_for(label, bindings, ty, expr, Span::new(start, end))
     },
 };
 
@@ -641,7 +654,17 @@ Expr: Expression<'a> = {
     },
     <start: @L> "disconnect" <source:Expr> "from" <dest:Expr> "via" <id:Identifier> <end: @R> => {
         Expression::new_connect_expression(source, dest, id, Span::new(start, end))
-    }
+    },
+    <start: @L> <label:(<Identifier> ":")?> "loop" <block:Block> <end: @R> => {
+        Expression::new_loop(label, block, Span::new(start, end))
+    },
+    <start: @L> "break" <label:(":" <Identifier>)?> <expr:TryExpr?> <end: @R> => {
+        let expr = expr.map(Box::new);
+        Expression::Break(label, expr, Span::new(start, end))
+    },
+    <start: @L> "continue" <label:Identifier?> <end: @R> => {
+        Expression::Break(label, Span::new(start, end))
+    },
 };
 
 
