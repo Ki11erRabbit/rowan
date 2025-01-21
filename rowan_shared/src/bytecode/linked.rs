@@ -1,7 +1,7 @@
 use crate::TypeTag;
 
 pub type BlockIdOffset = i64;
-pub type Symbol = usize;
+pub type Symbol = u64;
 
 
 pub enum Bytecode {
@@ -171,4 +171,601 @@ pub enum Bytecode {
     /// Switch to one of several blocks based on the value of the top of the stack
     /// The first block is the default case
     Switch(Vec<BlockIdOffset>, Option<BlockIdOffset>),
+}
+
+
+
+impl Bytecode {
+    fn try_from(value: impl IntoIterator<Item = u8, IntoIter = impl Iterator<Item = u8>>) -> Result<Vec<Bytecode>, &'static str> {
+        let mut iter = value.into_iter();
+        let mut result = Vec::new();
+        while let Some(opcode) = iter.next() {
+            match opcode {
+                0 => result.push(Bytecode::Nop),
+                1 => result.push(Bytecode::Breakpoint),
+                2 => {
+                    let value = iter.next().ok_or("Expected u8 value")?;
+                    result.push(Bytecode::LoadU8(value));
+                },
+                3 => {
+                    let value = u16::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?
+                    ]);
+                    result.push(Bytecode::LoadU16(value));
+                },
+                4 => {
+                    let value = u32::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?
+                    ]);
+                    result.push(Bytecode::LoadU32(value));
+                },
+                5 => {
+                    let value = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::LoadU64(value));
+                }
+                6 => {
+                    let value = i8::from_le_bytes([iter.next().ok_or("Expected u8 value")?]);
+                    result.push(Bytecode::LoadI8(value));
+                },
+                7 => {
+                    let value = i16::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?
+                    ]);
+                    result.push(Bytecode::LoadI16(value));
+                },
+                8 => {
+                    let value = i32::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?
+                    ]);
+                    result.push(Bytecode::LoadI32(value));
+                },
+                9 => {
+                    let value = i64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::LoadI64(value));
+                },
+                10 => {
+                    let value = f32::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?
+                    ]);
+                    result.push(Bytecode::LoadF32(value));
+                },
+                11 => {
+                    let value = f64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::LoadF64(value));
+                },
+                12 => result.push(Bytecode::Pop),
+                13 => result.push(Bytecode::Dup),
+                14 => result.push(Bytecode::Swap),
+                15 => {
+                    let index = iter.next().ok_or("Expected u8 value")?;
+                    result.push(Bytecode::StoreLocal(index));
+                },
+                16 => {
+                    let index = iter.next().ok_or("Expected u8 value")?;
+                    result.push(Bytecode::LoadLocal(index));
+                },
+                17 => {
+                    let index = iter.next().ok_or("Expected u8 value")?;
+                    result.push(Bytecode::StoreArgument(index));
+                },
+                18 => result.push(Bytecode::Add),
+                19 => result.push(Bytecode::Sub),
+                20 => result.push(Bytecode::Mul),
+                21 => result.push(Bytecode::Div),
+                22 => result.push(Bytecode::Mod),
+                23 => result.push(Bytecode::SatAdd),
+                24 => result.push(Bytecode::SatSub),
+                25 => result.push(Bytecode::SatMul),
+                26 => result.push(Bytecode::SatDiv),
+                27 => result.push(Bytecode::SatMod),
+                28 => result.push(Bytecode::And),
+                29 => result.push(Bytecode::Or),
+                30 => result.push(Bytecode::Xor),
+                31 => result.push(Bytecode::Not),
+                32 => result.push(Bytecode::AShl),
+                33 => result.push(Bytecode::LShl),
+                34 => result.push(Bytecode::AShr),
+                35 => result.push(Bytecode::LShr),
+                36 => result.push(Bytecode::Neg),
+                37 => result.push(Bytecode::Equal),
+                38 => result.push(Bytecode::NotEqual),
+                39 => result.push(Bytecode::Greater),
+                40 => result.push(Bytecode::Less),
+                41 => result.push(Bytecode::GreaterOrEqual),
+                42 => result.push(Bytecode::LessOrEqual),
+                43 => {
+                    let tag = TypeTag::from(iter.next().ok_or("Expected u8 value")?);
+                    result.push(Bytecode::Convert(tag));
+                },
+                44 => {
+                    let tag = TypeTag::from(iter.next().ok_or("Expected u8 value")?);
+                    result.push(Bytecode::BinaryConvert(tag));
+                },
+                45 => {
+                    let tag = TypeTag::from(iter.next().ok_or("Expected u8 value")?);
+                    result.push(Bytecode::CreateArray(tag));
+                },
+                46 => {
+                    let tag = TypeTag::from(iter.next().ok_or("Expected u8 value")?);
+                    result.push(Bytecode::ArrayGet(tag));
+                },
+                47 => {
+                    let tag = TypeTag::from(iter.next().ok_or("Expected u8 value")?);
+                    result.push(Bytecode::ArraySet(tag));
+                },
+                48 => {
+                    let index = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::NewObject(index));
+                },
+                49 => {
+                    let class_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let parent_class_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let member_index = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::GetField(class_name, parent_class_name, member_index));
+                },
+                50 => {
+                    let class_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let parent_class_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let member_index = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::SetField(class_name, parent_class_name, member_index));
+                },
+                51 => {
+                    let class_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::IsA(class_name));
+                },
+                52 => {
+                    let class_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let parent_class_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let method_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::InvokeVirt(class_name, parent_class_name, method_name));
+                },
+                53 => {
+                    let class_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let parent_class_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let method_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::InvokeVirtTail(class_name, parent_class_name, method_name));
+                },
+                54 => {
+                    let class_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let signal_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::EmitSignal(class_name, signal_name));
+                },
+                55 => {
+                    let class_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let signal_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::EmitStaticSignal(class_name, signal_name));
+                },
+                56 => {
+                    let signal_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let class_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let parent_class_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let method_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::ConnectSignal(signal_name, class_name, parent_class_name, method_name));
+                },
+                57 => {
+                    let signal_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let method_name = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::DisconnectSignal(signal_name, method_name));
+                }
+                58 => {
+                    let index = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::GetStrRef(index));
+                },
+                59 => result.push(Bytecode::Return),
+                60 => result.push(Bytecode::ReturnVoid),
+                61 => {
+                    let id = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::StartBlock(id));
+                },
+                62 => {
+                    let offset = i64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::Goto(offset));
+                },
+                63 => {
+                    let true_offset = i64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let false_offset = i64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::If(true_offset, false_offset));
+                },
+                64 => {
+                    let cases_len = u64::from_le_bytes([
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                    ]) as usize;
+                    let mut cases = Vec::new();
+                    for _ in 0..cases_len {
+                        let case_offset = i64::from_le_bytes([
+                            iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                            iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                            iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                            iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                        ]);
+                        cases.push(case_offset);
+                    }
+                    let default = match iter.next() {
+                        Some(1) => {
+                            let default_offset = i64::from_le_bytes([
+                                iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                                iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                                iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                                iter.next().ok_or("Expected u8 value")?, iter.next().ok_or("Expected u8 value")?,
+                            ]);
+                            Some(default_offset)
+                        },
+                        Some(0) => None,
+                        _ => return Err("Invalid Switch default case"),
+                    };
+                    result.push(Bytecode::Switch(cases, default));
+                },
+                _ => return Err("Invalid opcode"),
+            }
+        }
+
+        Ok(result)
+    }
+}
+
+impl Into<Vec<u8>> for Bytecode {
+    fn into(self) -> Vec<u8> {
+        let mut result = Vec::new();
+        match self {
+            Bytecode::Nop => result.push(0),
+            Bytecode::Breakpoint => result.push(1),
+            Bytecode::LoadU8(value) => {
+                result.push(2);
+                result.extend_from_slice(&value.to_le_bytes());
+            },
+            Bytecode::LoadU16(value) => {
+                result.push(3);
+                result.extend_from_slice(&value.to_le_bytes());
+            },
+            Bytecode::LoadU32(value) => {
+                result.push(4);
+                result.extend_from_slice(&value.to_le_bytes());
+            },
+            Bytecode::LoadU64(value) => {
+                result.push(5);
+                result.extend_from_slice(&value.to_le_bytes());
+            },
+            Bytecode::LoadI8(value) => {
+                result.push(6);
+                result.extend_from_slice(&value.to_le_bytes());
+            },
+            Bytecode::LoadI16(value) => {
+                result.push(7);
+                result.extend_from_slice(&value.to_le_bytes());
+            },
+            Bytecode::LoadI32(value) => {
+                result.push(8);
+                result.extend_from_slice(&value.to_le_bytes());
+            },
+            Bytecode::LoadI64(value) => {
+                result.push(9);
+                result.extend_from_slice(&value.to_le_bytes());
+            },
+            Bytecode::LoadF32(value) => {
+                result.push(10);
+                result.extend_from_slice(&value.to_le_bytes());
+            },
+            Bytecode::LoadF64(value) => {
+                result.push(11);
+                result.extend_from_slice(&value.to_le_bytes());
+            },
+            Bytecode::Pop => result.push(12),
+            Bytecode::Dup => result.push(13),
+            Bytecode::Swap => result.push(14),
+            Bytecode::StoreLocal(index) => {
+                result.push(15);
+                result.push(index);
+            },
+            Bytecode::LoadLocal(index) => {
+                result.push(16);
+                result.push(index);
+            },
+            Bytecode::StoreArgument(index) => {
+                result.push(17);
+                result.push(index);
+            },
+            Bytecode::Add => result.push(18),
+            Bytecode::Sub => result.push(19),
+            Bytecode::Mul => result.push(20),
+            Bytecode::Div => result.push(21),
+            Bytecode::Mod => result.push(22),
+            Bytecode::SatAdd => result.push(23),
+            Bytecode::SatSub => result.push(24),
+            Bytecode::SatMul => result.push(25),
+            Bytecode::SatDiv => result.push(26),
+            Bytecode::SatMod => result.push(27),
+            Bytecode::And => result.push(28),
+            Bytecode::Or => result.push(29),
+            Bytecode::Xor => result.push(30),
+            Bytecode::Not => result.push(31),
+            Bytecode::AShl => result.push(32),
+            Bytecode::LShl => result.push(33),
+            Bytecode::AShr => result.push(34),
+            Bytecode::LShr => result.push(35),
+            Bytecode::Neg => result.push(36),
+            Bytecode::Equal => result.push(37),
+            Bytecode::NotEqual => result.push(38),
+            Bytecode::Greater => result.push(39),
+            Bytecode::Less => result.push(40),
+            Bytecode::GreaterOrEqual => result.push(41),
+            Bytecode::LessOrEqual => result.push(42),
+            Bytecode::Convert(tag) => {
+                result.push(43);
+                result.push(tag.as_byte());
+            },
+            Bytecode::BinaryConvert(tag) => {
+                result.push(44);
+                result.push(tag.as_byte());
+            },
+            Bytecode::CreateArray(tag) => {
+                result.push(45);
+                result.push(tag.as_byte());
+            },
+            Bytecode::ArrayGet(tag) => {
+                result.push(46);
+                result.push(tag.as_byte());
+            },
+            Bytecode::ArraySet(tag) => {
+                result.push(47);
+                result.push(tag.as_byte());
+            },
+            Bytecode::NewObject(index) => {
+                result.push(48);
+                result.extend_from_slice(&index.to_le_bytes());
+            },
+            Bytecode::GetField(class_name, parent_class_name, member_index) => {
+                result.push(49);
+                result.extend_from_slice(&class_name.to_le_bytes());
+                result.extend_from_slice(&parent_class_name.to_le_bytes());
+                result.extend_from_slice(&member_index.to_le_bytes());
+            },
+            Bytecode::SetField(class_name, parent_class_name, member_index) => {
+                result.push(50);
+                result.extend_from_slice(&class_name.to_le_bytes());
+                result.extend_from_slice(&parent_class_name.to_le_bytes());
+                result.extend_from_slice(&member_index.to_le_bytes());
+            },
+            Bytecode::IsA(class_name) => {
+                result.push(51);
+                result.extend_from_slice(&class_name.to_le_bytes());
+            },
+            Bytecode::InvokeVirt(class_name, parent_class_name, method_name) => {
+                result.push(52);
+                result.extend_from_slice(&class_name.to_le_bytes());
+                result.extend_from_slice(&parent_class_name.to_le_bytes());
+                result.extend_from_slice(&method_name.to_le_bytes());
+            },
+            Bytecode::InvokeVirtTail(class_name, parent_class_name, method_name) => {
+                result.push(53);
+                result.extend_from_slice(&class_name.to_le_bytes());
+                result.extend_from_slice(&parent_class_name.to_le_bytes());
+                result.extend_from_slice(&method_name.to_le_bytes());
+            },
+            Bytecode::EmitSignal(class_name, signal_name) => {
+                result.push(54);
+                result.extend_from_slice(&class_name.to_le_bytes());
+                result.extend_from_slice(&signal_name.to_le_bytes());
+            },
+            Bytecode::EmitStaticSignal(class_name, signal_name) => {
+                result.push(55);
+                result.extend_from_slice(&class_name.to_le_bytes());
+                result.extend_from_slice(&signal_name.to_le_bytes());
+            },
+            Bytecode::ConnectSignal(class_name, parent_class_name, method_name, target_class_name) => {
+                result.push(56);
+                result.extend_from_slice(&class_name.to_le_bytes());
+                result.extend_from_slice(&parent_class_name.to_le_bytes());
+                result.extend_from_slice(&method_name.to_le_bytes());
+                result.extend_from_slice(&target_class_name.to_le_bytes());
+            },
+            Bytecode::DisconnectSignal(signal_name, method_name) => {
+                result.push(57);
+                result.extend_from_slice(&signal_name.to_le_bytes());
+                result.extend_from_slice(&method_name.to_le_bytes());
+            },
+            Bytecode::GetStrRef(index) => {
+                result.push(58);
+                result.extend_from_slice(&index.to_le_bytes());
+            },
+            Bytecode::Return => result.push(59),
+            Bytecode::ReturnVoid => result.push(60),
+            Bytecode::StartBlock(id) => {
+                result.push(61);
+                result.extend_from_slice(&id.to_le_bytes());
+            },
+            Bytecode::Goto(offset) => {
+                result.push(62);
+                result.extend_from_slice(&offset.to_le_bytes());
+            },
+            Bytecode::If(true_offset, false_offset) => {
+                result.push(63);
+                result.extend_from_slice(&true_offset.to_le_bytes());
+                result.extend_from_slice(&false_offset.to_le_bytes());
+            },
+            Bytecode::Switch(cases, default) => {
+                result.push(64);
+                result.extend_from_slice(&(cases.len() as u64).to_le_bytes());
+                for case in cases {
+                    result.extend_from_slice(&case.to_le_bytes());
+                }
+                match default {
+                    Some(offset) => {
+                        result.push(1);
+                        result.extend_from_slice(&offset.to_le_bytes())
+                    },
+                    None => {
+                        result.push(0);
+                    }
+                }
+            },
+        }
+
+        result
+    }
 }

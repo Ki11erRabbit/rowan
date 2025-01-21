@@ -47,6 +47,7 @@ pub enum Token<'a> {
     Module,
     // Visibility
     Pub,
+    Prot,
     // Core Types
     U8,
     U16,
@@ -139,6 +140,7 @@ impl std::fmt::Display for Token<'_> {
             Token::Import => write!(f, "import"),
             Token::Module => write!(f, "module"),
             Token::Pub => write!(f, "pub"),
+            Token::Prot => write!(f, "prot"),
             Token::U8 => write!(f, "u8"),
             Token::U16 => write!(f, "i16"),
             Token::U32 => write!(f, "i32"),
@@ -467,6 +469,7 @@ impl<'a> TokenLexer<'a> {
                     "import" => Ok(SpannedToken::new(Token::Import, start, end)),
                     "module" => Ok(SpannedToken::new(Token::Module, start, end)),
                     "pub" => Ok(SpannedToken::new(Token::Pub, start, end)),
+                    "prot" => Ok(SpannedToken::new(Token::Prot, start, end)),
                     "u8" => Ok(SpannedToken::new(Token::U8, start, end)),
                     "u16" => Ok(SpannedToken::new(Token::U16, start, end)),
                     "u32" => Ok(SpannedToken::new(Token::U32, start, end)),

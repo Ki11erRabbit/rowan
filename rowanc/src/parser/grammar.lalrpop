@@ -1,0 +1,1082 @@
+use crate::parser::lexer::{Token, TokenLexer, SpannedLexerError, LexerError};
+use either::Either;
+use crate::ast::*;
+use lalrpop_util::ParseError;
+
+grammar<'a>(input: &'a str);
+
+
+extern {
+    type Location = usize;
+    type Error = SpannedLexerError;
+    
+    enum Token<'a> {
+        "if" => Token::If,
+        "else" => Token::Else,
+        "match" => Token::Match,
+        "fn" => Token::Fun,
+        "return" => Token::Return,
+        "break" => Token::Break,
+        "continue" => Token::Continue,
+        "while" => Token::While,
+        "for" => Token::For,
+        "in" => Token::In,
+        "loop" => Token::Loop,
+        "record" => Token::Record,
+        "union" => Token::Union,
+        "class" => Token::Class,
+        "signal" => Token::Signal,
+        "static" => Token::Static,
+        "@" => Token::At,
+        "extends" => Token::Extends,
+        "connect" => Token::Connect,
+        "disconnect" => Token::Disconnect,
+        "let" => Token::Let,
+        "const" => Token::Const,
+        "import" => Token::Import,
+        "module" => Token::Module,
+        "pub" => Token::Pub,
+        "prot" => Token::Prot,
+        "extern" => Token::Extern,
+        "u8" => Token::U8,
+        "u16" => Token::U16,
+        "u32" => Token::U32,
+        "u64" => Token::U64,
+        "i8" => Token::I8,
+        "i16" => Token::I16,
+        "i32" => Token::I32,
+        "i64" => Token::I64,
+        "f32" => Token::F32,
+        "f64" => Token::F64,
+        "char" => Token::Char,
+        "bool" => Token::Bool,
+        "True" => Token::True,
+        "False" => Token::False,
+        Int_lit => Token::IntLiteral(<&'a str>),
+        Float_lit => Token::FloatLiteral(<&'a str>),
+        Char_lit => Token::CharLiteral(<&'a str>),
+        String_lit => Token::StringLiteral(<&'a str>),
+        Identifier => Token::Identifier(<&'a str>),
+        Plus => Token::Plus,
+        Minus => Token::Minus,
+        Mult => Token::Multiply,
+        Div => Token::Divide,
+        Mod => Token::Modulo,
+        Not => Token::Not,
+        Or => Token::Or,
+        And => Token::And,
+        Equals => Token::Equals,
+        NotEquals => Token::NotEquals,
+        LtE => Token::LessThanOrEqual,
+        GtE => Token::GreaterThanOrEqual,
+        Assign => Token::Assign,
+        Concat => Token::Concat,
+        "::" => Token::Scope,
+        "{" => Token::BraceOpen,
+        "}" => Token::BraceClose,
+        "(" => Token::ParenOpen,
+        ")" => Token::ParenClose,
+        "[" => Token::BracketOpen,
+        "]" => Token::BracketClose,
+        AngleOpen => Token::AngleOpen,
+        AngleClose => Token::AngleClose,
+        "," => Token::Comma,
+        ":" => Token::Colon,
+        "?" => Token::QMark,
+        "|" => Token::Bar,
+        "." => Token::Dot,
+        "->" => Token::Arrow,
+        Lb => Token::LineBreak,
+        "comment" => Token::Comment,
+        Indent => Token::Indent,
+        "eof" => Token::Eof,
+    }
+}
+
+
+pub File: File<'a> = {
+    "module" <p:Path> <id:Identifier> <pEnd: @L> Lb <decs:(Lb* <Decl> Lb)*> Lb* => {
+        let mut p = p;
+        p.segments.push(id);
+        p.end = pEnd;
+        File::new(p, decs)
+    },
+};
+
+#[inline]
+Path: PathName<'a> = {
+    <start: @L> <segments:(<Identifier> "::")*> <end: @R> => {
+        PathName::new(segments, start, end)
+    },
+};
+
+pub Visibility: Visibility = {
+    <vis:("pub")?> => {
+        match vis {
+            Some(_) => Visibility::Public,
+            None => Visibility::Private,
+        }
+    },
+    <vis:("prot")?> => {
+        match vis {
+            Some(_) => Visibility::Protected,
+            None => Visibility::Private,
+        }
+    },
+    
+};
+
+pub Decl: TopLevelStatement<'a> = {
+    <start: @L> "import" <p:Path> <id:Identifier> <end: @R> => {
+        let mut p = p;
+        p.segments.push(id);
+        p.end = end;
+        Import::new(p, start, end)
+    },
+    <f:Function> => f,
+    <s:Struct> => s,
+    <e:Enum> => e,
+    <c:Const> => c,
+    <e:Extern> => e,
+};
+
+Extern: TopLevelStatement<'a> = {
+    "include" <lang:String_lit> <body:String_lit> => {
+        TopLevelStatement::Extern(lang, body)
+    },
+};
+
+pub Function: TopLevelStatement<'a> = {
+    <r:RegularFunction> => r,
+    <e:ExternFunction> => e,
+    <o:OperatorFunction> => o,
+    <o:OperatorExternFunction> => o,
+};
+
+pub RegularFunction: TopLevelStatement<'a> = {
+    <start: @L> <vis:Visibility> "fn" <p:Path> <name:Identifier> <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let mut p = p;
+        p.segments.push(name);
+        p.end = name_end;
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        Function::new(vis, p, typaram, params, ret, body, start, end)
+    }
+};
+
+pub ExternFunction: TopLevelStatement<'a> = {
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <p:Path> <name:Identifier> <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let mut p = p;
+        p.segments.push(name);
+        p.end = name_end;
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        Function::new_extern(vis, lang, p, typaram, params, ret, body, start, end)
+    }
+};
+
+OperatorFunction: TopLevelStatement<'a> = {
+    // And Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" And ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("&&");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Or Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Or ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("||");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Equals Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Equals ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("==");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Not Equals Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" NotEquals ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("!=");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Less Than Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path>  "(" AngleOpen ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("<");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Greater Than Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" AngleClose ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push(">");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Less Than Equals Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" LtE ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("<=");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Greater Than Equals Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" GtE ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push(">=");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Concat Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Concat ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("++");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Add Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Plus ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("+");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Subtract Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Minus ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("-");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Multiply Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Mult ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("*");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Divide Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Div ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("/");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Modulo Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Mod ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("%");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Not Operator
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" Not ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("!");
+        name.end = name_end;
+        Function::new(vis, name, typaram, params, ret, body, start, end)
+    },
+    // Get and set Operators
+    <start: @L> <vis:Visibility> "fn" <name:Path> "(" <id:Identifier> "[" "]" ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:Block> <end: @R> =>? {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        match id {
+            "get" => name.segments.push("get[]"),
+            "set" => name.segments.push("set[]"),
+            "create" => name.segments.push("create[]"),
+            _ => return Err(ParseError::User {
+                error: SpannedLexerError::new(LexerError::InvalidOperator, start, end),
+            }),
+        }
+        name.end = name_end;
+        Ok(Function::new(vis, name, typaram, params, ret, body, start, end))
+    },
+};
+
+pub ParamList: Vec<Param<'a>> = {
+    "(" <param:Param> <params:("," <Param>)*> ")" => {
+        let mut v = vec![param];
+        for p in params.into_iter() {
+            v.push(p);
+        }
+        v
+    },
+    "(" ")" => {
+        Vec::new()
+    }
+};
+
+OperatorExternFunction: TopLevelStatement<'a> = {
+    // And Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" And ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("&&");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Or Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Or ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("||");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Equals Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Equals ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("==");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Not Equals Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" NotEquals ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("!=");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Less Than Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path>  "(" AngleOpen ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("<");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Greater Than Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" AngleClose ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push(">");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Less Than Equals Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" LtE ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("<=");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Greater Than Equals Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" GtE ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push(">=");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Concat Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Concat ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("++");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Add Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Plus ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("+");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Subtract Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Minus ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("-");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Multiply Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Mult ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("*");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Divide Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Div ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("/");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Modulo Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Mod ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("%");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Not Operator
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" Not ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> => {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        name.segments.push("!");
+        name.end = name_end;
+        Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end)
+    },
+    // Get and set Operators
+    <start: @L> <vis:Visibility> "extern" <lang:String_lit> "fn" <name:Path> "(" <id:Identifier> "[" "]" ")" <name_end: @L> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Assign <body:String_lit> <end: @R> =>? {
+        let typaram = match typaram {
+            Some(t) => t,
+            None => Vec::new(),
+        };
+        let mut name = name;
+        match id {
+            "get" => name.segments.push("get[]"),
+            "set" => name.segments.push("set[]"),
+            "create" => name.segments.push("create[]"),
+            _ => return Err(ParseError::User {
+                error: SpannedLexerError::new(LexerError::InvalidOperator, start, end),
+            }),
+        }
+        name.end = name_end;
+        Ok(Function::new_extern(vis, lang, name, typaram, params, ret, body, start, end))
+    },
+};
+
+
+pub Param: Param<'a> = {
+    <start: @L> <name:Identifier> ":" <ty:ExpressionType> <end: @R> => Param::new(false, name, ty, start, end),
+    <start: @L> "?" <name:Identifier> ":" <ty:ExpressionType> <end: @R> => Param::new(true, name, ty, start, end),
+};
+
+pub ReturnType: Box<ExpressionType<'a>> = {
+    <ty:("->" <ExpressionTypeNoCall>)?> => {
+        match ty {
+            Some(t) => Box::new(t),
+            None => Box::new(ExpressionType::new(false, Expression::Literal(Literal::Unit), false)),
+        }
+    },
+};
+
+
+
+pub TypeParamList: Vec<GenericParam<'a>> = {
+    "[" <param:TypeParam> <params:("," <TypeParam>)*> "]" => {
+        let mut v = vec![param];
+        for p in params.into_iter() {
+            v.push(p);
+        }
+        v
+    },
+    "[" "]" => {
+        Vec::new()
+    },
+
+};
+
+
+pub TypeParam: GenericParam<'a> = {
+    <start: @L> <name:Identifier> <end: @R> => GenericParam::new(name, None, start, end),
+    <start: @L> <name:Identifier> ":" <param:ExpressionType> <end: @R> => {
+        GenericParam::new(name, Some(param), start, end)
+    },
+};
+
+pub Struct: TopLevelStatement<'a> = {
+    <start: @L> <vis:Visibility> "struct" <name:Identifier> <typaram:TypeParamList> <fields:StructFields> <end: @R> => Struct::new(vis, name, typaram, fields, start, end),
+};
+
+pub StructFields: Vec<Field<'a>> = {
+    "{" Lb? <field:Field> <fields:(Lb? "," Lb? <Field>)*> ","? Lb? "}" => {
+        let mut v = vec![field];
+        for f in fields.into_iter() {
+            v.push(f);
+        }
+        v
+    },
+    "{" Lb? "}" => Vec::new(),
+};
+
+pub Field: Field<'a> = {
+    <start: @L> <vis:Visibility> <name:Identifier> ":" <ty:ExpressionType> <end: @R> => Field::new(vis, name, ty, start, end),
+};
+
+pub Enum: TopLevelStatement<'a> = {
+    <start: @L> <vis:Visibility> "enum" <name:Identifier> <typaram:TypeParamList> <variants:EnumVariants> <end: @R> => Enum::new(vis, name, typaram, variants, start, end),
+};
+
+pub EnumVariants: Vec<Variant<'a>> = {
+    "{" Lb? <variant:EnumVariant> <variants:(Lb? "," Lb? <EnumVariant>)*> ","? Lb? "}" => {
+        let mut v = vec![variant];
+        for f in variants.into_iter() {
+            v.push(f);
+        }
+        v
+    },
+    "{" Lb? "}" => Vec::new(),
+};
+
+pub EnumVariant: Variant<'a> = {
+    <start: @L> <name:Identifier> <fields:EnumFields> <end: @R> => Variant::new(name, fields, start, end),
+    <start: @L> <name:Identifier> <end: @R> => Variant::new(name, Vec::new(), start, end),
+};
+
+
+pub EnumFields: Vec<Field<'a>> = {
+    "(" <field:Field> <fields:("," <Field>)*> ")" => {
+        let mut v = vec![field];
+        for f in fields.into_iter() {
+            v.push(f);
+        }
+        v
+    },
+};
+
+
+Const: TopLevelStatement<'a> = {
+    <start: @L> <vis:Visibility> "const" <p:Path> <name:Identifier> ":" <ty:ExpressionType> Assign <val:ExpressionType> <end: @R> => {
+        let mut p = p;
+        p.segments.push(name);
+        Const::new(vis, p, ty, val, start, end)
+    },
+};
+
+
+Block: Vec<Statement<'a>> = {
+    "{" Lb? Indent? <expr:Statement> <exprs:(Lb Indent? <Statement>)*> Lb? "}" => {
+        let mut v = vec![expr];
+        for e in exprs.into_iter() {
+            v.push(e);
+        }
+        v
+    },
+};
+
+Statement: Statement<'a> = {
+    <start: @L> "let" <id:Pattern> ":" <ty:ExpressionType> Assign <rhs:ExpressionType> <end: @R> => {
+        Statement::new_let(id, ty, rhs, start, end)
+    },
+    <start: @L> "const" <id:Identifier> ":" <ty:ExpressionType> Assign <rhs:ExpressionType> <end: @R> => {
+        Statement::new_const(id, ty, rhs, start, end)
+    },
+    <start: @L> <lhs:ExpressionTypeTrailing> Assign <rhs:ExpressionTypeTrailing> <end: @R> => {
+        Statement::new_assignment(lhs, rhs, start, end)
+    },
+    <start: @L> <expr:ExpressionTypeTrailing> <end: @R> => {
+
+        Statement::Expression(expr)
+    },
+};
+
+
+ExpressionType: ExpressionType<'a> = {
+    <start: @L> <expr:Expr> <end: @R> => ExpressionType::new(false, expr, false),
+    <start: @L> "mut" <expr:Expr> <end: @R> => ExpressionType::new(true, expr, false),
+    <start: @L> "." "." "." <expr:Expr> <end: @R> => ExpressionType::new(false, expr, true),
+    <start: @L> "." "." "." "mut" <expr:Expr> <end: @R> => ExpressionType::new(true, expr, true),
+};
+
+ExpressionTypeTrailing: ExpressionType<'a> = {
+    <start: @L> <expr:ExprTrailing> <end: @R> => ExpressionType::new(false, expr, false),
+    <start: @L> "mut" <expr:ExprTrailing> <end: @R> => ExpressionType::new(true, expr, false),
+    <start: @L> "." "." "." <expr:ExprTrailing> <end: @R> => ExpressionType::new(false, expr, true),
+    <start: @L> "." "." "." "mut" <expr:ExprTrailing> <end: @R> => ExpressionType::new(true, expr, true),
+};
+
+ExpressionTypeNoCall: ExpressionType<'a> = {
+    <start: @L> <expr:ExprWithoutTrailingNoCall> <end: @R> => ExpressionType::new(false, expr, false),
+    <start: @L> "mut" <expr:ExprWithoutTrailingNoCall> <end: @R> => ExpressionType::new(true, expr, false),
+    <start: @L> "." "." "." <expr:ExprWithoutTrailingNoCall> <end: @R> => ExpressionType::new(false, expr, true),
+    <start: @L> "." "." "." "mut" <expr:ExprWithoutTrailingNoCall> <end: @R> => ExpressionType::new(true, expr, true),
+};
+
+
+TermExpr: Expression<'a> = {
+    <p:Path> <id:Identifier> <name_end: @L> => {
+        let mut p = p;
+        p.segments.push(id);
+        p.end = name_end;
+        Expression::Variable(p)
+    },
+    <lit:Literal> => Expression::Literal(lit),
+    <tuple:Tuple> => Expression::Literal(tuple),
+    <start: @L> Minus <expr:TermExpr> <end: @R> => {
+        let expr = Box::new(expr);
+        Expression::new_unary(UnaryOperator::Neg, expr, start, end)
+    },
+    // TODO: break, continue
+    "i8" => Expression::Type(BuiltinType::I8),
+    "i16" => Expression::Type(BuiltinType::I16),
+    "i32" => Expression::Type(BuiltinType::I32),
+    "i64" => Expression::Type(BuiltinType::I64),
+    "int" => Expression::Type(BuiltinType::Int),
+    "nat" => Expression::Type(BuiltinType::Nat),
+    "f32" => Expression::Type(BuiltinType::F32),
+    "f64" => Expression::Type(BuiltinType::F64),
+    "char" => Expression::Type(BuiltinType::Char),
+    "bool" => Expression::Type(BuiltinType::Bool),
+    "never" => Expression::Type(BuiltinType::Never),
+    "type" => Expression::Type(BuiltinType::Type),
+    <f:FunctionType> => Expression::Type(f),
+}
+
+
+FunctionType: BuiltinType<'a> = {
+    "fn" <rty:ExpressionTypeNoCall> "(" ")" => BuiltinType::Function {
+    params: Vec::new(), return_type: Box::new(rty) },
+    "fn" <rty:ExpressionTypeNoCall> "(" <param:ExpressionType> <params:("," <ExpressionType>)*> ")" => {
+        let mut v = vec![param];
+        for p in params.into_iter() {
+            v.push(p);
+        }
+        BuiltinType::Function { params: v, return_type: Box::new(rty) }
+    },
+};
+
+
+IndexExpr: Expression<'a> = {
+    <term:TermExpr> => term,
+    <start: @L> <lhs:IndexExpr> "[" <expr1:Expr> <exprs:("," <Expr>)*> "]" <end: @R> => {
+        let lhs = Box::new(lhs);
+        let mut v = vec![expr1];
+        for e in exprs.into_iter() {
+            v.push(e);
+        }
+        Expression::new_bracketed(lhs, v, start, end)
+    },
+    <start: @L> <obj:IndexExpr> "." <name:Identifier> <end: @R> => {
+        let obj = Box::new(obj);
+        Expression::new_member_access(obj, name, start, end)
+    },
+};
+
+FactorExpr: Expression<'a> = {
+    <term:IndexExpr> => term,
+    <start: @L> <lhs:FactorExpr> Mult <rhs:IndexExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Mul, lhs, rhs, start, end)
+    },
+    <start: @L> <lhs:FactorExpr> Div <rhs:IndexExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Div, lhs, rhs, start, end)
+    },
+    <start: @L> <lhs:FactorExpr> Mod <rhs:IndexExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Mod, lhs, rhs, start, end)
+    },
+};
+
+ConcatExpr: Expression<'a> = {
+    <factor:FactorExpr> => factor,
+    <start: @L> <lhs:ConcatExpr> Concat <rhs:FactorExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Concat, lhs, rhs, start, end)
+    },
+};
+
+SumExpr: Expression<'a> = {
+    <concat:ConcatExpr> => concat,
+    <start: @L> <lhs:SumExpr> Plus <rhs:ConcatExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Add, lhs, rhs, start, end)
+    },
+    <start: @L> <lhs:SumExpr> Minus <rhs:ConcatExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Sub, lhs, rhs, start, end)
+    },
+};
+
+CompareExpr: Expression<'a> = {
+    <sum:SumExpr> => sum,
+    <start: @L> <lhs:CompareExpr> Equals <rhs:SumExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Eq, lhs, rhs, start, end)
+    },
+    <start: @L> <lhs:CompareExpr> NotEquals <rhs:SumExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Ne, lhs, rhs, start, end)
+    },
+    <start: @L> <lhs:CompareExpr> AngleOpen <rhs:SumExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Lt, lhs, rhs, start, end)
+    },
+    <start: @L> <lhs:CompareExpr> LtE <rhs:SumExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Le, lhs, rhs, start, end)
+    },
+    <start: @L> <lhs:CompareExpr> AngleClose <rhs:SumExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Gt, lhs, rhs, start, end)
+    },
+    <start: @L> <lhs:CompareExpr> GtE <rhs:SumExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Ge, lhs, rhs, start, end)
+    },
+};
+
+NotExpr: Expression<'a> = {
+    <start: @L> Not <expr:CompareExpr> <end: @R> => {
+        let expr = Box::new(expr);
+        Expression::new_unary(UnaryOperator::Not, expr, start, end)
+    },
+    <expr:CompareExpr> => expr,
+};
+
+ConjExpr: Expression<'a> = {
+    <not:NotExpr> => not,
+    <start: @L> <lhs:ConjExpr> And <rhs:NotExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::And, lhs, rhs, start, end)
+    },
+};
+
+DisjExpr: Expression<'a> = {
+    <conj:ConjExpr> => conj,
+    <start: @L> <lhs:DisjExpr> Or <rhs:ConjExpr> <end: @R> => {
+        let lhs = Box::new(lhs);
+        let rhs = Box::new(rhs);
+        Expression::new_binary(BinaryOperator::Or, lhs, rhs, start, end)
+    },
+};
+
+CallExpr: Expression<'a> = {
+    <dis:DisjExpr> => dis,
+    <call:Call> => Expression::Call(call),
+};
+
+ConditionalExpr: Expression<'a> = {
+    <trail:CallExpr> => trail,
+    <if_:IfExpr> => Expression::IfExpression(if_),
+    <match_:MatchExpr> => Expression::MatchExpression(match_),
+};
+
+ConditionalExprNoCall: Expression<'a> = {
+    <dis:DisjExpr> => dis,
+    <if_:IfExpr> => Expression::IfExpression(if_),
+    <match_:MatchExpr> => Expression::MatchExpression(match_),
+};
+
+
+TryExpr: Expression<'a> = {
+    <start: @L> <expr:ConditionalExpr> "?" <end: @R> => {
+        let expr = Box::new(expr);
+        Expression::new_unary(UnaryOperator::Try, expr, start, end)
+    },
+    <expr:ConditionalExpr> => expr,
+};
+
+TryExprNoCall: Expression<'a> = {
+    <expr:ConditionalExprNoCall> => expr,
+};
+
+ExprWithoutTrailingNoCall: Expression<'a> = {
+    <trye:TryExprNoCall> => trye,
+    "(" <expr:Expr> ")" => Expression::Parenthesized(Box::new(expr)),
+};
+
+ExprWithoutTrailing: Expression<'a> = {
+    <trye:TryExpr> => trye,
+    "return" <expr:Expr> => {
+        Expression::Return(Some(Box::new(expr)))
+    },
+    "(" <expr:Expr> ")" => Expression::Parenthesized(Box::new(expr)),
+};
+
+Expr: Expression<'a> = {
+    <expr:ExprWithoutTrailing> => expr,
+    <lambda:Closure> => lambda,
+};
+
+ExprNoCall: Expression<'a> = {
+    <expr:ExprWithoutTrailingNoCall> => expr,
+    <lambda:Closure> => lambda,
+};
+
+ExprTrailing: Expression<'a> = {
+    <expr:Expr> => expr,
+    <trail:Trailing> => trail,
+};
+
+
+
+IfExpr: IfExpression<'a> = {
+    <start: @L> "if" <cond:ExprWithoutTrailing> <then:Block> <end: @R> => {
+        let cond = Box::new(cond);
+        IfExpression::new(cond, then, None, start, end)
+    },
+    <start: @L> "if" <cond:ExprWithoutTrailing> <then:Block> <else_:("else" <Block>)> <end: @R> => {
+        let cond = Box::new(cond);
+        let else_ = Either::Right(else_);
+        IfExpression::new(cond, then, Some(else_), start, end)
+    },
+    <start: @L> "if" <cond:ExprWithoutTrailing> <then:Block> <else_:("else" <IfExpr>)> <end: @R> => {
+        let cond = Box::new(cond);
+        let else_ = Either::Left(Box::new(else_));
+        IfExpression::new(cond, then, Some(else_), start, end)
+    },
+};
+
+MatchExpr: MatchExpression<'a> = {
+    <start: @L> "match" <expr:ExprWithoutTrailing> "{" Lb? <cases:(<MatchCase> Lb?)*> "}" <end: @R> => {
+        MatchExpression::new(Box::new(expr), cases, start, end)
+    },
+};
+
+MatchCase: MatchArm<'a> = {
+    <start: @L> <pat:Pattern> "->" <expr:ExpressionType> "," <end: @R> => MatchArm::new(pat, Either::Left(expr), start, end),
+    <start: @L> <pat:Pattern> "->" <body:Block> <end: @R> => MatchArm::new(pat, Either::Right(body), start, end),
+};
+
+Pattern: Pattern<'a> = {
+    <id:Identifier> => Pattern::Variable(id),
+    <lit:Literal> => Pattern::Literal(lit),
+    "(" <pat:Pattern> <pats:("," <Pattern>)+> ")" => {
+        let mut v = vec![pat];
+        for p in pats.into_iter() {
+            v.push(p);
+        }
+        Pattern::Tuple(v)
+    },
+    <path:Path> <id:Identifier> <name_end: @L> <body:Constructor> => {
+        let mut p = path;
+        p.segments.push(id);
+        p.end = name_end;
+        Pattern::Constructor { name: p, fields: body }
+    },
+};
+
+Constructor : Vec<Pattern<'a>> = {
+    "(" <pat:Pattern> <pats:("," <Pattern>)*> ")" => {
+        let mut v = vec![pat];
+        for p in pats.into_iter() {
+            v.push(p);
+        }
+        v
+    },
+    ("(" ")") => Vec::new(),
+};
+
+Literal: Literal<'a> = {
+    <int:Int_lit> => Literal::Int(int),
+    <float:Float_lit> => Literal::Float(float),
+    <char:Char_lit> => Literal::Char(char),
+    <string:String_lit> => Literal::String(string),
+    "True" => Literal::Bool(true),
+    "False" => Literal::Bool(false),
+    "(" ")" => Literal::Unit,
+    "[" "]" => Literal::List(Vec::new()),
+    "[" <expr:Expr> <exprs:("," <Expr>)*> "]" => {
+        let mut v = vec![expr];
+        for e in exprs.into_iter() {
+            v.push(e);
+        }
+        Literal::List(v)
+    },
+};
+
+Tuple: Literal<'a> = {
+    "(" <expr:ExpressionType> <exprs:("," <ExpressionType>)+> ")" => {
+        let mut v = vec![expr];
+        for e in exprs.into_iter() {
+            v.push(e);
+        }
+        Literal::Tuple(v)
+    },
+};
+
+Closure: Expression<'a> = {
+    <start: @L> <params:ClosureParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => Closure::new(params, Some(ret), body, start, end),
+    <start: @L> <body:Block> <end: @R> => Closure::new(Vec::new(), None, body, start, end),
+    //<start: @L> <params:ClosureParamList> <ret:ReturnType> <body:Expr> <end: @R> => Closure::new(params, ret, vec![Statement::Expression(body)], start, end),
+
+};
+
+
+pub ClosureParamList: Vec<Param<'a>> = {
+    "|" <param:Param> <params:("," <Param>)*> "|" => {
+        let mut v = vec![param];
+        for p in params.into_iter() {
+            v.push(p);
+        }
+        v
+    },
+    "|" "|" => {
+        Vec::new()
+    }
+};
+
+Call: Call<'a> = {
+    <start: @L> <callee:CallExpr> <args:ArgList> <end: @R> => {
+        Call::new(Box::new(callee), Vec::new(), args, start, end)
+    },
+    //<start: @L> <callee:CallExpr> <typeargs:TypeArgList> <args:ArgList> <end: @R> => Call::new(Box::new(callee), typeargs, args, start, end),
+};
+
+Trailing: Expression<'a> = {
+    <start: @L> <call:ExprWithoutTrailing> <lambdas:Closure+> <end: @R> => {
+        Expression::TrailingLambdas(Box::new(call), lambdas, start, end)
+    },
+};
+
+
+ArgList: Vec<CallArg<'a>> = {
+    "(" <arg:CallArg> <args:("," <CallArg>)*> ")" => {
+        let mut v = vec![arg];
+        for a in args.into_iter() {
+            v.push(a);
+        }
+        v
+    },
+    "(" ")" => Vec::new(),
+};
+
+CallArg: CallArg<'a> = {
+    <start: @L> <name:(<Identifier> Assign)?> <expr:Expr> <end: @R> => CallArg::new(name, expr, start, end),
+};
+
+TypeArgList: Vec<ExpressionType<'a>> = {
+    "::" "[" <arg:ExpressionType> <args:("," <ExpressionType>)*> "]" => {
+        let mut v = vec![arg];
+        for a in args.into_iter() {
+            v.push(a);
+        }
+        v
+    },
+    "::" "[" "]" => Vec::new(),
+};
+
+
