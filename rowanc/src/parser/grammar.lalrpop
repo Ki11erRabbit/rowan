@@ -56,6 +56,7 @@ extern {
         "char" => Token::Char,
         "bool" => Token::Bool,
         "void" => Token::Void,
+        "str" => Token::Str,
         "True" => Token::True,
         "False" => Token::False,
         Int_lit => Token::IntLiteral(<&'a str>),
@@ -123,7 +124,7 @@ pub Visibility: Visibility = {
             None => Visibility::Private,
         }
     },
-    <vis:("prot")?> => {
+    <vis:("prot")> => {
         match vis {
             Some(_) => Visibility::Protected,
             None => Visibility::Private,
@@ -167,6 +168,26 @@ pub Class: TopLevelStatement<'a> = {
     }
 };
 
+ParentDecl: Vec<ParentDec<'a>> = {
+    "extends" <p1:ParentDec> <parents:("," <ParentDec>)*> => {
+        let mut v = vec![p1];
+        for p in parents.into_iter() {
+            v.push(p);
+        }
+        v
+    }
+};
+
+ParentDec: ParentDecl<'a> = {
+    <start: @L> <name:Identifier> <type_params:TypeParamList?> <end: @R> => {
+        ParentDec {
+            name,
+            type_params,
+            span: Span::new(start, end),
+        }
+    },
+};
+
 ClassMembers: Vec<ClassMember<'a>> = {
     <members:(Lb ClassMember)*> Lb? => members,
 };
@@ -208,11 +229,31 @@ Signal: ClassMember<'a> = {
     }
 };
 
+
+TypeList: Type<'a> = {
+    "(" ")" => {
+        Vec::new()
+    },
+    "(" <param:Type> <params:("," <Type>)*> ")"=> {
+        let mut v = vec![param];
+        for p in params.into_iter() {
+            v.push(p);
+        }
+        v
+    },
+};
+
+
+
 Method: ClassMember<'a> = {
-    <start: @L> <annotations:MethodAnnotations> <vis:Visibility> "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <body:Block> <end: @R> => {
+    <start: @L> <annotations:MethodAnnotations?> <vis:Visibility> "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <body:Block> <end: @R> => {
         let span = Span::new(start, end);
         let type_params = match typaram {
             Some(typ) => typ,
+            None => Vec::new(),
+        };
+        let annotations = match annotations {
+            Some(a) => a,
             None => Vec::new(),
         };
         ClassMember::Method(
@@ -228,7 +269,36 @@ Method: ClassMember<'a> = {
     }
 };
 
+MethodAnnotations: Vec<Annotation<'a>> = {
+    <anno:Annotation> <annos:(Lb <Annotation>)*> => {
+        let mut v = vec![anno];
+        for a in annos.into_inter() {
+            v.push(a);
+        }
+        v
+    }
+};
 
+Annotation: Annotation<'a> = {
+    <start: @L> "@" <name:Identifier> <end: @R> => {
+        Annotation {
+            name,
+            parameters: Vec::new(),
+            span: Span::new(start, end),
+        }
+    },
+    <start: @L> "@" <name:Identifier> "(" <p1:Identifier> <ps:("," <Identifier>)*> ")" <end: @R> => {
+        let mut parameters = vec![p1];
+        for p in ps.into_iter() {
+            parameters.push(p);
+        }
+        Annotation {
+            name,
+            parameters,
+            span: Span::new(start, end),
+        }
+    },
+};
 
 pub ParamList: Vec<Param<'a>> = {
     "(" <param:Param> <params:("," <Param>)*> ")" => {
@@ -249,7 +319,7 @@ pub Param: Param<'a> = {
     <start: @L> <name:Identifier> ":" <ty:Type> <end: @R> => Param::new(name, ty, Span::new(start, end)),
 };
 
-pub ReturnType: Type<'a>> = {
+pub ReturnType: Type<'a> = {
     <ty:("->" <Type>)?> => {
         match ty {
             Some(t) => t,
@@ -283,7 +353,7 @@ pub TypeParam: TypeParameter<'a> = {
 };
 
 Constraints: Vec<Constraint<'a>> = {
-    <cons:Constraint> <conss:("," Constraint)*> => {
+    <cons:Constraint> <conss:(Lb Constraint)*> => {
         let mut v = vec![cons];
         for c in conss.into_iter() {
             v.push(c);
@@ -302,7 +372,7 @@ Constraint: Constraint<'a> = {
     }
 };
 
-Type: Type<'a> = {
+BaseType: Type<'a> = {
     "void" => Type::Void,
     "u8" => Type::U8,
     "u16" => Type::U16,
@@ -314,13 +384,20 @@ Type: Type<'a> = {
     "i64" => Type::I64,
     "char" => Type::Char,
     "str" => Type::Str,
-    <start: @L> "[" <ty:Type> "]" <end: @R> => {
-        Type::Array(Box::new(ty), Span::new(start, end))
-    },
     <start: @L> <id:Identifier> <end: @R> => {
         Type::Object(id, Span::new(start, end))
     },
-    <start: @L> <ty:Type> "[" <arg:Type> <args:("," <Type>)*> "]" <end: @R> => {
+};
+
+ArrayType: Type<'a> = {
+    <start: @L> "[" <ty:Type> "]" <end: @R> => {
+        Type::Array(Box::new(ty), Span::new(start, end))
+    },
+};
+
+Type: Type<'a> = {
+    <ty:BaseType> => ty,
+    <start: @L> <ty:BaseType> "[" <arg:Type> <args:("," <Type>)*> "]" <end: @R> => {
         let mut types = vec![arg];
         for t in args.into_iter() {
             types.push(t);
@@ -374,16 +451,16 @@ Block: Vec<Statement<'a>> = {
 };
 
 Statement: Statement<'a> = {
-    <start: @L> "let" <id:Pattern> ":" <ty:Type> Assign <rhs:Expression> <end: @R> => {
+    <start: @L> "let" <id:Pattern> ":" <ty:Type> Assign <rhs:Expr> <end: @R> => {
         Statement::new_let(id, ty, rhs, Span::new(start, end))
     },
-    <start: @L> "const" <id:Pattern> ":" <ty:Type> Assign <rhs:Expression> <end: @R> => {
+    <start: @L> "const" <id:Pattern> ":" <ty:Type> Assign <rhs:Expr> <end: @R> => {
         Statement::new_const(id, ty, rhs, Span::new(start, end))
     },
-    <start: @L> <lhs:ExpressionTypeTrailing> Assign <rhs:ExpressionTypeTrailing> <end: @R> => {
+    <start: @L> <lhs:Expr> Assign <rhs:Expr> <end: @R> => {
         Statement::new_assignment(lhs, rhs, Span::new(start, end))
     },
-    <start: @L> <expr:ExpressionTypeTrailing> <end: @R> => {
+    <start: @L> <expr:Expr> <end: @R> => {
 
         Statement::Expression(expr, Span::new(start, end))
     },
@@ -395,15 +472,10 @@ TermExpr: Expression<'a> = {
         Expression::Variable(id, Span::new(start, end))
     },
     <lit:Literal> => Expression::Literal(lit),
-    <tuple:Tuple> => Expression::Literal(tuple),
-    <start: @L> Minus <expr:Expr> <end: @R> => {
+    <start: @L> Minus <expr:TermExpr> <end: @R> => {
         let expr = Box::new(expr);
         Expression::new_unary(UnaryOperator::Neg, expr, start, end)
     },
-    <start: @L> "new" <id:Type> <array_size:("[" <Expr> "]")?> <end: @R> => {
-        let array_size = array_size.map(Box::new);
-        Expression::New(id, array_size, Span::new(start, end))
-    }
     // TODO: break, continue
 }
 
@@ -441,6 +513,13 @@ FactorExpr: Expression<'a> = {
         let rhs = Box::new(rhs);
         Expression::new_binary(BinaryOperator::Mod, lhs, rhs, start, end)
     },
+    <start: @L> "new" <id:Type> <end: @R> => {
+        Expression::New(id, None, Span::new(start, end))
+    }
+    <start: @L> "new" <id:ArrayType> <array_size:("[" <Expr> "]")> <end: @R> => {
+        let array_size = array_size.map(Box::new);
+        Expression::New(id, array_size, Span::new(start, end))
+    }
 };
 
 ConcatExpr: Expression<'a> = {
@@ -591,7 +670,7 @@ MatchExpr: MatchExpression<'a> = {
 };
 
 MatchCase: MatchArm<'a> = {
-    <start: @L> <pat:Pattern> "->" <expr:Expression> "," <end: @R> => MatchArm::new(pat, Either::Left(expr), start, end),
+    <start: @L> <pat:Pattern> "->" <expr:Expr> "," <end: @R> => MatchArm::new(pat, Either::Left(expr), start, end),
     <start: @L> <pat:Pattern> "->" <body:Block> <end: @R> => MatchArm::new(pat, Either::Right(body), start, end),
 };
 
@@ -632,7 +711,7 @@ Literal: Literal<'a> = {
 };
 
 Tuple: Literal<'a> = {
-    <start: @L> "(" <expr:Expression> <exprs:("," <Expression>)+> ")" <end: @R> => {
+    <start: @L> "(" <expr:Expr> <exprs:("," <Expr>)+> ")" <end: @R> => {
         let mut v = vec![expr];
         for e in exprs.into_iter() {
             v.push(e);
@@ -685,8 +764,8 @@ CallArg: CallArg<'a> = {
     <start: @L> <name:(<Identifier> Assign)?> <expr:Expr> <end: @R> => CallArg::new(name, expr, start, end),
 };
 
-TypeArgList: Vec<ExpressionType<'a>> = {
-    "::" "[" <arg:ExpressionType> <args:("," <ExpressionType>)*> "]" => {
+TypeArgList: Vec<Type<'a>> = {
+    "::" "[" <arg:Type> <args:("," <Type>)*> "]" => {
         let mut v = vec![arg];
         for a in args.into_iter() {
             v.push(a);
