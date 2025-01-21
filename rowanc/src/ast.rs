@@ -6,6 +6,15 @@ pub struct Span {
     pub end: usize,
 }
 
+impl Span {
+    pub fn new(start: usize, end: usize) -> Self {
+        Span {
+            start,
+            end,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Copy)]
 pub enum Visiblity {
     Public,
@@ -77,6 +86,29 @@ pub struct Class<'a> {
     pub span: Span,
 }
 
+impl Class<'_> {
+    pub fn new<'a>(
+        name: &'a str,
+        parents: Vec<ParentDec<'a>>,
+        members: Vec<Member<'a>>,
+        methods: Vec<Method<'a>>,
+        signals: Vec<Signal<'a>>,
+        type_params: Vec<TypeParameter<'a>>,
+        span: Span
+    ) -> Class<'a> {
+        Class {
+            name,
+            parents,
+            members,
+            methods,
+            signals,
+            type_params,
+            span
+        }
+    }
+}
+
+
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct ParentDec<'a> {
     pub name: &'a str,
@@ -84,7 +116,15 @@ pub struct ParentDec<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub enum ClassMember<'a> {
+    Member(Member<'a>),
+    Method(Method<'a>),
+    Signal(Signal<'a>),
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Member<'a> {
+    pub visiblity: Visiblity,
     pub name: &'a str,
     pub ty: Type<'a>,
     pub span: Span,
@@ -119,6 +159,7 @@ pub struct Parameter<'a> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Type<'a> {
+    Void,
     U8,
     U16,
     U32,
@@ -132,6 +173,7 @@ pub enum Type<'a> {
     Array(Box<Type<'a>>, Span),
     Object(&'a str, Span),
     TypeArg(Box<Type<'a>>, Vec<Type<'a>>, Span),
+    Function(Vec<Type<'a>>, Box<Type<'a>>, Span),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
@@ -139,6 +181,16 @@ pub struct TypeParameter<'a> {
     pub name: &'a str,
     pub constraints: Vec<Constraint<'a>>,
     pub span: Span,
+}
+
+impl TypeParameter<'_> {
+    pub fn new<'a>(name: &'a str, constraints: Vec<Constraint<'a>>, span: Span) -> TypeParameter<'a> {
+        TypeParameter {
+            name,
+            constraints,
+            span,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
@@ -158,7 +210,7 @@ pub struct Signal<'a> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Statement<'a> {
-    Expression(Expression<'a>),
+    Expression(Expression<'a>, Span),
     Let {
         bindings: Pattern<'a>,
         ty: Type<'a>,
@@ -178,11 +230,39 @@ pub enum Statement<'a> {
     }
 }
 
+impl Statement<'_> {
+    pub fn new_let<'a>(bindings: Pattern<'a>, ty: Type<'a>, value: Expression<'a>, span: Span) -> Statement<'a> {
+        Statement::Let {
+            bindings,
+            ty,
+            value,
+            span,
+        }
+    }
+
+    pub fn new_const<'a>(bindings: Pattern<'a>, ty: Type<'a>, value: Expression<'a>, span: Span) -> Statement<'a> {
+        Statement::Const {
+            bindings,
+            ty,
+            value,
+            span,
+        }
+    }
+
+    pub fn new_assignment<'a>(target: Expression<'a>, value: Expression<'a>, span: Span) -> Statement<'a> {
+        Statement::Assignment {
+            target,
+            value,
+            span
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Pattern<'a> {
     Variable(&'a str, Span),
     Tuple(Vec<Pattern<'a>>, Span),
-    Constant(Constant<'a>, Span),
+    Constant(Constant<'a>),
     WildCard(Span),
 }
 
@@ -208,7 +288,7 @@ pub enum Expression<'a> {
     },
     MemberAccess {
         object: Box<Expression<'a>>,
-        field: &'a str,
+        field: PathName<'a>,
         span: Span,
     },
     Closure {
@@ -230,7 +310,111 @@ pub enum Expression<'a> {
         right: Box<Expression<'a>>,
         span: Span,
     },
-    Return(Box<Expression<'a>>, Span),
+    Return(Option<Box<Expression<'a>>>, Span),
+    New(Type<'a>, Option<Box<Expression<'a>>>, Span),
+    Connect {
+        source: Box<Expression<'a>>,
+        destination: Box<Expression<'a>>,
+        signal_name: &'a str,
+        span: Span,
+    },
+    Disconnect {
+        source: Box<Expression<'a>>,
+        destination: Box<Expression<'a>>,
+        signal_name: &'a str,
+        span: Span,
+    }
+}
+
+impl Expression<'_> {
+    pub fn new_call<'a>(
+        name: Box<Expression<'a>>,
+        type_args: Vec<Type<'a>>,
+        args: Vec<Expression<'a>>,
+        span: Span
+    ) -> Expression<'a> {
+        Expression::Call {
+            name,
+            type_args,
+            args,
+            span
+        }
+    }
+
+    pub fn new_member_access<'a>(object: Box<Expression<'a>>, field: PathName<'a>, span: Span) -> Expression<'a> {
+        Expression::MemberAccess {
+            object,
+            field,
+            span
+        }
+    }
+
+    pub fn new_closure_expression<'a>(
+        params: Vec<ClosureParameter<'a>>,
+        return_type: Option<Type<'a>>,
+        span: Span
+    ) -> Expression<'a> {
+        Expression::Closure {
+            params,
+            return_type,
+            span
+        }
+    }
+
+    pub fn new_unary_operation<'a>(
+        operator: UnaryOperator,
+        operand: Box<Expression<'a>>,
+        span: Span
+    ) -> Expression<'a> {
+        Expression::UnaryOperation {
+            operator,
+            operand,
+            span
+        }
+    }
+
+    pub fn new_binary_operation<'a>(
+        operator: BinaryOperator,
+        lhs: Box<Expression<'a>>,
+        rhs: Box<Expression<'a>>,
+        span: Span
+    ) -> Expression<'a> {
+        Expression::BinaryOperation {
+            operator,
+            left: lhs,
+            right: rhs,
+            span
+        }
+    }
+
+    pub fn new_connect_expression<'a>(
+        source: Box<Expression<'a>>,
+        destination: Box<Expression<'a>>,
+        signal_name: &'a str,
+        span: Span,
+    ) -> Expression<'a> {
+        Expression::Connect {
+            source,
+            destination,
+            signal_name,
+            span,
+        }
+    }
+
+    pub fn new_disconnect_expression<'a>(
+        source: Box<Expression<'a>>,
+        destination: Box<Expression<'a>>,
+        signal_name: &'a str,
+        span: Span,
+    ) -> Expression<'a> {
+        Expression::Disconnect {
+            source,
+            destination,
+            signal_name,
+            span,
+        }
+    }
+
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
