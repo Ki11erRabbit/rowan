@@ -22,8 +22,11 @@ extern {
         "for" => Token::For,
         "in" => Token::In,
         "loop" => Token::Loop,
+        "with" => Token::With,
+        "as" => Token::As,
         "record" => Token::Record,
         "union" => Token::Union,
+        "into" => Token::Into,
         "class" => Token::Class,
         "signal" => Token::Signal,
         "static" => Token::Static,
@@ -477,6 +480,9 @@ Statement: Statement<'a> = {
     <start: @L> <label:(<Identifier> ":")?> "for" <bindings:Pattern> ":" <ty:Type> "in" <expr:Expr> <block:Block> <end: @R> => {
         Statement::new_for(label, bindings, ty, expr, Span::new(start, end))
     },
+    <start: @L> "with" <expr:Expr> "as" <pat:Pattern> <ty:(":" <Type>)> <block:Block> <end: @R> => {
+        Statement::new_with(expr, pat, ty, block, Span::new(start, end))
+    }
 };
 
 
@@ -489,7 +495,9 @@ TermExpr: Expression<'a> = {
         let expr = Box::new(expr);
         Expression::new_unary(UnaryOperator::Neg, expr, start, end)
     },
-    // TODO: break, continue
+    <start: @L> "self" <end: @R> => {
+        Expression::This(Span::new(start, end))
+    }
 }
 
 
@@ -533,6 +541,12 @@ FactorExpr: Expression<'a> = {
         let array_size = array_size.map(Box::new);
         Expression::New(id, array_size, Span::new(start, end))
     }
+    <start: @L> <obj:IndexExpr> "as" <ty:Type> <end: @R> => {
+        Expression::new_as_expression(Box::new(obj), ty, Span::new(start, end))
+    },
+    <start: @L> <obj:IndexExpr> "into" <ty:BaseType> <end: @R> => {
+        Expression::new_into_expression(Box::new(obj), ty, Span::new(start, end))
+    },
 };
 
 ConcatExpr: Expression<'a> = {

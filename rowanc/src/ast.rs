@@ -242,6 +242,13 @@ pub enum Statement<'a> {
         bindings_type: Type<'a>,
         iterable: Expression<'a>,
         span: Span,
+    },
+    With {
+        expr: Expression<'a>,
+        bindings: Pattern<'a>,
+        bindings_type: Type<'a>,
+        block: Vec<Statement<'a>>,
+        span: Span,
     }
 }
 
@@ -300,8 +307,24 @@ impl Statement<'_> {
             iterable,
             span
         }
-
     }
+
+    pub fn new_with<'a>(
+        expr: Expression<'a>,
+        bindings: Pattern<'a>,
+        bindings_type: Type<'a>,
+        block: Vec<Statement<'a>>,
+        span: Span,
+    ) -> Statement<'a> {
+        Statement::With {
+            expr,
+            bindings,
+            bindings_type,
+            block,
+            span
+        }
+    }
+        
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
@@ -325,7 +348,7 @@ pub enum Constant<'a> {
 pub enum Expression<'a> {
     Variable(&'a str, Span),
     Literal(Literal<'a>),
-    This,
+    This(Span),
     Call {
         name: Box<Expression<'a>>,
         type_args: Vec<Type<'a>>,
@@ -377,6 +400,16 @@ pub enum Expression<'a> {
     },
     Continue(Option<&'a str>, Span),
     Break(Option<&'a str>, Option<Box<Expression<'a>>>, Span),
+    As {
+        source: Box<Expression<'a>>,
+        typ: Type<'a>,
+        span: Span,
+    },
+    Into {
+        source: Box<Expression<'a>>,
+        typ: Type<'a>,
+        span: Span,
+    }
 }
 
 impl Expression<'_> {
@@ -480,7 +513,29 @@ impl Expression<'_> {
         }
     }
         
+    pub fn new_as_expression<'a>(
+        source: Box<Expression<'a>>,
+        typ: Type<'a>,
+        span: Span,
+    ) -> Expression<'a> {
+        Expression::As {
+            source,
+            typ,
+            span
+        }
+    }
 
+    pub fn new_into_expression<'a>(
+        source: Box<Expression<'a>>,
+        typ: Type<'a>,
+        span: Span,
+    ) -> Expression<'a> {
+        Expression::Into {
+            source,
+            typ,
+            span
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
