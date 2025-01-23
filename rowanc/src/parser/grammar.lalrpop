@@ -34,6 +34,7 @@ extern {
         "extends" => Token::Extends,
         "connect" => Token::Connect,
         "disconnect" => Token::Disconnect,
+        "emit" => Token::Emit,
         "new" => Token::New,
         "to" => Token::To,
         "via" => Token::Via,
@@ -679,6 +680,9 @@ Expr: Expression<'a> = {
     <start: @L> "continue" <label:Identifier?> <end: @R> => {
         Expression::Break(label, Span::new(start, end))
     },
+    <start: @L> "emit" <name:Identifier> <end: @R> => {
+        Expression::Emit(name, Span::new(start, end))
+    }
 };
 
 

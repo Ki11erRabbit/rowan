@@ -409,7 +409,8 @@ pub enum Expression<'a> {
         source: Box<Expression<'a>>,
         typ: Type<'a>,
         span: Span,
-    }
+    },
+    Emit(&'a str, Span),
 }
 
 impl Expression<'_> {
