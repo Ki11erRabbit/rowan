@@ -1,4 +1,4 @@
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::HashMap;
 
 use rowan_shared::{classfile::{BytecodeEntry, ClassFile, Member, Signal, SignatureEntry, SignatureIndex, StringEntry, StringIndex, VTable, VTableEntry}, TypeTag};
 
@@ -87,22 +87,77 @@ impl ClassInfo {
 }
 
 pub struct PartialClass {
-    pub name: StringIndex,
+    name: StringIndex,
     /// Parent class names
-    pub parents: Vec<StringIndex>,
+    parents: Vec<StringIndex>,
     /// Virtual tables
-    pub vtables: Vec<VTable>,
+    vtables: Vec<VTable>,
     /// Members and their types
-    pub members: Vec<Member>,
+    members: Vec<Member>,
     /// Signals and their types
-    pub signals: Vec<Signal>,
+    signals: Vec<Signal>,
     /// Where the bytecode is stored
     /// This table is 1 indexed to allow for methods to be empty
-    pub bytecode_table: Vec<BytecodeEntry>,
+    bytecode_table: Vec<BytecodeEntry>,
     /// String table
     /// This table is 1 indexed to allow for StringIndices 0 value to mean "null"
-    pub string_table: Vec<StringEntry>,
+    string_table: Vec<StringEntry>,
     /// Signature table
     /// This holds the signatures of methods
-    pub signature_table: Vec<SignatureEntry>,
+    signature_table: Vec<SignatureEntry>,
+    class_to_vtable: HashMap<String, usize>,
+    method_to_function: HashMap<String, Vec<(usize, usize)>>,
+}
+
+impl PartialClass {
+    pub fn new() -> PartialClass {
+        PartialClass {
+            name: 0,
+            parents: Vec::new(),
+            vtables: Vec::new(),
+            members: Vec::new(),
+            signals: Vec::new(),
+            bytecode_table: Vec::new(),
+            string_table: Vec::new(),
+            signature_table: Vec::new(),
+            class_to_vtable: HashMap::new(),
+            method_to_function: HashMap::new(),
+        }
+    }
+
+    pub fn set_name(&mut self, name: &str) {
+        self.string_table.push(StringEntry::new(name));
+        self.name = self.string_table.len() as u64;
+    }
+
+    pub fn add_parent(&mut self, name: &str) {
+        self.string_table.push(StringEntry::new(name));
+        self.parents.push(self.string_table.len() as u64);
+    }
+
+    pub fn add_vtable<S: AsRef<str>>(
+        &mut self,
+        class_name: S,
+        mut vtable: VTable,
+        class_names: Vec<S>,
+        sub_class_names: Vec<S>,
+        names: Vec<S>,
+        responds_to: Vec<S>,
+        signatures: Vec<SignatureEntry>,
+
+    ) {
+
+        for (i, function) in vtable.functions.iter_mut().enumerate() {
+            self.string_table.push(StringEntry::new(class_names[i].as_ref()));
+            function.class_name = self.string_table.len() as u64;
+            self.string_table.push(StringEntry::new(sub_class_names[i].as_ref()));
+            function.sub_class_name = self.string_table.len() as u64;
+        }
+
+        
+
+        self.class_to_vtable.insert(class_name.as_ref().to_string(), self.vtables.len());
+        self.vtables.push(vtable);
+        
+    }
 }

@@ -484,6 +484,14 @@ pub struct StringEntry {
     value: Vec<u8>
 }
 
+impl StringEntry {
+    pub fn new<S: AsRef<[u8]>>(string: S) -> StringEntry {
+        StringEntry {
+            value: string.as_ref().to_vec()
+        }
+    }
+}
+
 /// Represents a signature entry in the signature table
 #[derive(PartialEq, Debug)]
 pub struct SignatureEntry {
