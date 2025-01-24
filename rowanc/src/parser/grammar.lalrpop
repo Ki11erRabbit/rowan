@@ -691,7 +691,10 @@ Expr: Expression<'a> = {
         Expression::Break(label, Span::new(start, end))
     },
     <start: @L> "emit" <name:Identifier> <end: @R> => {
-        Expression::Emit(name, Span::new(start, end))
+        Expression::Emit(name, Vec::new(), Span::new(start, end))
+    }
+    <start: @L> "emit" <name:Identifier> <args:ArgList> <end: @R> => {
+        Expression::Emit(name, args, Span::new(start, end))
     }
 };
 
@@ -806,8 +809,8 @@ Call: Call<'a> = {
 };
 
 
-ArgList: Vec<CallArg<'a>> = {
-    "(" <arg:CallArg> <args:("," <CallArg>)*> ")" => {
+ArgList: Vec<Expression<'a>> = {
+    "(" <arg:Expr> <args:("," <Expr>)*> ")" => {
         let mut v = vec![arg];
         for a in args.into_iter() {
             v.push(a);
@@ -815,10 +818,6 @@ ArgList: Vec<CallArg<'a>> = {
         v
     },
     "(" ")" => Vec::new(),
-};
-
-CallArg: CallArg<'a> = {
-    <start: @L> <name:(<Identifier> Assign)?> <expr:Expr> <end: @R> => CallArg::new(name, expr, start, end),
 };
 
 TypeArgList: Vec<Type<'a>> = {

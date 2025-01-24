@@ -1,26 +1,10 @@
 use std::collections::HashMap;
-
-
+use crate::backend::compiler_utils::{Frame, ClassInfo};
 
 
 pub struct Compiler {
     scopes: Vec<Frame>,
-    class_info: HashMap<String, ClassInfo>,
-
+    classes: HashMap<String, ClassInfo>
 }
 
 
-
-struct Frame {
-    bindings: HashMap<String, VarLocation>,
-}
-
-enum VarLocation {
-    LocalVar(u8),
-    TopOfStack(usize),
-}
-
-
-struct ClassInfo {
-    member_position: HashMap<String, u64>,
-}

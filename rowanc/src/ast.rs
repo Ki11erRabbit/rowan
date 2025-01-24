@@ -429,7 +429,7 @@ pub enum Expression<'a> {
         typ: Type<'a>,
         span: Span,
     },
-    Emit(&'a str, Span),
+    Emit(&'a str, Vec<Expression<'a>>,Span),
 }
 
 impl Expression<'_> {

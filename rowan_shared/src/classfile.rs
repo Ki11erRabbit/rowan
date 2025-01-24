@@ -73,14 +73,14 @@ use crate::TypeTag;
 
 
 /// Index into the string table
-type StringIndex = u64;
+pub type StringIndex = u64;
 /// Index into the bytecode table
-type BytecodeIndex = u64;
+pub type BytecodeIndex = u64;
 /// Index into the signature table
-type SignatureIndex = u64;
+pub type SignatureIndex = u64;
 
 #[derive(PartialEq, Debug)]
-pub struct ClassFile<'a> {
+pub struct ClassFile {
     /// Magic number to identify the file
     pub magic: u8,
     /// Major, minor, and patch version numbers
@@ -94,24 +94,51 @@ pub struct ClassFile<'a> {
     /// Parent class names
     pub parents: Vec<StringIndex>,
     /// Virtual tables
-    pub vtables: Vec<VTable<'a>>,
+    pub vtables: Vec<VTable>,
     /// Members and their types
     pub members: Vec<Member>,
     /// Signals and their types
     pub signals: Vec<Signal>,
     /// Where the bytecode is stored
     /// This table is 1 indexed to allow for methods to be empty
-    pub(crate) bytecode_table: Vec<BytecodeEntry<'a>>,
+    pub(crate) bytecode_table: Vec<BytecodeEntry>,
     /// String table
     /// This table is 1 indexed to allow for StringIndices 0 value to mean "null"
-    pub(crate) string_table: Vec<StringEntry<'a>>,
+    pub(crate) string_table: Vec<StringEntry>,
     /// Signature table
     /// This holds the signatures of methods
     pub signature_table: Vec<SignatureEntry>,
 }
 
-impl ClassFile<'_> {
-    pub fn new<'input>(binary: &'input [u8]) -> ClassFile<'input> {
+impl ClassFile {
+    
+    pub fn new_from_parts(
+        name: StringIndex,
+        parents: Vec<StringIndex>,
+        vtables: Vec<VTable>,
+        members: Vec<Member>,
+        signals: Vec<Signal>,
+        bytecode_table: Vec<BytecodeEntry>,
+        string_table: Vec<StringEntry>,
+        signature_table: Vec<SignatureEntry>,
+    ) -> ClassFile {
+        ClassFile {
+            magic: 0,
+            major_version: 0,
+            minor_version: 1,
+            patch_version: 0,
+            name,
+            parents,
+            vtables,
+            members,
+            signals,
+            bytecode_table,
+            string_table,
+            signature_table
+        }
+    }
+
+    pub fn new(binary: &[u8]) -> ClassFile {
         let mut index = 0;
         let magic = binary[0];
         let major_version = binary[1];
@@ -156,7 +183,7 @@ impl ClassFile<'_> {
                 )
             };
             vtables.push(VTable {
-                functions
+                functions: functions.to_vec()
             });
             index += vtable_size as usize * std::mem::size_of::<VTableEntry>();
         }
@@ -235,7 +262,7 @@ impl ClassFile<'_> {
                 )
             };
             bytecode_table.push(BytecodeEntry {
-                code
+                code: code.to_vec()
             });
             index += code_size as usize;
         }
@@ -254,15 +281,13 @@ impl ClassFile<'_> {
             ]);
             index += 8;
             let value = unsafe {
-                std::str::from_utf8_unchecked(
-                    std::slice::from_raw_parts(
-                        binary.as_ptr().add(index),
-                        length as usize
-                    )
+                std::slice::from_raw_parts(
+                    binary.as_ptr().add(index),
+                    length as usize
                 )
             };
             string_table.push(StringEntry {
-                value
+                value: value.to_vec()
             });
             index += length as usize;
         }
@@ -312,7 +337,7 @@ impl ClassFile<'_> {
     }
 
     pub fn index_string_table(&self, index: StringIndex) -> &str {
-        &self.string_table[(index - 1) as usize].value
+        std::str::from_utf8(&self.string_table[(index - 1) as usize].value).unwrap()
     }
 
     pub fn index_bytecode_table(&self, index: StringIndex) -> &BytecodeEntry {
@@ -336,7 +361,7 @@ impl ClassFile<'_> {
         binary.extend_from_slice(&self.vtables.len().to_le_bytes());
         for vtable in &self.vtables {
             binary.extend_from_slice(&(vtable.functions.len() as u64).to_le_bytes());
-            for function in vtable.functions {
+            for function in &vtable.functions {
                 binary.extend_from_slice(&function.class_name.to_le_bytes());
                 binary.extend_from_slice(&function.sub_class_name.to_le_bytes());
                 binary.extend_from_slice(&function.name.to_le_bytes());
@@ -359,12 +384,12 @@ impl ClassFile<'_> {
         binary.extend_from_slice(&(self.bytecode_table.len() as u64).to_le_bytes());
         for bytecode in &self.bytecode_table {
             binary.extend_from_slice(&(bytecode.code.len() as u64).to_le_bytes());
-            binary.extend_from_slice(bytecode.code);
+            binary.extend_from_slice(&bytecode.code);
         }
         binary.extend_from_slice(&(self.string_table.len() as u64).to_le_bytes());
         for string in &self.string_table {
             binary.extend_from_slice(&(string.value.len() as u64).to_le_bytes());
-            binary.extend_from_slice(string.value.as_bytes());
+            binary.extend_from_slice(&string.value);
         }
         binary.extend_from_slice(&(self.signature_table.len() as u64).to_le_bytes());
         for signature in &self.signature_table {
@@ -376,15 +401,26 @@ impl ClassFile<'_> {
 
         binary
     }
+    
+    pub fn clear(&mut self) {
+        self.name = 0;
+        self.parents.clear();
+        self.vtables.clear();
+        self.members.clear();
+        self.signals.clear();
+        self.bytecode_table.clear();
+        self.string_table.clear();
+        self.signature_table.clear();
+    }
 }
 
-impl<'input> From<&'input [u8]> for ClassFile<'input> {
-    fn from(binary: &'input [u8]) -> Self {
+impl From<&[u8]> for ClassFile {
+    fn from(binary: &[u8]) -> Self {
         ClassFile::new(binary)
     }
 }
 
-impl Into<Vec<u8>> for ClassFile<'_> {
+impl Into<Vec<u8>> for ClassFile {
     fn into(self) -> Vec<u8> {
         self.as_binary()
     }
@@ -394,38 +430,38 @@ impl Into<Vec<u8>> for ClassFile<'_> {
 /// Represents a member of a class
 #[derive(PartialEq, Debug)]
 pub struct Member {
-    name: StringIndex,
-    type_tag: TypeTag,
+    pub name: StringIndex,
+    pub type_tag: TypeTag,
 }
 
 /// Represents a virtual table for a class
 #[derive(PartialEq, Debug)]
-pub struct VTable<'a> {
-    functions: &'a [VTableEntry],
+pub struct VTable {
+    pub functions: Vec<VTableEntry>,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 #[repr(C)]
 pub struct VTableEntry {
     /// The name of the class to start looking for the function
-    class_name: StringIndex,
+    pub class_name: StringIndex,
     /// The name of the subclass the method is defined in
-    sub_class_name: StringIndex,
+    pub sub_class_name: StringIndex,
     /// The name of the function
-    name: StringIndex,
+    pub name: StringIndex,
     /// The name of the signal this method responds to
-    responds_to: StringIndex,
+    pub responds_to: StringIndex,
     /// The signature of the function
-    signature: SignatureIndex,
+    pub signature: SignatureIndex,
     /// The index of the bytecode for this function
-    bytecode: BytecodeIndex,
+    pub bytecode: BytecodeIndex,
 }
 
 /// Represents a bytecode entry
 /// This is a slice of bytes
 #[derive(PartialEq, Debug)]
-pub struct BytecodeEntry<'a> {
-    code: &'a [u8], 
+pub struct BytecodeEntry {
+    code: Vec<u8>, 
 }
 
 /// Represents a signal in a class
@@ -444,8 +480,8 @@ pub struct Signal {
 
 /// Represents a string entry in the string table
 #[derive(PartialEq, Debug)]
-pub struct StringEntry<'a> {
-    value: &'a str
+pub struct StringEntry {
+    value: Vec<u8>
 }
 
 /// Represents a signature entry in the signature table
@@ -465,7 +501,7 @@ mod tests {
         let parents = vec![1, 2];
         let vtables = vec![
             VTable {
-                functions: &[
+                functions: [
                     VTableEntry {
                         class_name: 1,
                         sub_class_name: 2,
@@ -474,7 +510,7 @@ mod tests {
                         signature: 3,
                         bytecode: 4
                     }
-                ]
+                ].to_vec()
             }
         ];
 
@@ -495,13 +531,13 @@ mod tests {
 
         let bytecode_table = vec![
             BytecodeEntry {
-                code: &[0, 1, 2, 3]
+                code: vec![0, 1, 2, 3]
             }
         ];
 
         let string_table = vec![
             StringEntry {
-                value: "Hello"
+                value: "Hello".as_bytes().to_vec()
             }
         ];
 
