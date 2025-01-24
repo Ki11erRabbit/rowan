@@ -42,6 +42,7 @@ extern {
         "from" => Token::From,
         "let" => Token::Let,
         "const" => Token::Const,
+        "mut" => Token::Mut,
         "import" => Token::Import,
         "module" => Token::Module,
         "pub" => Token::Pub,
@@ -320,7 +321,16 @@ pub ParamList: Vec<Param<'a>> = {
 
 
 pub Param: Param<'a> = {
-    <start: @L> <name:Identifier> ":" <ty:Type> <end: @R> => Param::new(name, ty, Span::new(start, end)),
+    <start: @L> <name:Pattern> ":" <ty:Type> <end: @R> => {
+        Parameter::new_pattern(name, ty, Span::new(start, end))
+    },
+    <start: @L> <m:("mut")?> "self" <end: @R> => {
+        let mutable = match m {
+            Some(_) => true,
+            None => false,
+        };
+        Parameter::new_this(mutable, Span::new(start, end))
+    },
 };
 
 pub ReturnType: Type<'a> = {
@@ -716,7 +726,13 @@ MatchCase: MatchArm<'a> = {
 };
 
 Pattern: Pattern<'a> = {
-    <start: @L> <id:Identifier> <end: @R> => Pattern::Variable(id, Span::new(start, end)),
+    <start: @L> <m:"mut"?> <id:Identifier> <end: @R> => {
+        let mutable = match m {
+            Some(_) => true,
+            None => false,
+        };
+        Pattern::Variable(id, mutable, Span::new(start, end))
+    },
     <lit:Constant> => Pattern::Constant(lit),
     <start: @L> "(" <pat:Pattern> <pats:("," <Pattern>)+> ")" <end: @R> => {
         let mut v = vec![pat];

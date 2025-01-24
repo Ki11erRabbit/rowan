@@ -12,7 +12,7 @@ pub struct Compiler {
 
 
 struct Frame {
-    HashMap<String, VarLocation>,
+    bindings: HashMap<String, VarLocation>,
 }
 
 enum VarLocation {

@@ -151,10 +151,29 @@ pub struct Annotation<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Parameter<'a> {
-    pub name: &'a str,
-    pub ty: Type<'a>,
-    pub span: Span,
+pub enum Parameter<'a> {
+    This(bool, Span),
+    Pattern {
+        name: Pattern<'a>,
+        ty: Type<'a>,
+        span: Span,
+    }
+}
+
+impl Parameter<'_> {
+    pub fn new_this(mutable: bool, span: Span) -> Parameter<'static> {
+        Parameter::This(mutable, span)
+    }
+
+    pub fn new_pattern<'a>(pattern: Pattern<'a>, ty: Type<'a>, span: Span) -> Parameter<'a> {
+        Parameter::Pattern {
+            name: pattern,
+            ty,
+            span,
+        }
+            
+    }
+    
 }
 
 
@@ -329,7 +348,7 @@ impl Statement<'_> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Pattern<'a> {
-    Variable(&'a str, Span),
+    Variable(&'a str, bool, Span),
     Tuple(Vec<Pattern<'a>>, Span),
     Constant(Constant<'a>),
     WildCard(Span),
