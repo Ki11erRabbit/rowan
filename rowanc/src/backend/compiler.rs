@@ -1,10 +1,101 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Write, path::{Path, PathBuf}};
 use rowan_shared::{bytecode::compiled::Bytecode, classfile::{Member, Signal, SignatureEntry, VTable, VTableEntry}, TypeTag};
 
 use crate::{ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator}, backend::compiler_utils::Frame};
 
 use super::compiler_utils::PartialClass;
 
+
+
+fn create_stdlib() -> HashMap<String, PartialClass> {
+    let mut classes = HashMap::new();
+
+    let mut object = PartialClass::new();
+    object.set_name("Object");
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let vtable = VTable::new(functions);
+    let class_names = vec![
+        "Object",
+        "Object",
+        "Object",
+        "Object",
+        "Object",
+        ];
+    let sub_class_names = vec![
+        "Object",
+        "Object",
+        "Object",
+        "Object",
+        "Object",
+        ];
+    let names = vec![
+        "tick",
+        "ready",
+        "upcast",
+        "get-child",
+        "remove-child",
+    ];
+    let responds_to = vec![
+        "",
+        "",
+        "",
+        "",
+        "",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::F64]),
+        SignatureEntry::new(vec![TypeTag::Void]),
+        SignatureEntry::new(vec![TypeTag::Object]),
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::U64]),
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object]),
+    ];
+    
+    object.add_vtable("Object",vtable, class_names, sub_class_names, names, responds_to, signatures);
+    object.make_not_printable();
+    classes.insert(String::from("Object"), object);
+
+    let mut printer = PartialClass::new();
+    printer.set_name("Printer");
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let vtable = VTable::new(functions);
+    let class_names = vec![
+        "Printer",
+        "Printer",
+        ];
+    let sub_class_names = vec![
+        "Printer",
+        "Printer",
+        ];
+    let names = vec![
+        "println-int",
+        "println-float",
+    ];
+    let responds_to = vec![
+        "",
+        "",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::U64]),
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::F64]),
+    ];
+    
+    printer.add_vtable("Printer",vtable, class_names, sub_class_names, names, responds_to, signatures);
+    printer.make_not_printable();
+    classes.insert(String::from("Printer"), printer);
+
+
+    classes
+}
 
 pub enum CompilerError {
     UnboundIdentifer(String, usize, usize),
@@ -23,9 +114,11 @@ pub struct Compiler {
 impl Compiler {
 
     pub fn new() -> Compiler {
+
+        
         Compiler {
             scopes: Vec::new(),
-            classes: HashMap::new(),
+            classes: create_stdlib(),
             current_block: 0,
         }
     }
@@ -51,7 +144,7 @@ impl Compiler {
         }
     }
 
-    fn bind_variable(&mut self, name: impl AsRef<str>) {
+    fn bind_variable(&mut self, name: impl AsRef<str>) -> u8 {
         
         let mut binding = None;
         for frame in self.scopes.iter().rev() {
@@ -65,9 +158,10 @@ impl Compiler {
         match binding {
             Some(pos) => {
                 self.scopes.last_mut().expect("No scopes").set_binding(name, pos);
+                pos
             }
             None => {
-                self.scopes.last_mut().expect("No scopes").add_binding(name);
+                self.scopes.last_mut().expect("No scopes").add_binding(name)
             }
         }
     }
@@ -85,7 +179,7 @@ impl Compiler {
     }
 
     /// files should be sorted in a way that means that means we don't need to do each file incrementally
-    pub fn compile_files(&mut self, files: Vec<File>) -> Result<(), CompilerError> {
+    pub fn compile_files(mut self, files: Vec<File>) -> Result<(), CompilerError> {
 
         for file in files {
             let File { content, .. } = file;
@@ -96,6 +190,21 @@ impl Compiler {
                 };
 
                 self.compile_class(class)?;
+            }
+        }
+
+        for (path, file) in self.classes.into_iter() {
+            if let Some(file) = file.create_class_file() {
+                let path = format!("output/{}.class", path);
+                let bytes = file.as_binary();
+                let path = PathBuf::from(path);
+                if let Some(parents) = path.parent() {
+                    let _ = std::fs::create_dir_all(parents);
+                }
+                let _ = std::fs::remove_file(&path);
+                let mut file = std::fs::File::create(path).unwrap();
+                file.write_all(&bytes).unwrap();
+                
             }
         }
 
@@ -130,6 +239,14 @@ impl Compiler {
 
         partial_class.add_vtable(name, vtable, class_names, sub_class_names, names, responds_to, signatures);
 
+        if parents.len() == 0 {
+            let object_class = self.classes.get("Object").expect("Object not added to known classes");
+
+            let (vtable, class_names, sub_class_names, names, responds_to, signatures) = object_class.get_vtable("Object");
+
+            partial_class.add_vtable("Object", vtable, class_names, sub_class_names, names, responds_to, signatures);
+        }
+        
         for (class_name, (vtable, class_names, sub_class_names, names, responds_to, signatures)) in parent_vtables {
             partial_class.add_vtable(class_name, vtable, class_names, sub_class_names, names, responds_to, signatures);
         }
@@ -327,6 +444,17 @@ impl Compiler {
                 Statement::Expression(expr, span) => {
                     self.compile_expression(class_name, partial_class, &expr, output)?;
                 }
+                Statement::Let { bindings, value, .. } => {
+                    self.compile_expression(class_name, partial_class, &value, output)?;
+                    match bindings {
+                        Pattern::Variable(var, _, _) => {
+                            let index = self.bind_variable(var);
+                            output.push(Bytecode::StoreLocal(index));
+
+                        }
+                        _ => todo!("let bindings"),
+                    }
+                }
                 _ => unimplemented!(),
             }
         }
@@ -520,14 +648,14 @@ impl Compiler {
                 self.compile_expression(class_name, partial_class, expr.as_ref(), output)?;
             }
             Expression::Call { name, type_args, args, span } => {
-                let (name, ty) = match name.as_ref() {
+                let (name, ty, var) = match name.as_ref() {
                     Expression::MemberAccess { object, field, span } => {
                         match object.as_ref() {
-                            Expression::Variable(_, Some(Type::Object(ty, _)), _) => {
-                                (field, *ty)
+                            Expression::Variable(var, Some(Type::Object(ty, _)), _) => {
+                                (field, *ty, *var)
                             }
                             Expression::This(_) => {
-                                (field, class_name)
+                                (field, class_name, "self")
                             }
                             _ => todo!("add additional sources to call from")
                         }
@@ -535,8 +663,22 @@ impl Compiler {
                     _ => unreachable!("all calls should be via member access by this point")
                 };
 
+                let mut argument_pos: u8 = 0;
+                
+                let object = self.get_variable(var).expect("There should be method calling by this point");
+                output.push(Bytecode::LoadLocal(object));
+                output.push(Bytecode::StoreArgument(argument_pos));
+
+                for arg in args {
+                    self.compile_expression(class_name, partial_class, arg, output)?;
+                    output.push(Bytecode::StoreArgument(argument_pos));
+                    argument_pos += 1;
+                }
+
+
                 let name = name.segments.last().unwrap();
-                let method_entry = partial_class.get_method_entry(name).expect("add proper handling of missing method");
+                let class = self.classes.get(ty).expect("Classes are in a bad order of compiling");
+                let method_entry = class.get_method_entry(name).expect("add proper handling of missing method");
 
                 output.push(Bytecode::InvokeVirt(method_entry.class_name, method_entry.sub_class_name, method_entry.name));
                 

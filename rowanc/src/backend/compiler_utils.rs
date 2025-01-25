@@ -27,9 +27,11 @@ impl Frame {
         }
     }
 
-    pub fn add_binding(&mut self, name: impl AsRef<str>) {
+    pub fn add_binding(&mut self, name: impl AsRef<str>) -> u8 {
+        let output = self.current_location;
         self.bindings.insert(String::from(name.as_ref()), self.current_location);
         self.current_location += 1;
+        output
     }
 
     pub fn set_binding(&mut self, name: impl AsRef<str>, location: u8) {
@@ -72,6 +74,7 @@ pub struct PartialClass {
     class_to_vtable: HashMap<String, usize>,
     method_to_function: HashMap<String, Vec<(usize, usize)>>,
     method_to_class: HashMap<String, String>,
+    dont_print: bool,
 }
 
 impl PartialClass {
@@ -110,7 +113,27 @@ impl PartialClass {
             class_to_vtable: HashMap::new(),
             method_to_function: HashMap::new(),
             method_to_class: HashMap::new(),
+            dont_print: false,
         }
+    }
+
+    pub fn make_not_printable(&mut self) {
+        self.dont_print = true
+    }
+
+    pub fn create_class_file(self) -> Option<ClassFile> {
+        if self.dont_print {
+            return None;
+        }
+        Some(ClassFile::new_from_parts(
+            self.name,
+            self.parents,
+            self.vtables,
+            self.members,
+            self.signals,
+            self.bytecode_table,
+            self.string_table,
+            self.signature_table))
     }
 
     pub fn set_name(&mut self, name: &str) {

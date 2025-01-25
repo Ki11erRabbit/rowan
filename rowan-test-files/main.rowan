@@ -1,0 +1,11 @@
+module Main;
+
+class Main {
+    @Override
+    fn ready() {
+        let x = 4 + 4;
+        let printer = new Printer;
+        printer.print-int(x);
+
+    }
+}
