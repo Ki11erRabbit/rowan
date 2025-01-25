@@ -5,7 +5,7 @@ pub mod classfile;
 
 /// Represents a type tag for a member or parameter
 /// This represents all the primitive types
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum TypeTag {
     Void,
     U8,

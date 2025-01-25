@@ -435,12 +435,20 @@ pub struct Member {
 }
 
 /// Represents a virtual table for a class
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct VTable {
     pub functions: Vec<VTableEntry>,
 }
 
-#[derive(PartialEq, Debug, Copy, Clone)]
+impl VTable {
+    pub fn new(functions: Vec<VTableEntry>) -> VTable {
+        VTable {
+            functions
+        }
+    }
+}
+
+#[derive(PartialEq, Debug, Copy, Clone, Default)]
 #[repr(C)]
 pub struct VTableEntry {
     /// The name of the class to start looking for the function
@@ -457,11 +465,20 @@ pub struct VTableEntry {
     pub bytecode: BytecodeIndex,
 }
 
+
 /// Represents a bytecode entry
 /// This is a slice of bytes
 #[derive(PartialEq, Debug)]
 pub struct BytecodeEntry {
-    code: Vec<u8>, 
+    pub code: Vec<u8>, 
+}
+
+impl BytecodeEntry {
+    pub fn new<B: AsRef<[u8]>>(code: B) -> BytecodeEntry {
+        BytecodeEntry {
+            code: code.as_ref().to_vec()
+        }
+    }
 }
 
 /// Represents a signal in a class
@@ -470,18 +487,18 @@ pub struct BytecodeEntry {
 #[derive(PartialEq, Debug)]
 pub struct Signal {
     /// The name of the signal
-    name: StringIndex,
+    pub name: StringIndex,
     /// Whether the signal is static or not
-    is_static: bool,
+    pub is_static: bool,
     /// The signature of the signal
     /// A signal always has a return type of void
-    signature: SignatureIndex,
+    pub signature: SignatureIndex,
 }
 
 /// Represents a string entry in the string table
 #[derive(PartialEq, Debug)]
 pub struct StringEntry {
-    value: Vec<u8>
+    pub value: Vec<u8>
 }
 
 impl StringEntry {
@@ -493,11 +510,19 @@ impl StringEntry {
 }
 
 /// Represents a signature entry in the signature table
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct SignatureEntry {
     /// The types of the parameters in the signature
     /// The return type is always the first type in the vector
-    types: Vec<TypeTag> 
+    pub types: Vec<TypeTag> 
+}
+
+impl SignatureEntry {
+    pub fn new(types: Vec<TypeTag>) -> Self {
+        SignatureEntry {
+            types
+        }
+    }
 }
 
 #[cfg(test)]

@@ -188,6 +188,8 @@ pub enum Type<'a> {
     I16,
     I32,
     I64,
+    F32,
+    F64,
     Char,
     Str,
     Array(Box<Type<'a>>, Span),
