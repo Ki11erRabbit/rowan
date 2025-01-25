@@ -358,8 +358,8 @@ pub enum Pattern<'a> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Constant<'a> {
-    Integer(&'a str, Span),
-    Float(&'a str, Span),
+    Integer(&'a str, Option<Type<'a>>, Span),
+    Float(&'a str, Option<Type<'a>>, Span),
     String(&'a str, Span),
     Character(&'a str, Span),
     Bool(bool, Span),
@@ -367,7 +367,7 @@ pub enum Constant<'a> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Expression<'a> {
-    Variable(&'a str, Span),
+    Variable(&'a str, Option<Type<'a>>, Span),
     Literal(Literal<'a>),
     This(Span),
     Call {

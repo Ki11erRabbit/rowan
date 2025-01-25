@@ -434,6 +434,15 @@ pub struct Member {
     pub type_tag: TypeTag,
 }
 
+impl Member {
+    pub fn new(type_tag: TypeTag) -> Self {
+        Member {
+            name: 0,
+            type_tag
+        }
+    }
+}
+
 /// Represents a virtual table for a class
 #[derive(PartialEq, Debug, Clone)]
 pub struct VTable {
@@ -493,6 +502,16 @@ pub struct Signal {
     /// The signature of the signal
     /// A signal always has a return type of void
     pub signature: SignatureIndex,
+}
+
+impl Signal {
+    pub fn new(is_static: bool) -> Self {
+        Signal {
+            name: 0,
+            is_static,
+            signature: 0,
+        }
+    }
 }
 
 /// Represents a string entry in the string table

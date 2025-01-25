@@ -2,13 +2,51 @@ use std::collections::HashMap;
 
 use rowan_shared::{classfile::{BytecodeEntry, ClassFile, Member, Signal, SignatureEntry, SignatureIndex, StringEntry, StringIndex, VTable, VTableEntry}, TypeTag};
 
-use crate::ast::ClassMember;
+use crate::ast::Method;
+
 
 
 pub type VarLocation = u8;
 pub struct Frame {
     bindings: HashMap<String, VarLocation>,
     current_location: u8,
+}
+
+impl Frame {
+    pub fn new() -> Self {
+        Frame {
+            bindings: HashMap::new(),
+            current_location: 0
+        }
+    }
+
+    pub fn new_with_location(location: u8) -> Self {
+        Frame {
+            bindings: HashMap::new(),
+            current_location: location,
+        }
+    }
+
+    pub fn add_binding(&mut self, name: impl AsRef<str>) {
+        self.bindings.insert(String::from(name.as_ref()), self.current_location);
+        self.current_location += 1;
+    }
+
+    pub fn set_binding(&mut self, name: impl AsRef<str>, location: u8) {
+        self.bindings.insert(String::from(name.as_ref()), location);
+    }
+
+    pub fn is_bound(&self, name: impl AsRef<str>) -> bool {
+        self.bindings.contains_key(name.as_ref())
+    }
+
+    pub fn get_binding(&self, name: impl AsRef<str>) -> Option<VarLocation> {
+        self.bindings.get(name.as_ref()).map(|l| *l)
+    }
+
+    pub fn get_location(&self) -> u8 {
+        self.current_location
+    }
 }
 
 
@@ -46,6 +84,19 @@ impl PartialClass {
         &self.bytecode_table[(index - 1) as usize]
     }
 
+    pub fn get_method_entry(&self, method_name: impl AsRef<str>) -> Option<VTableEntry> {
+        let class_name = self.method_to_class.get(method_name.as_ref())?;
+        let vtable_index = self.class_to_vtable.get(class_name)?;
+        let vtable_indices = self.method_to_function.get(method_name.as_ref())?;
+
+        for (vtable, method) in vtable_indices {
+            if vtable_index == vtable {
+                return Some(self.vtables[*vtable_index].functions[*method])
+            }
+        }
+        None
+    }
+
     pub fn new() -> PartialClass {
         PartialClass {
             name: 0,
@@ -72,14 +123,14 @@ impl PartialClass {
         self.parents.push(self.string_table.len() as u64);
     }
 
-    pub fn add_vtable<S: AsRef<str>>(
+    pub fn add_vtable(
         &mut self,
-        class_name: S,
+        class_name: impl AsRef<str>,
         mut vtable: VTable,
-        class_names: Vec<S>,
-        sub_class_names: Vec<S>,
-        names: Vec<S>,
-        responds_to: Vec<S>,
+        class_names: Vec<impl AsRef<str>>,
+        sub_class_names: Vec<impl AsRef<str>>,
+        names: Vec<impl AsRef<str>>,
+        responds_to: Vec<impl AsRef<str>>,
         signatures: Vec<SignatureEntry>,
 
     ) {
@@ -119,10 +170,10 @@ impl PartialClass {
         self.signature_table.push(sig);
     }
 
-    pub fn attach_bytecode<S: AsRef<str>, B: AsRef<[u8]>>(
+    pub fn attach_bytecode<B: AsRef<[u8]>>(
         &mut self,
-        class_name: S,
-        method_name: S,
+        class_name: impl AsRef<str>,
+        method_name: impl AsRef<str>,
         code: B,
     ) {
         let vtable_index = self.class_to_vtable.get(class_name.as_ref()).unwrap();
@@ -183,5 +234,10 @@ impl PartialClass {
         
         (vtable, class_names, sub_class_names, names, responds_to, signatures)
     }
-        
+
+    pub fn add_string<S: AsRef<str>>(&mut self, string: S) -> u64 {
+        self.string_table.push(StringEntry::new(string.as_ref()));
+        self.string_table.len() as u64
+            
+    }
 }
