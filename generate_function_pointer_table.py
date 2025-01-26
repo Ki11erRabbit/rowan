@@ -66,7 +66,7 @@ def generate_function(f):
             elif return_type == i32:
                 output += "Type::I32) => {\n"
             elif return_type == i64:
-                output += "Type::II64) => {\n"
+                output += "Type::I64) => {\n"
             elif return_type == f32:
                 output += "Type::F32) => {\n"
             elif return_type == f64:
@@ -166,11 +166,12 @@ def increment_types(types):
     carry = 1
     while index < len(types) and carry == 1:
         types[index] += carry
-        if types[index] == f64:
+        if types[index] == f64 + 1:
             types[index] = u8
             carry = 1
         else:
             carry = 0
+        index += 1
     if carry == 1:
         types.append(u8)
 
