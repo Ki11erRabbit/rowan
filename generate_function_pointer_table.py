@@ -30,9 +30,14 @@ def generate_function(f):
             for i, ty in enumerate(types):
                 if ty == u8:
                     output += f", Value::U8(x{i})"
+                elif ty == u16:
+                    output += f", Value::U16(x{i})"
             output += "], "
             if return_type == void: 
-                output += "Type:: Void) => {\n"
+                output += "Type::Void) => {\n"
+            elif return_type == u8:
+                output += "Type::U8) => {\n"
+
             
             output += generate_cast(types, return_type)
             output += "\n        }\n"
