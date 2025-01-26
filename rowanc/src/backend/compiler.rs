@@ -97,6 +97,7 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     classes
 }
 
+#[derive(Debug)]
 pub enum CompilerError {
     UnboundIdentifer(String, usize, usize),
     MalformedCharacter(String, usize, usize),

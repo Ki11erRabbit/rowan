@@ -16,7 +16,7 @@ impl Span {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Copy)]
-pub enum Visiblity {
+pub enum Visibility {
     Public,
     Protected,
     Private,
@@ -125,7 +125,7 @@ pub enum ClassMember<'a> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Member<'a> {
-    pub visiblity: Visiblity,
+    pub visibility: Visibility,
     pub name: &'a str,
     pub ty: Type<'a>,
     pub span: Span,
@@ -135,7 +135,7 @@ pub struct Member<'a> {
 pub struct Method<'a> {
     pub name: &'a str,
     pub annotations: Vec<Annotation<'a>>,
-    pub visiblity: Visiblity,
+    pub visibility: Visibility,
     pub type_params: Vec<TypeParameter<'a>>,
     pub parameters: Vec<Parameter<'a>>,
     pub return_type: Type<'a>,
@@ -384,6 +384,7 @@ pub enum Expression<'a> {
     Closure {
         params: Vec<ClosureParameter<'a>>,
         return_type: Option<Type<'a>>,
+        body: Vec<Statement<'a>>,
         span: Span,
     },
     Parenthesized(Box<Expression<'a>>, Span),
@@ -457,14 +458,16 @@ impl Expression<'_> {
         }
     }
 
-    pub fn new_closure_expression<'a>(
+    pub fn new_closure<'a>(
         params: Vec<ClosureParameter<'a>>,
         return_type: Option<Type<'a>>,
+        body: Vec<Statement<'a>>,
         span: Span
     ) -> Expression<'a> {
         Expression::Closure {
             params,
             return_type,
+            body,
             span
         }
     }
@@ -523,7 +526,7 @@ impl Expression<'_> {
         }
     }
 
-    pub fn new_loop_expression<'a>(
+    pub fn new_loop<'a>(
         label: Option<&'a str>,
         body: Vec<Statement<'a>>,
         span: Span
@@ -568,12 +571,12 @@ pub enum Literal<'a> {
     Array(Vec<Expression<'a>>, Span),
 }
 
-
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum ClosureParameter<'a> {
     Typed(Parameter<'a>),
-    Untyped(&'a str, Span),
+    Untyped(Pattern<'a>, Span),
 }
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum UnaryOperator {
     Neg,

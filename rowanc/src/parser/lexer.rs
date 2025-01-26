@@ -34,6 +34,7 @@ pub enum Token<'a> {
     Record,
     Union,
     Into,
+    AsA,
     // Classes
     Class,
     Signal,
@@ -142,6 +143,7 @@ impl std::fmt::Display for Token<'_> {
             Token::As => write!(f, "as"),
             Token::Record => write!(f, "record"),
             Token::Union => write!(f, "union"),
+            Token::AsA => write!(f, "asa"),
             Token::Into => write!(f, "into"),
             Token::Class => write!(f, "class"),
             Token::Signal => write!(f, "signal"),
@@ -484,6 +486,7 @@ impl<'a> TokenLexer<'a> {
                     "as" => Ok(SpannedToken::new(Token::As, start, end)),
                     "record" => Ok(SpannedToken::new(Token::Record, start, end)),
                     "union" => Ok(SpannedToken::new(Token::Union, start, end)),
+                    "asa" => Ok(SpannedToken::new(Token::AsA, start, end)),
                     "into" => Ok(SpannedToken::new(Token::Into, start, end)),
                     "class" => Ok(SpannedToken::new(Token::Class, start, end)),
                     "signal" => Ok(SpannedToken::new(Token::Signal, start, end)),

@@ -26,6 +26,7 @@ extern {
         "as" => Token::As,
         "record" => Token::Record,
         "union" => Token::Union,
+        "asa" => Token::AsA,
         "into" => Token::Into,
         "class" => Token::Class,
         "signal" => Token::Signal,
@@ -47,7 +48,6 @@ extern {
         "module" => Token::Module,
         "pub" => Token::Pub,
         "prot" => Token::Prot,
-        "extern" => Token::Extern,
         "u8" => Token::U8,
         "u16" => Token::U16,
         "u32" => Token::U32,
@@ -110,7 +110,7 @@ pub File: File<'a> = {
     "module" <p:Path> <id:Identifier> <pEnd: @L> Lb <decs:(Lb* <Decl> Lb)*> Lb* => {
         let mut p = p;
         p.segments.push(id);
-        p.end = pEnd;
+        p.span.end = pEnd;
         File::new(p, decs)
     },
 };
@@ -130,10 +130,7 @@ pub Visibility: Visibility = {
         }
     },
     <vis:("prot")> => {
-        match vis {
-            Some(_) => Visibility::Protected,
-            None => Visibility::Private,
-        }
+        Visibility::Protected
     },
     
 };
@@ -142,8 +139,8 @@ pub Decl: TopLevelStatement<'a> = {
     <start: @L> "import" <p:Path> <id:Identifier> <end: @R> => {
         let mut p = p;
         p.segments.push(id);
-        p.end = end;
-        Import::new(p, Span::new(start, end))
+        p.span.end = end;
+        TopLevelStatement::Import(Import::new(p, Span::new(start, end)))
     },
     <c:Class> => c
 };
@@ -183,8 +180,12 @@ ParentDecl: Vec<ParentDec<'a>> = {
     }
 };
 
-ParentDec: ParentDecl<'a> = {
+ParentDec: ParentDec<'a> = {
     <start: @L> <name:Identifier> <type_params:TypeParamList?> <end: @R> => {
+        let type_params = match type_params {
+            Some(tp) => tp,
+            None => Vec::new(),
+        };
         ParentDec {
             name,
             type_params,
@@ -208,7 +209,7 @@ Member: ClassMember<'a> = {
         let span = Span::new(start, end);
         ClassMember::Member(
             Member {
-                Visibility: vis,
+                visibility: vis,
                 name,
                 ty,
                 span,
@@ -229,13 +230,14 @@ Signal: ClassMember<'a> = {
                 name,
                 is_static,
                 parameters: params,
+                span,
             }
         )
     }
 };
 
 
-TypeList: Type<'a> = {
+TypeList: Vec<Type<'a>> = {
     "(" ")" => {
         Vec::new()
     },
@@ -263,11 +265,13 @@ Method: ClassMember<'a> = {
         };
         ClassMember::Method(
             Method {
+                visibility: vis,
                 name,
                 annotations,
                 type_params,
                 parameters: params,
                 return_type: ret,
+                body,
                 span
             }
         )
@@ -277,7 +281,7 @@ Method: ClassMember<'a> = {
 MethodAnnotations: Vec<Annotation<'a>> = {
     <anno:Annotation> <annos:(Lb <Annotation>)*> => {
         let mut v = vec![anno];
-        for a in annos.into_inter() {
+        for a in annos.into_iter() {
             v.push(a);
         }
         v
@@ -305,7 +309,7 @@ Annotation: Annotation<'a> = {
     },
 };
 
-pub ParamList: Vec<Param<'a>> = {
+pub ParamList: Vec<Parameter<'a>> = {
     "(" <param:Param> <params:("," <Param>)*> ")" => {
         let mut v = vec![param];
         for p in params.into_iter() {
@@ -320,7 +324,7 @@ pub ParamList: Vec<Param<'a>> = {
 
 
 
-pub Param: Param<'a> = {
+pub Param: Parameter<'a> = {
     <start: @L> <name:Pattern> ":" <ty:Type> <end: @R> => {
         Parameter::new_pattern(name, ty, Span::new(start, end))
     },
@@ -367,7 +371,7 @@ pub TypeParam: TypeParameter<'a> = {
 };
 
 Constraints: Vec<Constraint<'a>> = {
-    <cons:Constraint> <conss:(Lb Constraint)*> => {
+    <cons:Constraint> <conss:(Lb <Constraint>)*> => {
         let mut v = vec![cons];
         for c in conss.into_iter() {
             v.push(c);
@@ -398,6 +402,9 @@ BaseType: Type<'a> = {
     "i64" => Type::I64,
     "char" => Type::Char,
     "str" => Type::Str,
+};
+
+ObjectType: Type<'a> ={
     <start: @L> <id:Identifier> <end: @R> => {
         Type::Object(id, Span::new(start, end))
     },
@@ -411,12 +418,13 @@ ArrayType: Type<'a> = {
 
 Type: Type<'a> = {
     <ty:BaseType> => ty,
-    <start: @L> <ty:BaseType> "[" <arg:Type> <args:("," <Type>)*> "]" <end: @R> => {
+    <ty:ObjectType> => ty,
+    <start: @L> <ty:ObjectType> AngleOpen <arg:Type> <args:("," <Type>)*> AngleClose <end: @R> => {
         let mut types = vec![arg];
         for t in args.into_iter() {
             types.push(t);
         }
-        Type::TypeArg(Box::new(ty), args, Span::new(start, end))
+        Type::TypeArg(Box::new(ty), types, Span::new(start, end))
     },
     <f:FunctionType> => f,
     <start: @L> "(" <ty:Type> <tys:("," <Type>)*> ")" <end: @R> => {
@@ -499,12 +507,12 @@ Statement: Statement<'a> = {
 
 TermExpr: Expression<'a> = {
     <start: @L> <id:Identifier> <end: @R> => {
-        Expression::Variable(id, Span::new(start, end))
+        Expression::Variable(id, None, Span::new(start, end))
     },
     <lit:Literal> => Expression::Literal(lit),
     <start: @L> Minus <expr:TermExpr> <end: @R> => {
         let expr = Box::new(expr);
-        Expression::new_unary(UnaryOperator::Neg, expr, start, end)
+        Expression::new_unary_operation(UnaryOperator::Neg, expr, Span::new(start, end))
     },
     <start: @L> "self" <end: @R> => {
         Expression::This(Span::new(start, end))
@@ -520,11 +528,26 @@ IndexExpr: Expression<'a> = {
         let lhs = Box::new(lhs);
         let expr = Box::new(expr);
         let span = Span::new(start, end);
-        Expression::BinaryOperation(BinaryOperator::Index, lhs, expr, span)
+        Expression::new_binary_operation(BinaryOperator::Index, lhs, expr, span)
     },
-    <start: @L> <obj:IndexExpr> "." <name:Identifier> <end: @R> => {
+    <start: @L> <obj:IndexExpr> "." <path:Path> <name:Identifier> <end: @R> => {
         let obj = Box::new(obj);
-        Expression::new_member_access(obj, name, start, end)
+        let mut p = path;
+        p.segments.push(name);
+        p.span.end = end;
+        Expression::new_member_access(obj, p, Span::new(start, end))
+    },
+    /*<start: @L> <obj:IndexExpr> "." <name:Identifier> <end: @R> => {
+        let obj = Box::new(obj);
+        let path = PathName::new(vec![name], Span(end - name.len(), end));
+        Expression::new_member_access(obj, path, Span::new(start, end))
+    },*/
+    <start: @L> "new" <id:Type> "(" ")" <end: @R> => {
+        Expression::New(id, None, Span::new(start, end))
+    },
+    <start: @L> "new" <id:Type> <array_size:("[" <Expr> "]")> <end: @R> => {
+        let array_size = Box::new(array_size);
+        Expression::New(id, Some(array_size), Span::new(start, end))
     },
 };
 
@@ -533,30 +556,17 @@ FactorExpr: Expression<'a> = {
     <start: @L> <lhs:FactorExpr> Mult <rhs:IndexExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Mul, lhs, rhs, start, end)
+        Expression::new_binary_operation(BinaryOperator::Mul, lhs, rhs, Span::new(start, end))
     },
     <start: @L> <lhs:FactorExpr> Div <rhs:IndexExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Div, lhs, rhs, start, end)
+        Expression::new_binary_operation(BinaryOperator::Div, lhs, rhs, Span::new(start, end))
     },
     <start: @L> <lhs:FactorExpr> Mod <rhs:IndexExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Mod, lhs, rhs, start, end)
-    },
-    <start: @L> "new" <id:Type> <end: @R> => {
-        Expression::New(id, None, Span::new(start, end))
-    }
-    <start: @L> "new" <id:ArrayType> <array_size:("[" <Expr> "]")> <end: @R> => {
-        let array_size = array_size.map(Box::new);
-        Expression::New(id, array_size, Span::new(start, end))
-    }
-    <start: @L> <obj:IndexExpr> "as" <ty:Type> <end: @R> => {
-        Expression::new_as_expression(Box::new(obj), ty, Span::new(start, end))
-    },
-    <start: @L> <obj:IndexExpr> "into" <ty:BaseType> <end: @R> => {
-        Expression::new_into_expression(Box::new(obj), ty, Span::new(start, end))
+        Expression::new_binary_operation(BinaryOperator::Mod, lhs, rhs, Span::new(start, end))
     },
 };
 
@@ -565,7 +575,7 @@ ConcatExpr: Expression<'a> = {
     <start: @L> <lhs:ConcatExpr> Concat <rhs:FactorExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Concat, lhs, rhs, start, end)
+        Expression::new_binary_operation(BinaryOperator::Concat, lhs, rhs, Span::new(start, end))
     },
 };
 
@@ -574,12 +584,12 @@ SumExpr: Expression<'a> = {
     <start: @L> <lhs:SumExpr> Plus <rhs:ConcatExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Add, lhs, rhs, start, end)
+        Expression::new_binary_operation(BinaryOperator::Add, lhs, rhs, Span::new(start, end))
     },
     <start: @L> <lhs:SumExpr> Minus <rhs:ConcatExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Sub, lhs, rhs, start, end)
+        Expression::new_binary_operation(BinaryOperator::Sub, lhs, rhs, Span::new(start, end))
     },
 };
 
@@ -588,39 +598,45 @@ CompareExpr: Expression<'a> = {
     <start: @L> <lhs:CompareExpr> Equals <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Eq, lhs, rhs, start, end)
+        Expression::new_binary_operation(BinaryOperator::Eq, lhs, rhs, Span::new(start, end))
     },
     <start: @L> <lhs:CompareExpr> NotEquals <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Ne, lhs, rhs, start, end)
+        Expression::new_binary_operation(BinaryOperator::Ne, lhs, rhs, Span::new(start, end))
     },
     <start: @L> <lhs:CompareExpr> AngleOpen <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Lt, lhs, rhs, start, end)
+        Expression::new_binary_operation(BinaryOperator::Lt, lhs, rhs, Span::new(start, end))
     },
     <start: @L> <lhs:CompareExpr> LtE <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Le, lhs, rhs, start, end)
+        Expression::new_binary_operation(BinaryOperator::Le, lhs, rhs, Span::new(start, end))
     },
     <start: @L> <lhs:CompareExpr> AngleClose <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Gt, lhs, rhs, start, end)
+        Expression::new_binary_operation(BinaryOperator::Gt, lhs, rhs, Span::new(start, end))
     },
     <start: @L> <lhs:CompareExpr> GtE <rhs:SumExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Ge, lhs, rhs, start, end)
+        Expression::new_binary_operation(BinaryOperator::Ge, lhs, rhs, Span::new(start, end))
     },
 };
 
 NotExpr: Expression<'a> = {
     <start: @L> Not <expr:CompareExpr> <end: @R> => {
         let expr = Box::new(expr);
-        Expression::new_unary(UnaryOperator::Not, expr, start, end)
+        Expression::new_unary_operation(UnaryOperator::Not, expr, Span::new(start, end))
+    },
+    <start: @L> <obj:IndexExpr> "asa" <ty:Type> <end: @R> => {
+        Expression::new_as_expression(Box::new(obj), ty, Span::new(start, end))
+    },
+    <start: @L> <obj:IndexExpr> "into" <ty:BaseType> <end: @R> => {
+        Expression::new_into_expression(Box::new(obj), ty, Span::new(start, end))
     },
     <expr:CompareExpr> => expr,
 };
@@ -630,7 +646,7 @@ ConjExpr: Expression<'a> = {
     <start: @L> <lhs:ConjExpr> And <rhs:NotExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::And, lhs, rhs, start, end)
+        Expression::new_binary_operation(BinaryOperator::And, lhs, rhs, Span::new(start, end))
     },
 };
 
@@ -639,19 +655,19 @@ DisjExpr: Expression<'a> = {
     <start: @L> <lhs:DisjExpr> Or <rhs:ConjExpr> <end: @R> => {
         let lhs = Box::new(lhs);
         let rhs = Box::new(rhs);
-        Expression::new_binary(BinaryOperator::Or, lhs, rhs, start, end)
+        Expression::new_binary_operation(BinaryOperator::Or, lhs, rhs, Span::new(start, end))
     },
 };
 
 CallExpr: Expression<'a> = {
     <dis:DisjExpr> => dis,
-    <call:Call> => Expression::Call(call),
+    <call:Call> => call,
 };
 
 ConditionalExpr: Expression<'a> = {
     <trail:CallExpr> => trail,
-    <if_:IfExpr> => Expression::IfExpression(if_),
-    <match_:MatchExpr> => Expression::MatchExpression(match_),
+    <start: @L> <if_:IfExpr> <end: @R> => Expression::IfExpression(if_, Span::new(start, end)),
+    <start: @L> <match_:MatchExpr> <end: @R> => Expression::MatchExpression(match_, Span::new(start, end)),
 };
 
 
@@ -659,7 +675,7 @@ ConditionalExpr: Expression<'a> = {
 TryExpr: Expression<'a> = {
     <start: @L> <expr:ConditionalExpr> "?" <end: @R> => {
         let expr = Box::new(expr);
-        Expression::new_unary(UnaryOperator::Try, expr, start, end)
+        Expression::new_unary_operation(UnaryOperator::Try, expr, Span::new(start, end))
     },
     <expr:ConditionalExpr> => expr,
 };
@@ -675,10 +691,10 @@ Expr: Expression<'a> = {
     <start: @L> "(" <expr:Expr> ")" <end: @R> => Expression::Parenthesized(Box::new(expr), Span::new(start, end)),
     <lambda:Closure> => lambda,
     <start: @L> "connect" <dest:Expr> "to" <source:Expr> "via" <id:Identifier> <end: @R> => {
-        Expression::new_connect_expression(source, dest, id, Span::new(start, end))
+        Expression::new_connect_expression(Box::new(source), Box::new(dest), id, Span::new(start, end))
     },
     <start: @L> "disconnect" <source:Expr> "from" <dest:Expr> "via" <id:Identifier> <end: @R> => {
-        Expression::new_connect_expression(source, dest, id, Span::new(start, end))
+        Expression::new_connect_expression(Box::new(source), Box::new(dest), id, Span::new(start, end))
     },
     <start: @L> <label:(<Identifier> ":")?> "loop" <block:Block> <end: @R> => {
         Expression::new_loop(label, block, Span::new(start, end))
@@ -688,11 +704,11 @@ Expr: Expression<'a> = {
         Expression::Break(label, expr, Span::new(start, end))
     },
     <start: @L> "continue" <label:Identifier?> <end: @R> => {
-        Expression::Break(label, Span::new(start, end))
+        Expression::Continue(label, Span::new(start, end))
     },
     <start: @L> "emit" <name:Identifier> <end: @R> => {
         Expression::Emit(name, Vec::new(), Span::new(start, end))
-    }
+    },
     <start: @L> "emit" <name:Identifier> <args:ArgList> <end: @R> => {
         Expression::Emit(name, args, Span::new(start, end))
     }
@@ -746,9 +762,10 @@ Pattern: Pattern<'a> = {
     },
 };
 
+// TODO: remove default literal typing
 Constant: Constant<'a> = {
-    <start: @L> <int:Int_lit> <end: @R> => Constant::Integer(int, Span::new(start, end)),
-    <start: @L> <float:Float_lit> <end: @R> => Constant::Float(float, Span::new(start, end)),
+    <start: @L> <int:Int_lit> <end: @R> => Constant::Integer(int, Some(Type::U64), Span::new(start, end)),
+    <start: @L> <float:Float_lit> <end: @R> => Constant::Float(float, Some(Type::F64), Span::new(start, end)),
     <start: @L> <char:Char_lit> <end: @R> => Constant::Character(char, Span::new(start, end)),
     <start: @L> <string:String_lit> <end: @R> => Constant::String(string, Span::new(start, end)),
     <start: @L> "True" <end: @R> => Constant::Bool(true, Span::new(start, end)),
@@ -781,15 +798,15 @@ Tuple: Literal<'a> = {
 };
 
 Closure: Expression<'a> = {
-    <start: @L> <params:ClosureParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => Closure::new(params, Some(ret), body, start, end),
-    <start: @L> <body:Block> <end: @R> => Closure::new(Vec::new(), None, body, start, end),
+    <start: @L> <params:ClosureParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => Expression::new_closure(params, Some(ret), body, Span::new(start, end)),
+    <start: @L> <body:Block> <end: @R> => Expression::new_closure(Vec::new(), None, body, Span::new(start, end)),
     //<start: @L> <params:ClosureParamList> <ret:ReturnType> <body:Expr> <end: @R> => Closure::new(params, ret, vec![Statement::Expression(body)], start, end),
 
 };
 
 
-pub ClosureParamList: Vec<Param<'a>> = {
-    "|" <param:Param> <params:("," <Param>)*> "|" => {
+pub ClosureParamList: Vec<ClosureParameter<'a>> = {
+    "|" <param:ClosureParam> <params:("," <ClosureParam>)*> "|" => {
         let mut v = vec![param];
         for p in params.into_iter() {
             v.push(p);
@@ -801,11 +818,21 @@ pub ClosureParamList: Vec<Param<'a>> = {
     }
 };
 
-Call: Call<'a> = {
-    <start: @L> <callee:CallExpr> <args:ArgList> <end: @R> => {
-        Call::new(Box::new(callee), Vec::new(), args, start, end)
+pub ClosureParam: ClosureParameter<'a> = {
+    <start: @L> <name:Pattern> ":" <ty:Type> <end: @R> => {
+        ClosureParameter::Typed(Parameter::new_pattern(name, ty, Span::new(start, end)))
     },
-    //<start: @L> <callee:CallExpr> <typeargs:TypeArgList> <args:ArgList> <end: @R> => Call::new(Box::new(callee), typeargs, args, start, end),
+    <start: @L> <name:Pattern>  <end: @R> => {
+        ClosureParameter::Untyped(name, Span::new(start, end))
+    },
+};
+
+
+Call: Expression<'a> = {
+    <start: @L> <callee:CallExpr> <args:ArgList> <end: @R> => {
+        Expression::new_call(Box::new(callee), Vec::new(), args, Span::new(start, end))
+    },
+    //<start: @L> <callee:CallExpr> <typeargs:TypeArgList> <args:ArgList> <end: @R> => Expression::new_call(Box::new(callee), typeargs, args, Span::new(start, end)),
 };
 
 
