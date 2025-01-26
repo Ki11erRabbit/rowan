@@ -1,4 +1,4 @@
-
+import sys
 
 void = 0
 u8 = 1
@@ -32,11 +32,45 @@ def generate_function(f):
                     output += f", Value::U8(x{i})"
                 elif ty == u16:
                     output += f", Value::U16(x{i})"
+                elif ty == u32:
+                    output += f", Value::U32(x{i})"
+                elif ty == u64:
+                    output += f", Value::U64(x{i})"
+                elif ty == i8:
+                    output += f", Value::I8(x{i})"
+                elif ty == i16:
+                    output += f", Value::I16(x{i})"
+                elif ty == i32:
+                    output += f", Value::I32(x{i})"
+                elif ty == i64:
+                    output += f", Value::I64(x{i})"
+                elif ty == f32:
+                    output += f", Value::F32(x{i})"
+                elif ty == f64:
+                    output += f", Value::F64(x{i})"
             output += "], "
             if return_type == void: 
                 output += "Type::Void) => {\n"
             elif return_type == u8:
                 output += "Type::U8) => {\n"
+            elif return_type == u16:
+                output += "Type::U16) => {\n"
+            elif return_type == u32:
+                output += "Type::U32) => {\n"
+            elif return_type == u64:
+                output += "Type::64) => {\n"
+            elif return_type == i8:
+                output += "Type::I8) => {\n"
+            elif return_type == i16:
+                output += "Type::I16) => {\n"
+            elif return_type == i32:
+                output += "Type::I32) => {\n"
+            elif return_type == i64:
+                output += "Type::II64) => {\n"
+            elif return_type == f32:
+                output += "Type::F32) => {\n"
+            elif return_type == f64:
+                output += "Type::FI64) => {\n"
 
             
             output += generate_cast(types, return_type)
@@ -46,6 +80,7 @@ def generate_function(f):
              
         increment_types(types)
         return_type = void
+
 
     f.write("}")
 
@@ -57,14 +92,71 @@ def generate_cast(types, return_type) -> str:
         if ty == u8:
             output += ', u8'
             call += f', x{i}'
+        elif ty == u16:
+            output += ', u16'
+            call += f', x{i}'
+        elif ty == u32:
+            output += ', u32'
+            call += f', x{i}'
+        elif ty == u64:
+            output += ', u64'
+            call += f', x{i}'
+        elif ty == i8:
+            output += ', i8'
+            call += f', x{i}'
+        elif ty == i16:
+            output += ', i16'
+            call += f', x{i}'
+        elif ty == i32:
+            output += ', i32'
+            call += f', x{i}'
+        elif ty == i64:
+            output += ', i64'
+            call += f', x{i}'
+        elif ty == f32:
+            output += ', f32'
+            call += f', x{i}'
+        elif ty == f64:
+            output += ', f64'
+            call += f', x{i}'
     output += ') -> '
     call += ');\n'
     return_value = '            Value::'
     if return_type == void:
         output += "()"
         return_value += 'Unit(a)\n'
+    elif return_type == u8:
+        output += "u8"
+        return_value += 'U8(a)\n'
+    elif return_type == u16:
+        output += "u16"
+        return_value += 'U16(a)\n'
+    elif return_type == u32:
+        output += "u32"
+        return_value += 'U32(a)\n'
+    elif return_type == u64:
+        output += "u64"
+        return_value += 'U164(a)\n'
+    elif return_type == i8:
+        output += "i8"
+        return_value += 'I8(a)\n'
+    elif return_type == i16:
+        output += "i16"
+        return_value += 'I16(a)\n'
+    elif return_type == i32:
+        output += "i32"
+        return_value += 'I32(a)\n'
+    elif return_type == i64:
+        output += "i64"
+        return_value += 'I64(a)\n'
+    elif return_type == f32:
+        output += "f32"
+        return_value += 'F32(a)\n'
+    elif return_type == f64:
+        output += "f64"
+        return_value += 'F64(a)\n'
     
-    output += '> };\n'
+    output += '>(function_pointer) };\n'
     
     return output + call + return_value
 
@@ -79,5 +171,9 @@ def increment_types(types):
             carry = 1
         else:
             carry = 0
+    if carry == 1:
+        types.append(u8)
 
-        
+if __name__ == '__main__':
+    with open(sys.argv[1], 'w') as f:
+        generate_function(f)
