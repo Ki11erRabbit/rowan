@@ -18,7 +18,6 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         VTableEntry::default(),
         VTableEntry::default(),
         VTableEntry::default(),
-        VTableEntry::default(),
     ];
     let vtable = VTable::new(functions);
     let class_names = vec![
@@ -658,7 +657,7 @@ impl Compiler {
                             Expression::This(_) => {
                                 (field, class_name, "self")
                             }
-                            _ => todo!("add additional sources to call from")
+                            x => todo!("add additional sources to call from {:?}", x)
                         }
                     }
                     _ => unreachable!("all calls should be via member access by this point")
@@ -679,6 +678,7 @@ impl Compiler {
 
                 let name = name.segments.last().unwrap();
                 let class = self.classes.get(ty).expect("Classes are in a bad order of compiling");
+                println!("{:#?}", class);
                 let method_entry = class.get_method_entry(name).expect("add proper handling of missing method");
 
                 output.push(Bytecode::InvokeVirt(method_entry.class_name, method_entry.sub_class_name, method_entry.name));

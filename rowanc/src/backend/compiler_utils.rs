@@ -51,7 +51,7 @@ impl Frame {
     }
 }
 
-
+#[derive(Debug)]
 pub struct PartialClass {
     name: StringIndex,
     /// Parent class names
@@ -88,6 +88,7 @@ impl PartialClass {
     }
 
     pub fn get_method_entry(&self, method_name: impl AsRef<str>) -> Option<VTableEntry> {
+        println!("{}", method_name.as_ref());
         let class_name = self.method_to_class.get(method_name.as_ref())?;
         let vtable_index = self.class_to_vtable.get(class_name)?;
         let vtable_indices = self.method_to_function.get(method_name.as_ref())?;
@@ -172,7 +173,10 @@ impl PartialClass {
             function.signature = self.signature_table.len() as u64;
             self.signature_table.push(signatures[i].clone());
 
-            self.method_to_class.insert(String::from(class_name.as_ref()), String::from(names[i].as_ref()));
+            self.method_to_class.insert(String::from(names[i].as_ref()), String::from(class_name.as_ref()));
+            self.method_to_function.entry(String::from(names[i].as_ref()))
+                .and_modify(|v| v.push((self.vtables.len(), i)))
+                .or_insert(vec![(self.vtables.len(), i)]);
         }
         self.class_to_vtable.insert(class_name.as_ref().to_string(), self.vtables.len());
         self.vtables.push(vtable);

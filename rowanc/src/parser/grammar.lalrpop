@@ -195,7 +195,7 @@ ParentDec: ParentDec<'a> = {
 };
 
 ClassMembers: Vec<ClassMember<'a>> = {
-    <members:(Lb ClassMember)*> Lb? => members,
+    <members:(Lb <ClassMember>)*> Lb? => members,
 };
 
 ClassMember: ClassMember<'a> = {
@@ -279,7 +279,7 @@ Method: ClassMember<'a> = {
 };
 
 MethodAnnotations: Vec<Annotation<'a>> = {
-    <anno:Annotation> <annos:(Lb <Annotation>)*> => {
+    <anno:Annotation> <annos:(Lb <Annotation>)*> Lb? => {
         let mut v = vec![anno];
         for a in annos.into_iter() {
             v.push(a);
@@ -504,10 +504,10 @@ Statement: Statement<'a> = {
     }
 };
 
-
+// TODO: remove Some() from Variable
 TermExpr: Expression<'a> = {
     <start: @L> <id:Identifier> <end: @R> => {
-        Expression::Variable(id, None, Span::new(start, end))
+        Expression::Variable(id, Some(Type::Object("Printer", Span::new(0, 2))), Span::new(start, end))
     },
     <lit:Literal> => Expression::Literal(lit),
     <start: @L> Minus <expr:TermExpr> <end: @R> => {

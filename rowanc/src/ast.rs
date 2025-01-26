@@ -112,7 +112,7 @@ impl Class<'_> {
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct ParentDec<'a> {
     pub name: &'a str,
-    pub type_params: Vec<Type<'a>>,
+    pub type_params: Vec<TypeParameter<'a>>,
     pub span: Span,
 }
 
