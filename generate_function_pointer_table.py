@@ -15,13 +15,13 @@ f64 = 10
 
 
 
-def generate_function(f):
+def generate_function(f, arity):
     global void, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64
-    f.write("pub fn cast_and_call(function_pointer: *const (), args: &[Value], return_type: Type) -> Value {\n")
+    f.write(f"pub fn cast_and_call_arity_{arity}(function_pointer: *const (), args: &[Value], return_type: Type) -> Value {{\n")
     f.write("    match (args, return_type) {\n")
-    types = []
+    types = [u8 for _ in range(0, arity + 1)]
     return_type = void
-    while len(types) < 256:
+    while True:
         
         while return_type < f64 + 1:
 
@@ -78,7 +78,8 @@ def generate_function(f):
             f.write(output)
             return_type += 1
              
-        increment_types(types)
+        if increment_types(types):
+            break
         return_type = void
 
 
@@ -173,8 +174,18 @@ def increment_types(types):
             carry = 0
         index += 1
     if carry == 1:
-        types.append(u8)
+        return True
+        """
+        all_f64 = True
+        for ty in types:
+            all_f64 = all_f64 and (True if ty == f64 else False)
+            if not all_f64:
+                return False
+        return all_f64"""
+    return False
 
 if __name__ == '__main__':
-    with open(sys.argv[1], 'w') as f:
-        generate_function(f)
+    arity = int(sys.argv[1])
+    path = f'{sys.argv[2]}/arity{arity}.rs'
+    with open(path, 'w+') as f:
+        generate_function(f, arity)
