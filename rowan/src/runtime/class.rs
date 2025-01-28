@@ -42,7 +42,7 @@ impl TypeTag {
 pub struct Class {
     name: Symbol,
     parents: Vec<Symbol>,
-    vtables: HashMap<(Symbol, Symbol), VTableIndex>,
+    vtables: HashMap<Symbol, VTableIndex>,
     members: Vec<MemberInfo>,
     signals: Vec<SignalInfo>,
 }
@@ -50,6 +50,10 @@ pub struct Class {
 impl Class {
     pub fn get_member_size(&self) -> usize {
         self.members.iter().map(|member| member.get_size()).sum()
+    }
+
+    pub fn get_vtable(&self, sym: Symbol) -> VTableIndex {
+        *self.vtables.get(&sym).unwrap()
     }
 }
 

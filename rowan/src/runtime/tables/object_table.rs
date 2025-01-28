@@ -9,7 +9,7 @@ use super::{class_table::ClassTable, symbol_table::{SymbolEntry, SymbolTable}};
 pub struct ObjectTable {
     /// This table is 1 indexed so that if we ever get a 0, then we know that we had a null reference
     table: Vec<*mut Object>,
-    free_list: VecDeque<usize>,
+    free_list: VecDeque<Reference>,
 
 }
 
@@ -23,7 +23,7 @@ impl ObjectTable {
 
     pub fn add(&mut self, ptr: *mut Object) -> Reference {
         if let Some(front) = self.free_list.pop_front() {
-            self.table[front] = ptr;
+            self[front] = ptr;
             return front as Reference;
         }
         self.table.push(ptr);
@@ -50,8 +50,7 @@ impl ObjectTable {
             Object::free(pointer, data_size);
         }
 
-        // Here we subtract 1 from the reference to get the true position in the object table
-        self.free_list.push_back(reference as usize - 1);
+        self.free_list.push_back(reference);
         self[reference] = std::ptr::null::<Object>() as *mut Object;        
     }
 }
@@ -75,4 +74,6 @@ impl std::ops::IndexMut<Reference> for ObjectTable {
     }
 }
 
+unsafe impl Send for ObjectTable {}
+unsafe impl Sync for ObjectTable {}
 

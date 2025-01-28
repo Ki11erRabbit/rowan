@@ -1,3 +1,5 @@
+use crate::runtime::Symbol;
+
 
 pub enum SymbolEntry {
     StringRef(usize),
@@ -7,6 +9,26 @@ pub enum SymbolEntry {
 
 pub struct SymbolTable {
     table: Vec<SymbolEntry>,
+}
+
+impl SymbolTable {
+    pub fn new() -> Self {
+        SymbolTable {
+            table: Vec::new()
+        }
+    }
+
+    pub fn add_string(&mut self, index: usize) -> Symbol {
+        let out = self.table.len();
+        self.table.push(SymbolEntry::StringRef(index));
+        out
+    }
+
+    pub fn add_class(&mut self, index: usize) -> Symbol {
+        let out = self.table.len();
+        self.table.push(SymbolEntry::ClassRef(index));
+        out
+    }
 }
 
 

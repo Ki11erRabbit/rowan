@@ -43,3 +43,6 @@ impl std::ops::Index<usize> for StringTable {
         s
     }
 }
+
+unsafe impl Send for StringTable {}
+unsafe impl Sync for StringTable {}
