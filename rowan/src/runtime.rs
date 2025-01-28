@@ -1,8 +1,8 @@
 use std::{collections::HashMap, env::var, sync::{LazyLock, RwLock}};
 
-use class::{MemberInfo, SignalInfo};
+use class::{Class, MemberInfo, SignalInfo};
 use rowan_shared::classfile::{BytecodeIndex, ClassFile, Member, Signal, SignatureIndex, VTableEntry};
-use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTables}};
+use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}};
 
 
 mod tables;
@@ -173,7 +173,10 @@ impl Context {
         class_map.insert(String::from(class_name), class_symbol);
 
         let mut class_vtables = Vec::new();
-        for (functions, mapper) in vtables {
+        let mut class_vtable_map = HashMap::new();
+        for (i, (functions, mapper)) in vtables.into_iter().enumerate() {
+            let mut table = Vec::new();
+            let mut set_vtable_class: bool = false;
             for (vtable_class_name, name_symbol, responds_to, signature, bytecode) in functions {
                 let function = if vtable_class_name == class_name {
                     let bytecode = self.link_bytecode(class_file.index_bytecode_table(bytecode), string_map, class_map);
@@ -183,9 +186,14 @@ impl Context {
 
                     let arguments = signature.types[1..].iter().map(|t| self.convert_type(t)).collect();
                     let return_type = self.convert_type(&signature.types[0]);
+
+                    if !set_vtable_class {
+                        set_vtable_class = true;
+                        class_vtable_map.insert(class_symbol, i);
+                    }
                     
                     Function::new(name_symbol, value, responds_to, arguments, return_type)
-                } else {
+                } else if bytecode == 0 {
                     let class_name_symbol = class_map.get(vtable_class_name).expect("We haven't linked a class file yet");
                     let SymbolEntry::ClassRef(class_index) = symbol_table[*class_name_symbol] else {
                         panic!("class wasn't a class");
@@ -197,10 +205,43 @@ impl Context {
 
                     let vtable = &vtable_tables[vtable_index];
 
+                    if !set_vtable_class {
+                        set_vtable_class = true;
+                        class_vtable_map.insert(*class_name_symbol, i);
+                    }
+
                     vtable.get_function(name_symbol).clone()
+                } else {
+                    let class_name_symbol = class_map.get(vtable_class_name).expect("We haven't linked a class file yet");
+                    let bytecode = self.link_bytecode(class_file.index_bytecode_table(bytecode), string_map, class_map);
+                    let value = FunctionValue::Bytecode(bytecode);
+
+                    let signature = class_file.signature_table[signature as usize];
+
+                    let arguments = signature.types[1..].iter().map(|t| self.convert_type(t)).collect();
+                    let return_type = self.convert_type(&signature.types[0]);
+
+                    if !set_vtable_class {
+                        set_vtable_class = true;
+                        class_vtable_map.insert(*class_name_symbol, i);
+                    }
+                    
+                    Function::new(name_symbol, value, responds_to, arguments, return_type)
                 };
+
+                table.push(function);
             }
+
+            let vtable = VTable::new(table, mapper);
+            class_vtables.push(vtable);
         }
+
+        // TODO: Insert VTables into vtable tables and bind class names to a hashmap
+
+        let class = Class::new(class_name_symbol, parents, class_vtable_map, members, signals);
+
+        let class_index = class_table.insert_class(class);
+        assert!(class_index == next_class_index, "inserted class index doesn't match index");
 
     }
 

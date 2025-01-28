@@ -50,6 +50,22 @@ pub struct Class {
 }
 
 impl Class {
+    pub fn new(
+        name: Symbol,
+        parents: Vec<Symbol>,
+        vtables: HashMap<Symbol, VTableIndex>,
+        members: Vec<MemberInfo>,
+        signals: Vec<SignalInfo>
+    ) -> Self {
+        Class {
+            name,
+            parents,
+            vtables,
+            members,
+            signals
+        }
+    }
+    
     pub fn get_member_size(&self) -> usize {
         self.members.iter().map(|member| member.get_size()).sum()
     }
