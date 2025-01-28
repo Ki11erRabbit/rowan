@@ -1,5 +1,6 @@
 mod tables;
 pub mod class;
+pub mod object;
 
 pub type Symbol = usize;
 
