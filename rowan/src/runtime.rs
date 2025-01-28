@@ -93,6 +93,7 @@ impl Context {
             panic!("Lock poisoned");
         };
 
+        // FIXME: make this so that we know all method symbols so that we can later link the bytecode
         for vtable in class_file.vtables.iter() {
             let mut virt_table = Vec::new();
             let mut mapper = HashMap::new();
