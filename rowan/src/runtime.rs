@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::{LazyLock, RwLock}};
 
-use rowan_shared::classfile::{ClassFile, VTableEntry};
+use rowan_shared::classfile::{BytecodeIndex, ClassFile, SignatureIndex, VTableEntry};
 use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTables}};
 
 
@@ -93,31 +93,13 @@ impl Context {
             panic!("Lock poisoned");
         };
 
-        // FIXME: make this so that we know all method symbols so that we can later link the bytecode
+        let mut vtables: Vec<(Vec<(&str, Symbol, Option<Symbol>, SignatureIndex, BytecodeIndex)>, HashMap<Symbol, Index>)> = Vec::new();
         for vtable in class_file.vtables.iter() {
             let mut virt_table = Vec::new();
             let mut mapper = HashMap::new();
-            let mut parent_class_table = None;
-            let mut self_vtable: bool = false;
-            for function in vtable.functions.iter() {
+            for (i, function) in vtable.functions.iter().enumerate() {
                 let VTableEntry { class_name: vtable_class_name, name, responds_to, signature, bytecode, .. } = function;
-                if parent_class_table.is_none() && !self_vtable {
-                    let vtable_class_name = class_file.index_string_table(*vtable_class_name);
-                    if vtable_class_name == class_name {
-                        self_vtable = true;
-                    } else {
-                        if let Some(parent_class_symbol) = class_map.get(vtable_class_name) {
-                            let SymbolEntry::ClassRef(parent_class_index) = symbol_table[*parent_class_symbol] else {
-                                panic!("Symbol was not a class reference");
-                            };
-                            let parent_class = &class_table[parent_class_index];
-
-                            let vtable_index = parent_class.get_vtable(*parent_class_symbol);
-                            parent_class_table = Some(&vtables[vtable_index])
-                        }
-                    }
-                }
-
+                let vtable_class_name = class_file.index_string_table(*vtable_class_name);
                 let name_str = class_file.index_string_table(*name);
                 let name_symbol = if let Some(symbol) = string_map.get(name_str) {
                     *symbol
@@ -129,23 +111,24 @@ impl Context {
                 };
 
                 // TODO: Add responds to code
-                let responds_to: Option<Symbol> = None;
-
-                if *bytecode == 0 {
-                    if let Some(parent_class_table) = parent_class_table {
-                        let function = parent_class_table.get_function(name_symbol);
-                        virt_table.push(function.clone());
-                        mapper.insert(name_symbol, virt_table.len() - 1);
-                    } else {
-                        panic!("parent class table isn't set for a missing method");
-                    }
-                } else if self_vtable {
+                let responds_to: Option<Symbol> = if *responds_to == 0 {
+                    None
                 } else {
-                    panic!("Invalid state");
-                }
-                
+                    let name_str = class_file.index_string_table(*responds_to);
+                    if let Some(symbol) = string_map.get(name_str) {
+                        Some(*symbol)
+                    } else {
+                        let str_table_index = string_table.add_string(name_str);
+                        let sym = symbol_table.add_string(str_table_index);
+                        string_map.insert(String::from(name_str), sym);
+                        Some(sym)
+                    }
+                };
 
+                virt_table.push((vtable_class_name, name_symbol, responds_to, *signature, *bytecode));
+                mapper.insert(name_symbol, i);
             }
+            vtables.push((virt_table, mapper));
         }
         
     }
