@@ -77,6 +77,12 @@ impl VTables {
             table: Vec::new()
         }
     }
+
+    pub fn add_vtable(&mut self, table: VTable) -> VTableIndex {
+        let out = self.table.len();
+        self.table.push(table);
+        out
+    }
 }
 
 impl std::ops::Index<VTableIndex> for VTables {
