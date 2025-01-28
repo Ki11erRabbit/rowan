@@ -16,6 +16,7 @@ pub enum TypeTag {
     F64,
     Object, // u64
     Str,
+    Void,
 }
 
 impl TypeTag {
@@ -34,6 +35,7 @@ impl TypeTag {
             F64 => 8,
             Object => 8,
             Str => 8,
+            Void => 1,
         }
     }
 }
@@ -64,6 +66,13 @@ pub struct MemberInfo {
 }
 
 impl MemberInfo {
+    pub fn new(symbol: Symbol, ty: TypeTag) -> Self {
+        MemberInfo {
+            name: symbol,
+            ty
+        }
+    }
+
     pub fn get_size(&self) -> usize {
         self.ty.size()
     }
@@ -74,4 +83,14 @@ pub struct SignalInfo {
     name: Symbol,
     is_static: bool,
     arguments: Vec<TypeTag>,
+}
+
+impl SignalInfo {
+    pub fn new(name: Symbol, is_static: bool, arguments: Vec<TypeTag>) -> Self {
+        SignalInfo {
+            name,
+            is_static,
+            arguments,
+        }
+    }
 }

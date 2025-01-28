@@ -30,7 +30,7 @@ impl VTable {
     }
 }
 
-
+#[derive(Clone)]
 pub struct Function {
     pub name: Symbol,
     pub value: FunctionValue,
