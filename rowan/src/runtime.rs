@@ -8,6 +8,7 @@ use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::S
 mod tables;
 pub mod class;
 pub mod object;
+pub mod stdlib;
 
 pub type Symbol = usize;
 
@@ -603,6 +604,7 @@ impl Context {
             }
         }
 
+        // TODO: perform semantic analysis on bytecode to ensure that references are not messed with
         output
     }
 }
