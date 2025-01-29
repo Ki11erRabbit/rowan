@@ -686,8 +686,8 @@ impl Context {
             panic!("Lock poisoned");
         };
 
-        let next_class_symbol = class_table.get_next_index();
-        symbol_table.add_class(next_class_symbol);
+        let next_class_index = class_table.get_next_index();
+        let next_class_symbol = symbol_table.add_class(next_class_index);
         class_map.insert(String::from(name), next_class_symbol);
 
         let mut vtable_mapper = HashMap::new();
@@ -726,6 +726,7 @@ impl Context {
 
         let class_index = class_table.insert_class(class);
 
-        assert!(class_index == next_class_symbol, "missmatch between class indicies");
+        println!("{}", next_class_symbol);
+        assert!(class_index == next_class_index, "missmatch between class indicies");
     }
 }
