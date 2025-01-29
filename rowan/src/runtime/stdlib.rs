@@ -45,12 +45,12 @@ impl VMVTable {
 
 pub struct VMMethod {
     pub name: &'static str,
-    pub fn_pointer: *const u8,
+    pub fn_pointer: *const (),
     pub signature: Vec<TypeTag>,
 }
 
 impl VMMethod {
-    pub fn new(name: &'static str, fn_pointer: *const u8, signature: Vec<TypeTag>) -> Self {
+    pub fn new(name: &'static str, fn_pointer: *const (), signature: Vec<TypeTag>) -> Self {
         VMMethod {
             name,
             fn_pointer,
@@ -75,13 +75,15 @@ impl VMMember {
 
 pub struct VMSignal {
     pub name: &'static str,
+    pub is_static: bool,
     pub arguments: Vec<TypeTag>
 }
 
 impl VMSignal {
-    pub fn new(name: &'static str, arguments: Vec<TypeTag>) -> Self {
+    pub fn new(name: &'static str, is_static: bool, arguments: Vec<TypeTag>) -> Self {
         VMSignal {
             name,
+            is_static,
             arguments
         }
     }
@@ -94,28 +96,28 @@ pub fn generate_object_class() -> VMClass {
         "Object",
         vec![
             VMMethod::new(
-                "object/tick",
-                object_tick as *const u8,
+                "tick",
+                object_tick as *const (),
                 vec![TypeTag::Void, TypeTag::Object, TypeTag::F64]
                 ),
             VMMethod::new(
-                "object/ready",
-                object_ready as *const u8,
+                "ready",
+                object_ready as *const (),
                 vec![TypeTag::Void, TypeTag::Object]
                 ),
             VMMethod::new(
-                "object/upcast",
-                object_upcast as *const u8,
+                "upcast",
+                object_upcast as *const (),
                 vec![TypeTag::Object, TypeTag::Object]
                 ),
             VMMethod::new(
-                "object/get-child",
-                object_get_child as *const u8,
+                "get-child",
+                object_get_child as *const (),
                 vec![TypeTag::Object, TypeTag::Object, TypeTag::U64]
                 ),
             VMMethod::new(
-                "object/remove-child",
-                object_remove_child as *const u8,
+                "remove-child",
+                object_remove_child as *const (),
                 vec![TypeTag::Object, TypeTag::Object, TypeTag::Object]
                 ),
         ]
@@ -145,4 +147,33 @@ extern "C" fn object_get_child(this: Reference, nth: u64) -> Reference {
 
 extern "C" fn object_remove_child(this: Reference, reference: Reference) -> Reference {
     todo!("get a context and find the child of that object that matches reference")
+}
+
+pub fn generate_printer_class() -> VMClass {
+    let vtable = VMVTable::new(
+        "Printer",
+        vec![
+            VMMethod::new(
+                "println-int",
+                printer_println_int as *const (),
+                vec![TypeTag::Void, TypeTag::Object, TypeTag::U64]
+                ),
+            VMMethod::new(
+                "println-float",
+                printer_println_float as *const (),
+                vec![TypeTag::Void, TypeTag::Object, TypeTag::F64]
+                ),
+        ]
+    );
+
+    VMClass::new("Printer", vec!["Object"], vec![vtable], Vec::new(), Vec::new())
+}
+
+
+extern "C" fn printer_println_int(_: Reference, int: u64) {
+    println!("{}", int);
+}
+
+extern "C" fn printer_println_float(_: Reference, float: f64) {
+    println!("{}", float);
 }

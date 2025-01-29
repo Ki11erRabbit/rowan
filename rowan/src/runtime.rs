@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::{LazyLock, RwLock}};
 
 use class::{Class, MemberInfo, SignalInfo};
 use rowan_shared::classfile::{BytecodeEntry, BytecodeIndex, ClassFile, Member, Signal, SignatureIndex, VTableEntry};
+use stdlib::{VMClass, VMMember, VMMethod, VMSignal, VMVTable};
 use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}};
 
 
@@ -606,5 +607,125 @@ impl Context {
 
         // TODO: perform semantic analysis on bytecode to ensure that references are not messed with
         output
+    }
+
+    pub fn link_vm_class(
+        &self,
+        class: VMClass,
+        string_map: &mut HashMap<String, Symbol>,
+        class_map: &mut HashMap<String, Symbol>
+    ) {
+        let VMClass {
+            name,
+            parents,
+            vtables,
+            members,
+            signals
+        } = class;
+
+        let Ok(mut string_table) = STRING_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut symbol_table) = SYMBOL_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+
+        let class_name_symbol = {
+            let name_index = string_table.add_static_string(name);
+
+            symbol_table.add_string(name_index)
+        };
+        string_map.insert(String::from(name), class_name_symbol);
+
+        let mut parent_symbols = Vec::new();
+        for parent in parents {
+            if string_map.contains_key(parent) {
+                continue;
+            }
+            let name_index = string_table.add_static_string(parent);
+
+            let symbol = symbol_table.add_string(name_index);
+            string_map.insert(String::from(parent), symbol);
+            parent_symbols.push(*class_map.get(parent).unwrap());
+        }
+
+        let mut class_members = Vec::new();
+        for member in members {
+            let VMMember { name, ty } = member;
+
+            if string_map.contains_key(name) {
+                continue;
+            }
+            let name_index = string_table.add_static_string(name);
+
+            let symbol = symbol_table.add_string(name_index);
+            string_map.insert(String::from(name), symbol);
+
+            class_members.push(MemberInfo::new(symbol, ty));
+        }
+
+        let mut class_signals = Vec::new();
+        for signal in signals {
+            let VMSignal { name, is_static, arguments } = signal;
+
+            if string_map.contains_key(name) {
+                continue;
+            }
+            let name_index = string_table.add_static_string(name);
+
+            let symbol = symbol_table.add_string(name_index);
+            string_map.insert(String::from(name), symbol);
+
+            class_signals.push(SignalInfo::new(symbol, is_static, arguments));
+        }
+
+        let Ok(mut vtables_table) = VTABLES.write() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut class_table) = CLASS_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+
+        let next_class_symbol = class_table.get_next_index();
+        symbol_table.add_class(next_class_symbol);
+        class_map.insert(String::from(name), next_class_symbol);
+
+        let mut vtable_mapper = HashMap::new();
+        
+        for vtable in vtables {
+            let VMVTable { class, methods } = vtable;
+            let class_symbol = class_map.get(class).unwrap();
+            let mut functions = Vec::new();
+            let mut name_to_index = HashMap::new();
+            for (i, method) in methods.into_iter().enumerate() {
+                let VMMethod { name, fn_pointer, signature } = method;
+                let method_name_symbol = if let Some(symbol) = string_map.get(name) {
+                    *symbol
+                } else {
+                    let name_index = string_table.add_static_string(name);
+
+                    let symbol = symbol_table.add_string(name_index);
+                    string_map.insert(String::from(name), symbol);
+                    symbol
+                };
+
+                let arguments = signature[1..].to_vec();
+                let return_type = signature[0];
+
+                let value = FunctionValue::Builtin(fn_pointer);
+
+                functions.push(Function::new(method_name_symbol, value, None, arguments, return_type));
+                name_to_index.insert(method_name_symbol, i);
+            }
+
+            let index = vtables_table.add_vtable(VTable::new(functions, name_to_index));
+            vtable_mapper.insert(*class_symbol, index);
+        }
+
+        let class = Class::new(class_name_symbol, parent_symbols, vtable_mapper, class_members, class_signals);
+
+        let class_index = class_table.insert_class(class);
+
+        assert!(class_index == next_class_symbol, "missmatch between class indicies");
     }
 }

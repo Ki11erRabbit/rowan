@@ -29,6 +29,14 @@ impl StringTable {
         
         out
     }
+
+    pub fn add_static_string(&mut self, string: &'static str) -> usize {
+        let size = string.len();
+        let out = self.table.len();
+        self.table.push((size, string.as_ptr()));
+
+        out
+    }
 }
 
 impl std::ops::Index<usize> for StringTable {
