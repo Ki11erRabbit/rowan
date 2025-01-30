@@ -125,13 +125,13 @@ pub enum Bytecode {
     /// The StringIndices are class names. The two class names allow for calling super methods as well
     /// as overridden super methods
     /// The third Symbol is the method name
-    InvokeVirt(Symbol, Symbol, Symbol),
+    InvokeVirt(Symbol, Option<Symbol>, Symbol),
     /// Invoke a virtual method on an object of the specified class
     /// The StringIndices are class names. The two class names allow for calling super methods as well
     /// as overridden super methods
     /// The third Symbol is the method name
     /// This is for tail recursion
-    InvokeVirtTail(Symbol, Symbol, Symbol),
+    InvokeVirtTail(Symbol, Option<Symbol>, Symbol),
     /// Emit a signal from an object of the specified class
     /// The first Symbol is the class name and the second Symbol is the signal name
     EmitSignal(Symbol, Symbol),
@@ -175,7 +175,7 @@ pub enum Bytecode {
 
 
 
-impl Bytecode {
+/*impl Bytecode {
     fn try_from(value: impl IntoIterator<Item = u8, IntoIter = impl Iterator<Item = u8>>) -> Result<Vec<Bytecode>, &'static str> {
         let mut iter = value.into_iter();
         let mut result = Vec::new();
@@ -768,4 +768,4 @@ impl Into<Vec<u8>> for Bytecode {
 
         result
     }
-}
+}*/

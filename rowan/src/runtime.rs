@@ -96,13 +96,18 @@ impl Context {
             panic!("Lock poisoned");
         };
 
-        let mut vtables: Vec<(Vec<(&str, Symbol, Option<Symbol>, SignatureIndex, BytecodeIndex)>, HashMap<Symbol, Index>)> = Vec::new();
+        let mut vtables: Vec<(Vec<(&str, Option<&str>, Symbol, Option<Symbol>, SignatureIndex, BytecodeIndex)>, HashMap<Symbol, Index>)> = Vec::new();
         for vtable in class_file.vtables.iter() {
             let mut virt_table = Vec::new();
             let mut mapper = HashMap::new();
             for (i, function) in vtable.functions.iter().enumerate() {
-                let VTableEntry { class_name: vtable_class_name, name, responds_to, signature, bytecode, .. } = function;
+                let VTableEntry { class_name: vtable_class_name, sub_class_name, name, responds_to, signature, bytecode, .. } = function;
                 let vtable_class_name = class_file.index_string_table(*vtable_class_name);
+                let sub_class_name_str = if *sub_class_name != 0 {
+                    Some(class_file.index_string_table(*sub_class_name))
+                } else {
+                    None
+                };
                 let name_str = class_file.index_string_table(*name);
                 let name_symbol = if let Some(symbol) = string_map.get(name_str) {
                     *symbol
@@ -128,7 +133,7 @@ impl Context {
                     }
                 };
 
-                virt_table.push((vtable_class_name, name_symbol, responds_to, *signature, *bytecode));
+                virt_table.push((vtable_class_name, sub_class_name_str, name_symbol, responds_to, *signature, *bytecode));
                 mapper.insert(name_symbol, i);
             }
             vtables.push((virt_table, mapper));
@@ -175,10 +180,10 @@ impl Context {
         class_map.insert(String::from(class_name), class_symbol);
 
         let mut class_vtable_map = HashMap::new();
-        for (i, (functions, mapper)) in vtables.into_iter().enumerate() {
+        for (functions, mapper) in vtables.into_iter() {
             let mut table = Vec::new();
             let mut vtable_class_symbol = 0;
-            for (vtable_class_name, name_symbol, responds_to, signature, bytecode) in functions {
+            for (vtable_class_name, sub_class_name, name_symbol, responds_to, signature, bytecode) in functions {
                 let function = if vtable_class_name == class_name {
                     let bytecode = self.link_bytecode(
                         &class_file,
@@ -203,12 +208,39 @@ impl Context {
                     let SymbolEntry::ClassRef(class_index) = symbol_table[*class_name_symbol] else {
                         panic!("class wasn't a class");
                     };
+                    let sub_class_name_symbol = if let Some(sub_class_name) = sub_class_name {
+                        let class_name_symbol = class_map.get(sub_class_name).expect("We haven't linked a class file yet");
+                        let SymbolEntry::ClassRef(additional_class_index) = symbol_table[*class_name_symbol] else {
+                            panic!("class wasn't a class");
+                        };
+                        Some(additional_class_index)
+                    } else {
+                        None
+                    };
 
                     let class = &class_table[class_index];
 
-                    let vtable_index = class.get_vtable(*class_name_symbol);
+                    let vtable_indicies = class.get_vtable(*class_name_symbol);
 
-                    let vtable = &vtable_tables[vtable_index];
+                    assert_ne!(0, vtable_indicies.len(), "vtable_indicies is empty");
+                    let vtable = if vtable_indicies.len() == 1 || sub_class_name_symbol.is_none() {
+                        let (_, index) = &vtable_indicies[0];
+                        &vtable_tables[*index]
+                    } else {
+                        let mut out = None;
+                        for (symbol, index) in vtable_indicies.iter() {
+                            if *symbol == sub_class_name_symbol {
+                                out = Some(index);
+                                break;
+                            }
+                        }
+                        if let Some(out) = out {
+                            &vtable_tables[*out]
+                        } else {
+                            let (_, index) = &vtable_indicies[0];
+                            &vtable_tables[*index]
+                        }
+                    };
 
                     vtable_class_symbol = *class_name_symbol;
 
@@ -240,7 +272,8 @@ impl Context {
 
             let vtable = VTable::new(table, mapper);
             let vtable_index = vtable_tables.add_vtable(vtable);
-            
+
+            class_vtable_map.entry(vtable_class_symbol).and_modify(|v| v.push((, vtable_index))).or_insert(vec![(, vtable_index)]);
             class_vtable_map.insert(vtable_class_symbol, vtable_index);
         }
 
