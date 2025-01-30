@@ -10,6 +10,7 @@ mod tables;
 pub mod class;
 pub mod object;
 pub mod stdlib;
+pub mod linker;
 
 pub type Symbol = usize;
 
