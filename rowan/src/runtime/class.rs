@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::{Symbol, VTableIndex};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TypeTag {
     U8,
     U16,

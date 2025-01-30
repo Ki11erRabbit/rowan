@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::{Hash, Hasher}};
 
 use rowan_shared::bytecode::linked::Bytecode;
 
@@ -30,6 +30,19 @@ impl VTable {
     }
 }
 
+impl PartialEq for VTable {
+    fn eq(&self, other: &Self) -> bool {
+        self.table == other.table
+    }
+}
+
+impl Hash for VTable {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.table.hash(hasher)
+    }
+
+}
+
 #[derive(Clone)]
 pub struct Function {
     pub name: Symbol,
@@ -57,12 +70,56 @@ impl Function {
     }
 }
 
+impl PartialEq for Function {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.responds_to == other.responds_to && self.arguments == other.arguments && self.return_type == other.return_type && self.value == other.value
+    }
+}
+
+impl Hash for Function {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.name.hash(hasher);
+        self.responds_to.hash(hasher);
+        self.arguments.hash(hasher);
+        self.return_type.hash(hasher);
+    }
+
+}
+
 #[derive(Clone)]
 pub enum FunctionValue {
     Builtin(*const ()),
     Bytecode(Vec<Bytecode>),
     Compiled(*const ()),
+    Blank,
 }
+
+impl PartialEq for FunctionValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (FunctionValue::Bytecode(b1), FunctionValue::Bytecode(b2)) => {
+                b1 == b2
+            }
+            (FunctionValue::Builtin(b1), FunctionValue::Builtin(b2)) => {
+                b1 == b2
+            }
+            (FunctionValue::Blank, FunctionValue::Builtin(_)) => {
+                true
+            }
+            (FunctionValue::Builtin(_), FunctionValue::Bank) => {
+                true
+            }
+            (FunctionValue::Blank, FunctionValue::Bytecode(_)) => {
+                true
+            }
+            (FunctionValue::Bytecode(_), FunctionValue::Bank) => {
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
 
 unsafe impl Send for FunctionValue {}
 unsafe impl Sync for FunctionValue {}

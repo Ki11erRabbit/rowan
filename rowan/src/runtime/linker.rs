@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rowan_shared::classfile::{BytecodeIndex, ClassFile, Member, Signal, SignatureIndex, VTableEntry};
 
-use super::{class::{Class, MemberInfo, SignalInfo}, tables::{string_table::StringTable, symbol_table::SymbolTable}, Symbol};
+use super::{class::{Class, MemberInfo, SignalInfo}, tables::{string_table::StringTable, symbol_table::SymbolTable, vtable::{Function, VTables}}, Symbol, VTableIndex};
 
 
 pub enum TableEntry<T> {
@@ -19,7 +19,8 @@ pub fn link_class_files(
     classes: Vec<ClassFile>,
     symbol_table: &mut SymbolTable,
     mut class_table: Vec<TableEntry<Class>>,
-    string_table: &mut StringTable
+    string_table: &mut StringTable,
+    virtual_tables: &mut VTables,
 ) -> Result<(), ()> {
     let mut string_map: HashMap<String, Symbol> = HashMap::new();
     let mut class_map: HashMap<String, Symbol> = HashMap::new();
@@ -140,6 +141,8 @@ pub fn link_class_files(
         }
     }
 
+    
+    let mut vtable_to_index: HashMap<VTable, VTableIndex> = HashMap::new();
     for class in classes {
         let ClassFile { name, parents, members, signals, signature_table, .. } = &class;
         let class_name_str = class.index_string_table(*name);
@@ -195,6 +198,19 @@ pub fn link_class_files(
             let mut functions = Vec::new();
 
             for (class_name, sub_class_name, method_name, responds_to, signature_index, bytecode_index) in vtable {
+                let method_name_symbol = string_map.get(method_name).get();
+
+                let arguments = signature_table[1..].iter().map(convert_type).collect::<Vec<_>>();
+                let return_type = convert_type(&signature_table[0]);
+
+                let function = if false {
+                    // Lookup class method that already exists
+                } else if bytecode_index != 0 {
+                    // Link function
+                } else {
+                    // use a RefCell to allow for updating a missing functions in the future
+                };
+                
             }
 
         }
