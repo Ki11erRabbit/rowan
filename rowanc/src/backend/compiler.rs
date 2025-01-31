@@ -19,21 +19,6 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         VTableEntry::default(),
         VTableEntry::default(),
     ];
-    let vtable = VTable::new(functions);
-    let class_names = vec![
-        "Object",
-        "Object",
-        "Object",
-        "Object",
-        "Object",
-        ];
-    let sub_class_names = vec![
-        "Object",
-        "Object",
-        "Object",
-        "Object",
-        "Object",
-        ];
     let names = vec![
         "tick",
         "ready",
@@ -55,8 +40,9 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::U64]),
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object]),
     ];
-    
-    object.add_vtable("Object",vtable, class_names, sub_class_names, names, responds_to, signatures);
+    let vtable_class = object.add_string("Object");
+    let vtable = VTable::new(vtable_class, 0, functions);
+    object.add_vtable("Object", vtable, names, responds_to, signatures);
     object.make_not_printable();
     classes.insert(String::from("Object"), object);
 
@@ -66,15 +52,6 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         VTableEntry::default(),
         VTableEntry::default(),
     ];
-    let vtable = VTable::new(functions);
-    let class_names = vec![
-        "Printer",
-        "Printer",
-        ];
-    let sub_class_names = vec![
-        "Printer",
-        "Printer",
-        ];
     let names = vec![
         "println-int",
         "println-float",
@@ -87,8 +64,10 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::U64]),
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::F64]),
     ];
+    let vtable_class = printer.add_string("Printer");
+    let vtable = VTable::new(vtable_class, 0, functions);
     
-    printer.add_vtable("Printer",vtable, class_names, sub_class_names, names, responds_to, signatures);
+    printer.add_vtable("Printer", vtable, names, responds_to, signatures);
     printer.make_not_printable();
     classes.insert(String::from("Printer"), printer);
 
@@ -235,20 +214,20 @@ impl Compiler {
             partial_class.add_parent(parent.name);
         });
 
-        let (vtable, class_names, sub_class_names, names, responds_to, signatures) = self.construct_vtable(name.to_string(), &methods)?;
+        let (vtable, names, responds_to, signatures) = self.construct_vtable(name.to_string(), &methods)?;
 
-        partial_class.add_vtable(name, vtable, class_names, sub_class_names, names, responds_to, signatures);
+        partial_class.add_vtable(name, vtable, names, responds_to, signatures);
 
         if parents.len() == 0 {
             let object_class = self.classes.get("Object").expect("Object not added to known classes");
 
-            let (vtable, class_names, sub_class_names, names, responds_to, signatures) = object_class.get_vtable("Object");
+            let (vtable, names, responds_to, signatures) = object_class.get_vtable("Object");
 
-            partial_class.add_vtable("Object", vtable, class_names, sub_class_names, names, responds_to, signatures);
+            partial_class.add_vtable("Object", vtable, names, responds_to, signatures);
         }
         
-        for (class_name, (vtable, class_names, sub_class_names, names, responds_to, signatures)) in parent_vtables {
-            partial_class.add_vtable(class_name, vtable, class_names, sub_class_names, names, responds_to, signatures);
+        for (class_name, (vtable, names, responds_to, signatures)) in parent_vtables {
+            partial_class.add_vtable(class_name, vtable, names, responds_to, signatures);
         }
 
         members.into_iter().map(|member| {
@@ -279,14 +258,10 @@ impl Compiler {
         VTable,
         Vec<String>,
         Vec<String>,
-        Vec<String>,
-        Vec<String>,
         Vec<SignatureEntry>), CompilerError> {
 
 
         let mut entries = Vec::new();
-        let mut class_names = Vec::new();
-        let mut sub_class_names = Vec::new();
         let mut names = Vec::new();
         let mut responds_to = Vec::new();
         let mut signatures = Vec::new();
@@ -313,8 +288,6 @@ impl Compiler {
             }
 
             names.push(name.to_string());
-            class_names.push(class_name.to_string());
-            sub_class_names.push(class_name.to_string());
 
             entries.push(VTableEntry::default());
 
@@ -335,10 +308,10 @@ impl Compiler {
             signatures.push(SignatureEntry::new(signature));
 
         }
-        let vtable = VTable::new(entries);
+        let vtable = VTable::new( ,None, entries);
 
 
-        Ok((vtable, class_names, sub_class_names, names, responds_to, signatures))
+        Ok((vtable, names, responds_to, signatures))
     }
 
     fn convert_type(&self, ty: &Type) -> TypeTag {
@@ -394,7 +367,7 @@ impl Compiler {
             }).collect::<Vec<_>>();
 
             let method_entry = partial_class.get_method_entry(name).unwrap();
-            let method_class_name = String::from(partial_class.index_string_table(method_entry.sub_class_name));
+            let method_class_name = String::from(partial_class.index_string_table(method_entry));
 
             partial_class.attach_bytecode(method_class_name, name, bytecode);
 

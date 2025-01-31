@@ -142,7 +142,6 @@ pub fn link_class_files(
                 
                 current_vtable.push((name_symbol, responds_to_symbol, signature, bytecode, FunctionValue::Blank));
             }
-            let class_vtable_map = HashMap::new();
             vtables_map.entry(vtable_class_name_symbol)
                 .and_modify(|map| {
                     map.insert(class_name_symbol, current_vtable.clone());

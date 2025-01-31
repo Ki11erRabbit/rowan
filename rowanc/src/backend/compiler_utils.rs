@@ -151,8 +151,6 @@ impl PartialClass {
         &mut self,
         class_name: impl AsRef<str>,
         mut vtable: VTable,
-        class_names: Vec<impl AsRef<str>>,
-        sub_class_names: Vec<impl AsRef<str>>,
         names: Vec<impl AsRef<str>>,
         responds_to: Vec<impl AsRef<str>>,
         signatures: Vec<SignatureEntry>,
@@ -160,10 +158,6 @@ impl PartialClass {
     ) {
 
         for (i, function) in vtable.functions.iter_mut().enumerate() {
-            self.string_table.push(StringEntry::new(class_names[i].as_ref()));
-            function.class_name = self.string_table.len() as u64;
-            self.string_table.push(StringEntry::new(sub_class_names[i].as_ref()));
-            function.sub_class_name = self.string_table.len() as u64;
             self.string_table.push(StringEntry::new(names[i].as_ref()));
             function.name = self.string_table.len() as u64;
             if responds_to[i].as_ref() != "" {
@@ -224,23 +218,17 @@ impl PartialClass {
         VTable,
         Vec<String>,
         Vec<String>,
-        Vec<String>,
-        Vec<String>,
         Vec<SignatureEntry>) {
 
         let vtable_index = self.class_to_vtable.get(class_name.as_ref()).unwrap();
 
         let mut vtable = self.vtables[*vtable_index].clone();
 
-        let mut class_names = Vec::new();
-        let mut sub_class_names = Vec::new();
         let mut names = Vec::new();
         let mut responds_to = Vec::new();
         let mut signatures = Vec::new();
 
         for function in vtable.functions.iter_mut() {
-            class_names.push(String::from(self.index_string_table(function.class_name)));
-            sub_class_names.push(String::from(self.index_string_table(function.sub_class_name)));
             names.push(String::from(self.index_string_table(function.name)));
             if function.responds_to != 0 {
                 responds_to.push(String::from(self.index_string_table(function.responds_to)));
@@ -250,8 +238,6 @@ impl PartialClass {
             signatures.push(self.signature_table[function.signature as usize].clone());
             
             function.bytecode = 0;
-            function.class_name = 0;
-            function.sub_class_name = 0;
             function.name = 0;
             function.responds_to = 0;
             function.signature = 0;
@@ -259,7 +245,7 @@ impl PartialClass {
             
         }
         
-        (vtable, class_names, sub_class_names, names, responds_to, signatures)
+        (vtable, names, responds_to, signatures)
     }
 
     pub fn add_string<S: AsRef<str>>(&mut self, string: S) -> u64 {
