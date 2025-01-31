@@ -94,25 +94,34 @@ pub enum FunctionValue {
     Blank,
 }
 
+impl FunctionValue {
+    pub fn is_blank(&self) -> bool {
+        match self {
+            FunctionValue::Blank => true,
+            _ => false,
+        }
+    }
+}
+
 impl PartialEq for FunctionValue {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (FunctionValue::Bytecode(b1), FunctionValue::Bytecode(b2)) => {
+            /*(FunctionValue::Bytecode(b1), FunctionValue::Bytecode(b2)) => {
                 b1 == b2
-            }
+            }*/
             (FunctionValue::Builtin(b1), FunctionValue::Builtin(b2)) => {
                 b1 == b2
             }
             (FunctionValue::Blank, FunctionValue::Builtin(_)) => {
                 true
             }
-            (FunctionValue::Builtin(_), FunctionValue::Bank) => {
+            (FunctionValue::Builtin(_), FunctionValue::Blank) => {
                 true
             }
             (FunctionValue::Blank, FunctionValue::Bytecode(_)) => {
                 true
             }
-            (FunctionValue::Bytecode(_), FunctionValue::Bank) => {
+            (FunctionValue::Bytecode(_), FunctionValue::Blank) => {
                 true
             }
             _ => false,

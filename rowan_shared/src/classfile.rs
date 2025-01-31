@@ -32,13 +32,13 @@
 //! }
 //!
 //! VTable {
+//!     class_name: StringIndex,
+//!     sub_class_name: StringIndex,
 //!     vtable_size: u64,
 //!     functions: [VTableEntry; vtable_size],
 //! }
 //!
 //! VTableEntry {
-//!     class_name: StringIndex,
-//!     sub_class_name: StringIndex,
 //!     name: StringIndex,
 //!     responds_to: StringIndex,
 //!     signature: SignatureIndex,
@@ -171,6 +171,17 @@ impl ClassFile {
         index += std::mem::size_of::<u64>();
         let mut vtables = Vec::new();
         for _ in 0..vtables_size {
+
+            let class_name = u64::from_le_bytes([
+                binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+                binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+            ]);
+            index += std::mem::size_of::<u64>();
+            let sub_class_name = u64::from_le_bytes([
+                binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+                binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+            ]);
+            index += std::mem::size_of::<u64>();
             let vtable_size = u64::from_le_bytes([
                 binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
                 binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
@@ -183,6 +194,8 @@ impl ClassFile {
                 )
             };
             vtables.push(VTable {
+                class_name,
+                sub_class_name,
                 functions: functions.to_vec()
             });
             index += vtable_size as usize * std::mem::size_of::<VTableEntry>();
@@ -360,10 +373,10 @@ impl ClassFile {
         binary.extend_from_slice(&self.parents.iter().flat_map(|&p| p.to_le_bytes()).collect::<Vec<u8>>());
         binary.extend_from_slice(&self.vtables.len().to_le_bytes());
         for vtable in &self.vtables {
+            binary.extend_from_slice(&vtable.class_name.to_le_bytes());
+            binary.extend_from_slice(&vtable.sub_class_name.to_le_bytes());
             binary.extend_from_slice(&(vtable.functions.len() as u64).to_le_bytes());
             for function in &vtable.functions {
-                binary.extend_from_slice(&function.class_name.to_le_bytes());
-                binary.extend_from_slice(&function.sub_class_name.to_le_bytes());
                 binary.extend_from_slice(&function.name.to_le_bytes());
                 binary.extend_from_slice(&function.responds_to.to_le_bytes());
                 binary.extend_from_slice(&function.signature.to_le_bytes());
@@ -446,12 +459,18 @@ impl Member {
 /// Represents a virtual table for a class
 #[derive(PartialEq, Debug, Clone)]
 pub struct VTable {
+    /// The name of the class to start looking for the function
+    pub class_name: StringIndex,
+    /// The name of the subclass the method is defined in
+    pub sub_class_name: StringIndex,
     pub functions: Vec<VTableEntry>,
 }
 
 impl VTable {
-    pub fn new(functions: Vec<VTableEntry>) -> VTable {
+    pub fn new(class_name: StringIndex, sub_class_name: StringIndex, functions: Vec<VTableEntry>) -> VTable {
         VTable {
+            class_name,
+            sub_class_name,
             functions
         }
     }
@@ -460,10 +479,6 @@ impl VTable {
 #[derive(PartialEq, Debug, Copy, Clone, Default)]
 #[repr(C)]
 pub struct VTableEntry {
-    /// The name of the class to start looking for the function
-    pub class_name: StringIndex,
-    /// The name of the subclass the method is defined in
-    pub sub_class_name: StringIndex,
     /// The name of the function
     pub name: StringIndex,
     /// The name of the signal this method responds to
