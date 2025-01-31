@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use rowan_shared::classfile::{self, BytecodeIndex, ClassFile, Member, Signal, SignatureIndex, VTableEntry};
+use rowan_shared::classfile::{self, ClassFile, Signal, VTableEntry};
 
-use super::{class::{self, Class, MemberInfo, SignalInfo}, tables::{string_table::StringTable, symbol_table::SymbolTable, vtable::{Function, FunctionValue, VTable, VTables}}, Symbol, VTableIndex};
+use super::{class::{self, Class, MemberInfo, SignalInfo}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Symbol, VTableIndex};
 
 
 pub enum TableEntry<T> {
@@ -20,14 +20,14 @@ pub fn link_class_files(
     symbol_table: &mut SymbolTable,
     mut class_table: Vec<TableEntry<Class>>,
     string_table: &mut StringTable,
-) -> Result<(), ()> {
-    let mut string_map: HashMap<String, Symbol> = HashMap::new();
-    let mut class_map: HashMap<String, Symbol> = HashMap::new();
+    vtables_table: &mut VTables,
     // The first hashmap is the class symbol which the vtable comes from.
     // The second hashmap is the class that has a custom version of the vtable
     // For example, two matching symbols means that that is the vtable of that particular class
-    let mut vtables_map: HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, FunctionValue)>>> = HashMap::new();
-    let mut vtable_table: Vec<VTable> = Vec::new();
+    vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, FunctionValue)>>>,
+    string_map: &mut HashMap<String, Symbol>,
+    class_map: &mut HashMap<String, Symbol>,
+) -> Result<(), ()> {
 
     for class in classes.iter() {
         let ClassFile { name, parents, vtables, members, signals, signature_table, .. } = class;
@@ -315,7 +315,7 @@ pub fn link_class_files(
                         .map(|(i, (name_symbol, responds_to, signature, bytecode, _))| {
                             functions_mapper.insert(*name_symbol, i);
 
-                            let bytecode = link_bytecode(class, &bytecode, &mut string_map, &mut class_map, string_table, symbol_table);
+                            let bytecode = link_bytecode(class, &bytecode, string_map, class_map, string_table, symbol_table);
                             let value = FunctionValue::Bytecode(bytecode);
                             (*name_symbol, *responds_to, signature.clone(), Vec::new(), value)
                         })
@@ -359,7 +359,7 @@ pub fn link_class_files(
                         .map(|(i, (base, derived))| {
                             let (base_name_symbol, base_responds_to, base_signature, _, _) = base;
                             let (derived_name_symbol, derived_responds_to, derived_signature, derived_bytecode, _) = base;
-                            let bytecode = link_bytecode(class, &derived_bytecode, &mut string_map, &mut class_map, string_table, symbol_table);
+                            let bytecode = link_bytecode(class, &derived_bytecode, string_map, class_map, string_table, symbol_table);
                             let value = FunctionValue::Bytecode(bytecode);
                             functions_mapper.insert(*derived_name_symbol, i);
 
@@ -386,8 +386,20 @@ pub fn link_class_files(
             let mut class_vtable_mapper = HashMap::new();
 
             // Loop through vtables to add and put them in the vtable_table
-            // store the position in class_vtable_mapper
+            for (class_symbol, source_class, vtable) in vtables_to_add {
+                let index = vtables_table.add_vtable(vtable);
+                // store the position in class_vtable_mapper
+                class_vtable_mapper.insert((class_symbol, source_class), index);
+            }
+
             // Create new class
+            let class = Class::new(class_symbol, parents, class_vtable_mapper, members, signals);
+
+            let SymbolEntry::ClassRef(class_index) = &symbol_table[class_symbol] else {
+                unreachable!("Class symbol should have been a symbol to a class");
+            };
+
+            class_table[*class_index] = TableEntry::Entry(class);
             
         }
         if class_parts_to_try_again.len() == 0 {
@@ -602,9 +614,17 @@ fn link_bytecode(
 
                 output.push(linked::Bytecode::IsA(symbol as u64));
             }
-            compiled::Bytecode::InvokeVirt(class_index, _, method_index) => {
+            compiled::Bytecode::InvokeVirt(class_index, source_class, method_index) => {
                 let class_str = class_file.index_string_table(class_index);
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
+
+                let source_class = if let Some(source_class) = source_class {
+                    let class_str = class_file.index_string_table(source_class);
+                    let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
+                    Some(class_symbol as u64)
+                } else {
+                    None
+                };
 
                 let method_str = class_file.index_string_table(method_index);
                 let method_symbol: Symbol = if let Some(index) = string_map.get(method_str) {
@@ -615,11 +635,19 @@ fn link_bytecode(
                     symbol
                 }; 
 
-                output.push(linked::Bytecode::InvokeVirt(class_symbol as u64, 0, method_symbol as u64));
+                output.push(linked::Bytecode::InvokeVirt(class_symbol as u64, source_class, method_symbol as u64));
             }
-            compiled::Bytecode::InvokeVirtTail(class_index, _, method_index) => {
+            compiled::Bytecode::InvokeVirtTail(class_index, source_class, method_index) => {
                 let class_str = class_file.index_string_table(class_index);
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
+
+                let source_class = if let Some(source_class) = source_class {
+                    let class_str = class_file.index_string_table(source_class);
+                    let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
+                    Some(class_symbol as u64)
+                } else {
+                    None
+                };
 
                 let method_str = class_file.index_string_table(method_index);
                 let method_symbol: Symbol = if let Some(index) = string_map.get(method_str) {
@@ -630,7 +658,7 @@ fn link_bytecode(
                     symbol
                 }; 
 
-                output.push(linked::Bytecode::InvokeVirtTail(class_symbol as u64, 0, method_symbol as u64));
+                output.push(linked::Bytecode::InvokeVirtTail(class_symbol as u64, source_class, method_symbol as u64));
             }
             compiled::Bytecode::EmitSignal(class_index, name_index) => {
                 let class_str = class_file.index_string_table(class_index);

@@ -44,7 +44,7 @@ impl TypeTag {
 pub struct Class {
     name: Symbol,
     parents: Vec<Symbol>,
-    vtables: HashMap<Symbol, Vec<(Option<Symbol>, VTableIndex)>>,
+    vtables: HashMap<(Symbol, Option<Symbol>), VTableIndex>,
     members: Vec<MemberInfo>,
     signals: Vec<SignalInfo>,
 }
@@ -53,7 +53,7 @@ impl Class {
     pub fn new(
         name: Symbol,
         parents: Vec<Symbol>,
-        vtables: HashMap<Symbol, Vec<(Option<Symbol>, VTableIndex)>>,
+        vtables: HashMap<(Symbol, Option<Symbol>), VTableIndex>,
         members: Vec<MemberInfo>,
         signals: Vec<SignalInfo>
     ) -> Self {
@@ -70,8 +70,8 @@ impl Class {
         self.members.iter().map(|member| member.get_size()).sum()
     }
 
-    pub fn get_vtable(&self, sym: Symbol) -> &Vec<(Option<Symbol>, VTableIndex)> {
-        self.vtables.get(&sym).unwrap()
+    pub fn get_vtable(&self, sym: &(Symbol, Option<Symbol>)) -> VTableIndex {
+        *self.vtables.get(sym).unwrap()
     }
 }
 
