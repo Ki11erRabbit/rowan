@@ -42,11 +42,11 @@ impl TypeTag {
 
 
 pub struct Class {
-    name: Symbol,
-    parents: Vec<Symbol>,
-    vtables: HashMap<(Symbol, Option<Symbol>), VTableIndex>,
-    members: Vec<MemberInfo>,
-    signals: Vec<SignalInfo>,
+    pub name: Symbol,
+    pub parents: Vec<Symbol>,
+    pub vtables: HashMap<(Symbol, Option<Symbol>), VTableIndex>,
+    pub members: Vec<MemberInfo>,
+    pub signals: Vec<SignalInfo>,
 }
 
 impl Class {

@@ -1,4 +1,5 @@
-use super::{class::TypeTag, Reference};
+use super::Reference;
+use rowan_shared::TypeTag;
 
 
 /// This represents a class in the Virtual Machine.
@@ -31,13 +32,15 @@ impl VMClass {
 
 pub struct VMVTable {
     pub class: &'static str,
+    pub source_class: Option<&'static str>,
     pub methods: Vec<VMMethod>
 }
 
 impl VMVTable {
-    pub fn new(class: &'static str, methods: Vec<VMMethod>) -> Self {
+    pub fn new(class: &'static str, source_class: Option<&'static str>, methods: Vec<VMMethod>) -> Self {
         VMVTable {
             class,
+            source_class,
             methods
         }
     }
@@ -94,6 +97,7 @@ impl VMSignal {
 pub fn generate_object_class() -> VMClass {
     let vtable = VMVTable::new(
         "Object",
+        None,
         vec![
             VMMethod::new(
                 "tick",
@@ -152,6 +156,7 @@ extern "C" fn object_remove_child(this: Reference, reference: Reference) -> Refe
 pub fn generate_printer_class() -> VMClass {
     let vtable = VMVTable::new(
         "Printer",
+        None,
         vec![
             VMMethod::new(
                 "println-int",
