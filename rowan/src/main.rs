@@ -17,18 +17,21 @@ fn main() {
     file.read_to_end(&mut output).unwrap();
 
     let context = Context::new();
-    let vm_classes = [stdlib::generate_object_class(), stdlib::generate_printer_class()];
+    let vm_classes = vec![stdlib::generate_object_class(), stdlib::generate_printer_class()];
 
     let mut class_map = HashMap::new();
     let mut string_map = HashMap::new();
-    
-    for class in vm_classes {
-        context.link_vm_class(class, &mut string_map, &mut class_map);
-    }
+
+    let mut pre_class_table = Vec::new();
+    let mut vtables_map = HashMap::new(); 
+
+    context.link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map, &mut string_map, &mut class_map);
 
     let class = ClassFile::new(&output);
 
-    context.link_class(class, &mut string_map, &mut class_map);
+    let classes = vec![class];
+
+    context.link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map, &mut class_map);
     
 
 }
