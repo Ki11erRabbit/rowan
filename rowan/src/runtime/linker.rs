@@ -630,7 +630,7 @@ fn link_bytecode(
                 let class_str = class_file.index_string_table(class_index);
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
-                let source_class = if let Some(source_class) = source_class {
+                let source_class = if source_class == 0 {
                     let class_str = class_file.index_string_table(source_class);
                     let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
                     Some(class_symbol as u64)
@@ -653,7 +653,7 @@ fn link_bytecode(
                 let class_str = class_file.index_string_table(class_index);
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
-                let source_class = if let Some(source_class) = source_class {
+                let source_class = if source_class == 0 {
                     let class_str = class_file.index_string_table(source_class);
                     let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
                     Some(class_symbol as u64)

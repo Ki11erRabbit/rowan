@@ -467,10 +467,10 @@ pub struct VTable {
 }
 
 impl VTable {
-    pub fn new(class_name: StringIndex, sub_class_name: StringIndex, functions: Vec<VTableEntry>) -> VTable {
+    pub fn new(functions: Vec<VTableEntry>) -> VTable {
         VTable {
-            class_name,
-            sub_class_name,
+            class_name: 0,
+            sub_class_name: 0,
             functions
         }
     }

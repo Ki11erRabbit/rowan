@@ -3,7 +3,7 @@ use rowan_shared::{bytecode::compiled::Bytecode, classfile::{Member, Signal, Sig
 
 use crate::{ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator}, backend::compiler_utils::Frame};
 
-use super::compiler_utils::PartialClass;
+use super::compiler_utils::{PartialClass, PartialClassError};
 
 
 
@@ -40,9 +40,8 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::U64]),
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object]),
     ];
-    let vtable_class = object.add_string("Object");
-    let vtable = VTable::new(vtable_class, 0, functions);
-    object.add_vtable("Object", vtable, names, responds_to, signatures);
+    let vtable = VTable::new(functions);
+    object.add_vtable("Object", vtable, &names, &responds_to, &signatures);
     object.make_not_printable();
     classes.insert(String::from("Object"), object);
 
@@ -64,10 +63,9 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::U64]),
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::F64]),
     ];
-    let vtable_class = printer.add_string("Printer");
-    let vtable = VTable::new(vtable_class, 0, functions);
+    let vtable = VTable::new(functions);
     
-    printer.add_vtable("Printer", vtable, names, responds_to, signatures);
+    printer.add_vtable("Printer", vtable, &names, &responds_to, &signatures);
     printer.make_not_printable();
     classes.insert(String::from("Printer"), printer);
 
@@ -206,28 +204,46 @@ impl Compiler {
 
         let parent_vtables = parents.iter().map(|parent_name| {
             let partial_class = self.classes.get(parent_name.name).expect("Order of files is wrong");
-
-            (parent_name.name, partial_class.get_vtable(parent_name.name))
-
-        }).collect::<Vec<_>>();
+            let vtables = partial_class.get_vtables(parent_name.name);
+            vtables.into_iter().map(|(table, names, responds_to, signatures)| {
+                let class_name = partial_class.index_string_table(table.class_name);
+                let source_class = if table.sub_class_name == 0 {
+                    None
+                } else {
+                    Some(partial_class.index_string_table(table.sub_class_name))
+                };
+                (class_name, source_class, table, names, responds_to, signatures)
+            }).collect::<Vec<_>>()
+            
+        });
         parents.iter().for_each(|parent| {
             partial_class.add_parent(parent.name);
         });
 
-        let (vtable, names, responds_to, signatures) = self.construct_vtable(name.to_string(), &methods)?;
+        let (vtable, names, responds_to, signatures) = self.construct_vtable(name, &methods, &mut partial_class)?;
 
-        partial_class.add_vtable(name, vtable, names, responds_to, signatures);
+        if vtable.functions.len() != 0 {
+            partial_class.add_vtable(name, vtable, &names, &responds_to, &signatures);
+        } else {
+            drop(vtable);
+            drop(names);
+            drop(responds_to);
+            drop(signatures);
+        }
 
         if parents.len() == 0 {
             let object_class = self.classes.get("Object").expect("Object not added to known classes");
 
-            let (vtable, names, responds_to, signatures) = object_class.get_vtable("Object");
+            let vtables = object_class.get_vtables("Object");
+            let (vtable, names, responds_to, signatures) = &vtables[0];
 
-            partial_class.add_vtable("Object", vtable, names, responds_to, signatures);
+            partial_class.add_vtable("Object", vtable.clone(), names, responds_to, signatures);
         }
         
-        for (class_name, (vtable, names, responds_to, signatures)) in parent_vtables {
-            partial_class.add_vtable(class_name, vtable, names, responds_to, signatures);
+        for vtables in parent_vtables {
+            for (class_name, _source_class, vtable, names, responds_to, signatures) in vtables {
+                partial_class.add_vtable(class_name, vtable.clone(), &names, &responds_to, &signatures);
+            }
         }
 
         members.into_iter().map(|member| {
@@ -254,7 +270,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn construct_vtable(&self, class_name: String, methods: &Vec<Method>) -> Result<(
+    fn construct_vtable(&self, class_name: &str, methods: &Vec<Method>, class: &mut PartialClass) -> Result<(
         VTable,
         Vec<String>,
         Vec<String>,
@@ -308,7 +324,7 @@ impl Compiler {
             signatures.push(SignatureEntry::new(signature));
 
         }
-        let vtable = VTable::new( ,None, entries);
+        let vtable = VTable::new(entries);
 
 
         Ok((vtable, names, responds_to, signatures))
@@ -366,10 +382,12 @@ impl Compiler {
                 code.into_binary()
             }).collect::<Vec<_>>();
 
-            let method_entry = partial_class.get_method_entry(name).unwrap();
-            let method_class_name = String::from(partial_class.index_string_table(method_entry));
+            //println!("{}", name);
+            let vtable = partial_class.get_vtable(name).unwrap();
+            let method_class_name = String::from(partial_class.index_string_table(vtable.class_name));
+            //println!("{}", method_class_name);
 
-            partial_class.attach_bytecode(method_class_name, name, bytecode);
+            partial_class.attach_bytecode(method_class_name, name, bytecode).expect("Handle partial class error");
 
             self.pop_scope();
         }
@@ -652,9 +670,10 @@ impl Compiler {
                 let name = name.segments.last().unwrap();
                 let class = self.classes.get(ty).expect("Classes are in a bad order of compiling");
                 println!("{:#?}", class);
+                let vtable = class.get_vtable(name).expect("add proper handling of missing vtable");
                 let method_entry = class.get_method_entry(name).expect("add proper handling of missing method");
 
-                output.push(Bytecode::InvokeVirt(method_entry.class_name, method_entry.sub_class_name, method_entry.name));
+                output.push(Bytecode::InvokeVirt(vtable.class_name, vtable.sub_class_name, method_entry.name));
                 
             }
             Expression::New(ty, arr_size, _) => {
