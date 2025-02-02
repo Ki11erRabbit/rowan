@@ -32,6 +32,8 @@ fn main() {
     let classes = vec![class];
 
     context.link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map, &mut class_map);
+
+    context.finish_linking_classes(pre_class_table);
     
 
 }

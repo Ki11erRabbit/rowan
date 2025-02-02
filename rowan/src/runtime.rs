@@ -4,7 +4,7 @@ use class::{Class, MemberInfo, SignalInfo};
 use linker::TableEntry;
 use rowan_shared::classfile::{BytecodeEntry, BytecodeIndex, ClassFile, Member, Signal, SignatureIndex, VTableEntry};
 use stdlib::{VMClass, VMMember, VMMethod, VMSignal, VMVTable};
-use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}};
+use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{self, SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}};
 
 
 mod tables;
@@ -121,5 +121,27 @@ impl Context {
             string_map,
             class_map,
             );
+    }
+
+    pub fn finish_linking_classes(
+        &self,
+        pre_class_table: Vec<TableEntry<Class>>
+    ) {
+        let Ok(mut class_table) = CLASS_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+
+        for class in pre_class_table {
+            match class {
+                TableEntry::Hole => {
+                    panic!("missing class");
+                }
+                TableEntry::Entry(class) => {
+                    class_table.insert_class(class);
+                }
+
+            }
+        }
+
     }
 }
