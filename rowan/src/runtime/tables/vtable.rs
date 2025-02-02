@@ -86,7 +86,7 @@ impl Hash for Function {
 
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum FunctionValue {
     Builtin(*const ()),
     Bytecode(Vec<Bytecode>),

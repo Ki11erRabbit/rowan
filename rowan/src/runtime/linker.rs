@@ -344,6 +344,8 @@ pub fn link_class_files(
                     // We also update vtables_map to hold updated function values so that we can link future vtables
 
                     let derived_functions = vtables_map.get(class_name).unwrap().get(&class_symbol).unwrap();
+                    
+                    println!("{} {:#?}", class_name, vtables_map);
                     let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
 
                     for (_,_,_,_,value) in base_functions {

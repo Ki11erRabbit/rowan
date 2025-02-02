@@ -3,7 +3,7 @@ use crate::TypeTag;
 pub type BlockIdOffset = i64;
 pub type Symbol = u64;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Bytecode {
     /// No operation
     Nop,
