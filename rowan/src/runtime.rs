@@ -87,10 +87,6 @@ impl Context {
             string_map,
             class_map,
             ).unwrap();
-
-        let Ok(mut class_table) = CLASS_TABLE.write() else {
-            panic!("Lock poisoned");
-        };
     }
 
 
@@ -105,6 +101,25 @@ impl Context {
         string_map: &mut HashMap<String, Symbol>,
         class_map: &mut HashMap<String, Symbol>
     ) {
+        let Ok(mut string_table) = STRING_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut symbol_table) = SYMBOL_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut vtable_tables) = VTABLES.write() else {
+            panic!("Lock poisoned");
+        };
 
+        linker::link_vm_classes(
+            classes,
+            &mut symbol_table,
+            pre_class_table,
+            &mut string_table,
+            &mut vtable_tables,
+            vtables_map,
+            string_map,
+            class_map,
+            );
     }
 }

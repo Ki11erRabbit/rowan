@@ -344,8 +344,6 @@ pub fn link_class_files(
                     // We also update vtables_map to hold updated function values so that we can link future vtables
 
                     let derived_functions = vtables_map.get(class_name).unwrap().get(&class_symbol).unwrap();
-                    
-                    println!("{} {:#?}", class_name, vtables_map);
                     let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
 
                     for (_,_,_,_,value) in base_functions {
@@ -992,7 +990,6 @@ pub fn link_vm_classes(
             // This is used to disambiguate
             // So when this is some, we get the vtable from the class with the same symbol
             for (class_name, source_class) in vtables.iter() {
-
                 if let Some(source_class) = source_class {
                     // In this block, this means that we likely have a diamond inheritance situation
                     // This means that we have 2 copies of the same vtable
