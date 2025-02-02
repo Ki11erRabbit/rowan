@@ -12,6 +12,7 @@ pub mod class;
 pub mod object;
 pub mod stdlib;
 pub mod linker;
+pub mod jit;
 
 pub type Symbol = usize;
 
