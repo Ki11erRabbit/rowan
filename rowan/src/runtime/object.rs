@@ -4,9 +4,9 @@ use super::{Reference, Symbol};
 
 #[repr(C)]
 pub struct Object {
-    class: Symbol,
-    parent_objects: Box<[Reference]>,
-    children: Vec<Reference>,
+    pub class: Symbol,
+    pub parent_objects: Box<[Reference]>,
+    pub children: Vec<Reference>,
     //data: [u8]
 }
 

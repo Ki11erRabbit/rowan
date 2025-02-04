@@ -1,8 +1,10 @@
+
 use std::collections::HashMap;
 
+use codegen::ir::FuncRef;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{DataDescription, Linkage, Module};
+use cranelift_module::{Linkage, Module};
 use rowan_shared::bytecode::linked::Bytecode;
 
 use super::{class::TypeTag, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue}}};
@@ -14,6 +16,7 @@ pub struct JIT {
     builder_context: FunctionBuilderContext,
     context: codegen::Context,
     module: JITModule,
+    jit_utility_func: HashMap<String, FuncRef>,
 }
 
 
@@ -28,13 +31,35 @@ impl Default for JIT {
         let isa = isa_builder
             .finish(settings::Flags::new(flag_builder))
             .unwrap();
-        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        builder.symbol("get_virtual_function", super::get_virtual_function as *const u8);
+        let mut module = JITModule::new(builder);
 
-        let module = JITModule::new(builder);
+        let mut context = module.make_context();
+        let mut builder_context = FunctionBuilderContext::new();
+
+        let mut get_virt_func = module.make_signature();
+        get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+        get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+        get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+        get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+        get_virt_func.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+        let fn_id = module.declare_function("get_virtual_function", Linkage::Import, &get_virt_func).unwrap();
+        
+        let func_builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
+        let func = module.declare_func_in_func(fn_id, func_builder.func);
+
+        let mut jit_utility_func = HashMap::new();
+        jit_utility_func.insert(String::from("get_virtual_function"), func);
+
+        
+
         Self {
-            builder_context: FunctionBuilderContext::new(),
-            context: module.make_context(),
+            builder_context,
+            context,
             module,
+            jit_utility_func
         }
     }
 }
@@ -88,7 +113,13 @@ impl JIT {
         bytecode: &[Bytecode]
     ) -> Result<(), String> {
 
-        let mut function_translator = FunctionTranslator::new(&mut self.context, &mut self.builder_context, args, return_type);
+        let mut function_translator = FunctionTranslator::new(
+            &mut self.context,
+            &mut self.builder_context,
+            args,
+            return_type,
+            &self.jit_utility_func
+        );
 
         function_translator.translate(bytecode)?;
         
@@ -104,6 +135,7 @@ pub struct FunctionTranslator<'a> {
     var_store_and_stack: Vec<Option<Value>>,
     blocks: Vec<Block>,
     current_block: usize,
+    jit_utility_func: &'a HashMap<String, FuncRef>,
 }
 
 impl FunctionTranslator<'_> {
@@ -112,6 +144,7 @@ impl FunctionTranslator<'_> {
         builder_context: &'a mut FunctionBuilderContext,
         args: &[TypeTag],
         return_type: &TypeTag,
+        jit_utility_func: &'a HashMap<String, FuncRef>,
     ) -> FunctionTranslator<'a> {
         for ty in args {
             let ty = match ty {
@@ -158,12 +191,12 @@ impl FunctionTranslator<'_> {
             var_store_and_stack,
             blocks: vec![entry_block],
             current_block: 0,
+            jit_utility_func
         }
     }
     pub fn set_argument(&mut self, pos: u8, value: Value) {
         self.var_store_and_stack[pos as usize] = Some(value);
     }
-
 
     pub fn set_var(&mut self, pos: u8, value: Value) {
         let pos = (pos as usize) + 256;
@@ -208,6 +241,22 @@ impl FunctionTranslator<'_> {
         let bottom = self.var_store_and_stack.pop().flatten();
         self.var_store_and_stack.push(bottom);
         self.var_store_and_stack.push(top);
+    }
+
+    pub fn get_call_arguments_as_vec(&self) -> Vec<Value> {
+        let mut output = Vec::new();
+        for (i, value) in self.var_store_and_stack.iter().enumerate() {
+            if i >= 256 {
+                break;
+            }
+            match value {
+                Some(v) => output.push(*v),
+                None => break,
+            }
+        }
+
+
+        output
     }
 
     pub fn get_args_as_vec(&self) -> Vec<Value> {
@@ -439,6 +488,40 @@ impl FunctionTranslator<'_> {
                 // TODO: implement conversions
                 // TODO: implement array ops
                 // TODO: implement object ops
+                Bytecode::InvokeVirt(class_name, source_class, method_name) => {
+                    let class_name_value = self.builder
+                        .ins()
+                        .iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(class_name.to_le_bytes())));
+                    let source_class_value = match source_class {
+                        Some(source_class) => {
+                            self.builder
+                                .ins()
+                                .iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(source_class.to_le_bytes())))
+                        }
+                        None => {
+                            self.builder
+                                .ins()
+                                .iconst(cranelift::codegen::ir::types::I64, i64::from(-1))
+                        }
+                    };
+                    let method_name_value = self.builder
+                        .ins()
+                        .iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(method_name.to_le_bytes())));
+
+                    let func_id = self.jit_utility_func.get("get_virtual_function").expect("get_virtual_function not loaded");
+                    let method_args = self.get_call_arguments_as_vec();
+                    let method_value = self.builder
+                        .ins()
+                        .call(*func_id, &[
+                            method_args[0],
+                            class_name_value,
+                            source_class_value,
+                            method_name_value,
+                        ]);
+
+                    self.builder.ins().call_indirect
+
+                }
                 // TODO: implement signal ops
                 x => todo!("remaining ops"),
             }
