@@ -4,23 +4,24 @@ use std::collections::HashMap;
 use codegen::ir::FuncRef;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{Linkage, Module};
+use cranelift_module::{FuncId, Linkage, Module, ModuleResult};
 use rowan_shared::bytecode::linked::Bytecode;
 
 use super::{class::TypeTag, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue}}};
+use std::sync::Arc;
 
 
 
 
-pub struct JIT {
+pub struct JITController {
     builder_context: FunctionBuilderContext,
     context: codegen::Context,
     module: JITModule,
-    jit_utility_func: HashMap<String, FuncRef>,
+    jit_utility_func: Arc<HashMap<String, FuncRef>>,
 }
 
 
-impl Default for JIT {
+impl Default for JITController {
     fn default() -> Self {
         let mut flag_builder = settings::builder();
         flag_builder.set("use_colocated_libcalls", "false").unwrap();
@@ -59,12 +60,71 @@ impl Default for JIT {
             builder_context,
             context,
             module,
-            jit_utility_func
+            jit_utility_func: Arc::new(jit_utility_func),
         }
     }
 }
 
-impl JIT {
+impl JITController {
+
+    pub fn create_signature(&self, args: &[TypeTag], return_type: &TypeTag) -> Signature {
+        let mut signature = self.module.make_signature();
+        for ty in args {
+            let ty = match ty {
+                TypeTag::U8 | TypeTag::I8 => cranelift::codegen::ir::types::I8,
+                TypeTag::U16 | TypeTag::I16 => cranelift::codegen::ir::types::I16,
+                TypeTag::U32 | TypeTag::I32 => cranelift::codegen::ir::types::I32,
+                TypeTag::U64 | TypeTag::I64 | TypeTag::Object | TypeTag::Str => cranelift::codegen::ir::types::I64,
+                TypeTag::F32 => cranelift::codegen::ir::types::F32,
+                TypeTag::F64 => cranelift::codegen::ir::types::F64,
+                _ => unreachable!("void in argument types"),
+            };
+
+            signature.params.push(AbiParam::new(ty));
+        }
+        loop {
+            let ty = match return_type {
+                TypeTag::U8 | TypeTag::I8 => cranelift::codegen::ir::types::I8,
+                TypeTag::U16 | TypeTag::I16 => cranelift::codegen::ir::types::I16,
+                TypeTag::U32 | TypeTag::I32 => cranelift::codegen::ir::types::I32,
+                TypeTag::U64 | TypeTag::I64 | TypeTag::Object | TypeTag::Str => cranelift::codegen::ir::types::I64,
+                TypeTag::F32 => cranelift::codegen::ir::types::F32,
+                TypeTag::F64 => cranelift::codegen::ir::types::F64,
+                TypeTag::Void => break,
+            };
+
+            signature.returns.push(AbiParam::new(ty));
+            break;
+        }
+        signature
+    }
+    
+    pub fn declare_function(&mut self, name: &str, signature: &Signature) -> ModuleResult<FuncId> {
+        self.module.declare_function(name, Linkage::Export, signature)
+    }
+    
+}
+
+unsafe impl Send for JITController {}
+unsafe impl Sync for JITController {}
+
+
+pub struct JITCompiler {
+    builder_context: FunctionBuilderContext,
+    context: codegen::Context,
+    jit_utility_func: Arc<HashMap<String, FuncRef>>,
+}
+
+impl JITCompiler {
+    pub fn new(context: codegen::Context, jit_utility_func: Arc<HashMap<String, FuncRef>>) -> JITCompiler {
+        JITCompiler {
+            builder_context: FunctionBuilderContext::new(),
+            context,
+            jit_utility_func
+
+        }
+    }
+
     pub fn compile(
         &mut self,
         symbol_table: &SymbolTable,
@@ -510,7 +570,7 @@ impl FunctionTranslator<'_> {
 
                     let func_id = self.jit_utility_func.get("get_virtual_function").expect("get_virtual_function not loaded");
                     let method_args = self.get_call_arguments_as_vec();
-                    let method_value = self.builder
+                    let method_instructions = self.builder
                         .ins()
                         .call(*func_id, &[
                             method_args[0],
@@ -518,8 +578,9 @@ impl FunctionTranslator<'_> {
                             source_class_value,
                             method_name_value,
                         ]);
-
-                    self.builder.ins().call_indirect
+                    let method_value = self.builder.inst_results(method_instructions)[0];
+                    let call_args = self.get_call_arguments_as_vec();
+                    self.builder.ins().call_indirect(&sig, method_value, &call_args);
 
                 }
                 // TODO: implement signal ops

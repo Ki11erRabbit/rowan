@@ -1,6 +1,9 @@
 use std::{collections::HashMap, sync::{LazyLock, RwLock}};
 
 use class::{Class, MemberInfo, SignalInfo};
+use cranelift_jit::{JITModule, JITBuilder};
+use cranelift::codegen;
+use cranelift::prelude::Configurable;
 use linker::TableEntry;
 use object::Object;
 use rowan_shared::classfile::{BytecodeEntry, BytecodeIndex, ClassFile, Member, Signal, SignatureIndex, VTableEntry};
@@ -47,6 +50,21 @@ static SYMBOL_TABLE: LazyLock<RwLock<SymbolTable>> = LazyLock::new(|| {
 static OBJECT_TABLE: LazyLock<RwLock<ObjectTable>> = LazyLock::new(|| {
     let table = ObjectTable::new();
     RwLock::new(table)
+});
+
+static JIT_MODULE: LazyLock<RwLock<JITModule>> = LazyLock::new(|| {
+    let mut flag_builder = codegen::settings::builder();
+    flag_builder.set("use_colocated_libcalls", "false").unwrap();
+    flag_builder.set("is_pic", "false").unwrap();
+    let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
+        panic!("host machine is not supported: {}", msg);
+    });
+    let isa = isa_builder
+        .finish(codegen::settings::Flags::new(flag_builder))
+        .unwrap();
+    let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+    let module = JITModule::new(builder);
+    RwLock::new(module)
 });
 
 
