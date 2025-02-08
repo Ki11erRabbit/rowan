@@ -210,6 +210,8 @@ impl Context {
                 let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
                     panic!("Lock poisoned");
                 };
+                jit_controller.create_test_function();
+                
                 compiler.compile(&function, &mut jit_controller.module).unwrap();
 
                 let value = function.value.read().expect("Lock poisoned");

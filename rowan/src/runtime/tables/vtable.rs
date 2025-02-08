@@ -24,6 +24,8 @@ impl VTable {
     }
 
     pub fn get_function(&self, symbol: Symbol) -> &Function {
+        println!("[VTable] Looking for symbol: {:?}", symbol);
+        println!("[VTable] Mapper: {:?}", self.symbol_mapper);
         let index = self.symbol_mapper.get(&symbol).unwrap();
         &self.table[*index]
     }

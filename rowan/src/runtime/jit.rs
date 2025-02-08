@@ -1,7 +1,7 @@
 
 use std::collections::HashMap;
 
-use codegen::ir::FuncRef;
+use codegen::ir::{self, FuncRef};
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module, ModuleResult};
@@ -18,7 +18,7 @@ pub struct JITController {
     builder_context: FunctionBuilderContext,
     context: codegen::Context,
     pub module: JITModule,
-    jit_utility_func: Arc<HashMap<String, FuncRef>>,
+    jit_utility_func: Arc<HashMap<String, (FuncId, ir::function::Function)>>,
 }
 
 
@@ -48,10 +48,12 @@ impl Default for JITController {
         get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
         get_virt_func.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
 
-        let fn_id = module.declare_function("get_virtual_function", Linkage::Import, &get_virt_func).unwrap();
+        let fn_id_get_virt_func = module.declare_function("get_virtual_function", Linkage::Import, &get_virt_func).unwrap();
+        let mut get_virt_func_func = context.func.clone();
+        get_virt_func_func.signature = get_virt_func;
         
-        let func_builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
-        let get_virt_func_func = module.declare_func_in_func(fn_id, func_builder.func);
+        //let func_builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
+        //let get_virt_func_func = module.declare_func_in_func(fn_id, func_builder.func);
 
         //module.clear_context(&mut context);
 
@@ -59,20 +61,22 @@ impl Default for JITController {
         new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
         new_object.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
 
-        let fn_id = module.declare_function("new_object", Linkage::Import, &new_object).unwrap();
+        let fn_id_new_object = module.declare_function("new_object", Linkage::Import, &new_object).unwrap();
+        let mut new_object_func = context.func.clone();
+        new_object_func.signature = new_object;
         
-        let func_builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
-        let new_object_func = module.declare_func_in_func(fn_id, func_builder.func);
+        //let func_builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
+        //let new_object_func = module.declare_func_in_func(fn_id, func_builder.func);
 
         //module.clear_context(&mut context);
 
         let mut jit_utility_func = HashMap::new();
-        jit_utility_func.insert(String::from("get_virtual_function"), get_virt_func_func);
-        jit_utility_func.insert(String::from("new_object"), new_object_func);
+        jit_utility_func.insert(String::from("get_virtual_function"), (fn_id_get_virt_func, get_virt_func_func));
+        jit_utility_func.insert(String::from("new_object"), (fn_id_new_object, new_object_func));
         //module.finalize_definitions().unwrap();
 
 
-        let func_id = module.declare_function("main", Linkage::Export, &new_object).unwrap();
+        /*let func_id = module.declare_function("main", Linkage::Export, &new_object).unwrap();
         let mut func_builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
         let block = func_builder.create_block();
         func_builder.append_block_params_for_function_params(block);
@@ -84,7 +88,7 @@ impl Default for JITController {
         func_builder.ins().return_(&[]);
         func_builder.seal_all_blocks();
         module.define_function(func_id, &mut context).unwrap();
-        module.clear_context(&mut context);
+        module.clear_context(&mut context);*/
         
         
         //module.finalize_definitions().unwrap();
@@ -99,6 +103,30 @@ impl Default for JITController {
 }
 
 impl JITController {
+
+    pub fn create_test_function(&mut self) {
+
+        /*let mut new_object = self.module.make_signature();
+        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+        new_object.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+        let mut context = self.module.make_context();
+        let mut builder_context = FunctionBuilderContext::new();
+        
+        let mut func_builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
+        let block = func_builder.create_block();
+        func_builder.append_block_params_for_function_params(block);
+        func_builder.switch_to_block(block);
+        func_builder.seal_block(block);
+        let value = func_builder.ins().iconst(cranelift::codegen::ir::types::I64, 0);
+        let result = func_builder.ins().call(*self.jit_utility_func.get("new_object").unwrap(), &[value]);
+        let value = func_builder.inst_results(result)[0];
+        func_builder.ins().return_(&[]);
+        func_builder.seal_all_blocks();
+        let func_id = self.module.declare_function("main2", Linkage::Export, &new_object).unwrap();
+        self.module.define_function(func_id, &mut context).unwrap();
+        self.module.clear_context(&mut context);*/
+
+    }
 
     pub fn create_signature(&self, args: &[TypeTag], return_type: &TypeTag) -> Signature {
         let mut signature = self.module.make_signature();
@@ -140,7 +168,7 @@ impl JITController {
         self.module.make_context()
     }
 
-    pub fn get_utility_functions(&self) -> Arc<HashMap<String, FuncRef>> {
+    pub fn get_utility_functions(&self) -> Arc<HashMap<String, (FuncId, ir::function::Function)>> {
         self.jit_utility_func.clone()
     }
 }
@@ -152,11 +180,11 @@ unsafe impl Sync for JITController {}
 pub struct JITCompiler {
     builder_context: FunctionBuilderContext,
     context: codegen::Context,
-    jit_utility_func: Arc<HashMap<String, FuncRef>>,
+    jit_utility_func: Arc<HashMap<String, (FuncId, ir::function::Function)>>,
 }
 
 impl JITCompiler {
-    pub fn new(context: codegen::Context, jit_utility_func: Arc<HashMap<String, FuncRef>>) -> JITCompiler {
+    pub fn new(context: codegen::Context, jit_utility_func: Arc<HashMap<String, (FuncId, ir::function::Function)>>) -> JITCompiler {
         JITCompiler {
             builder_context: FunctionBuilderContext::new(),
             context,
@@ -179,7 +207,7 @@ impl JITCompiler {
             todo!("add error handling for non-bytecode value");
         };
 
-        self.translate(&bytecode)?;
+        self.translate(&bytecode, module)?;
 
 
         module
@@ -201,7 +229,8 @@ impl JITCompiler {
 
     pub fn translate(
         &mut self,
-        bytecode: &[Bytecode]
+        bytecode: &[Bytecode],
+        module: &mut JITModule
     ) -> Result<(), String> {
 
         let mut function_translator = FunctionTranslator::new(
@@ -211,7 +240,7 @@ impl JITCompiler {
         );
 
         println!("[JIT] Translating function");
-        function_translator.translate(bytecode)?;
+        function_translator.translate(bytecode, module)?;
         
 
         Ok(())
@@ -225,14 +254,14 @@ pub struct FunctionTranslator<'a> {
     var_store_and_stack: Vec<Option<Value>>,
     blocks: Vec<Block>,
     current_block: usize,
-    jit_utility_func: &'a HashMap<String, FuncRef>,
+    jit_utility_func: &'a HashMap<String, (FuncId, ir::function::Function)>,
 }
 
 impl FunctionTranslator<'_> {
     pub fn new<'a>(
         context: &'a mut codegen::Context,
         builder_context: &'a mut FunctionBuilderContext,
-        jit_utility_func: &'a HashMap<String, FuncRef>,
+        jit_utility_func: &'a HashMap<String, (FuncId, ir::function::Function)>,
     ) -> FunctionTranslator<'a> {
         let mut builder = FunctionBuilder::new(&mut context.func, builder_context);
 
@@ -331,7 +360,7 @@ impl FunctionTranslator<'_> {
     }
 
 
-    pub fn translate(&mut self, bytecode: &[Bytecode]) -> Result<(), String> {
+    pub fn translate(&mut self, bytecode: &[Bytecode], module: &mut JITModule) -> Result<(), String> {
 
         for bytecode in bytecode.iter() {
             match bytecode {
@@ -549,15 +578,39 @@ impl FunctionTranslator<'_> {
                 // TODO: implement array ops
                 // TODO: implement object ops
                 Bytecode::NewObject(symbol) => {
+                    let mut new_object = module.make_signature();
+                    new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    new_object.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+                    let fn_id = module.declare_function("new_object", Linkage::Import, &new_object).unwrap();
+
+                    let new_object_func = module.declare_func_in_func(fn_id, self.builder.func);
+
+                    
+                    
                     let object_symbol = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(symbol.to_le_bytes()));
-                    let func_id = self.jit_utility_func.get("new_object").expect("new_object not loaded");
-                    let new_object = self.builder.ins().call(*func_id, &[object_symbol]);
+                    let new_object = self.builder.ins().call(new_object_func, &[object_symbol]);
                     let value = self.builder.inst_results(new_object)[0];
                     self.push(value);
                 }
                 Bytecode::InvokeVirt(class_name, source_class, method_name) => {
+
+                    let mut get_virt_func = module.make_signature();
+                    get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    get_virt_func.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+                    let fn_id = module.declare_function("get_virtual_function", Linkage::Import, &get_virt_func).unwrap();
+
+                    let get_virt_func_func = module.declare_func_in_func(fn_id, self.builder.func);
+
+
+                    
                     let ctx = Context::new();
-                    let sig = ctx.get_method_signature(*class_name as Symbol, *method_name as Symbol);
+                    //*class_name as Symbol
+                    let sig = ctx.get_method_signature(0, *method_name as Symbol);
                     
                     let class_name_value = self.builder
                         .ins()
@@ -578,11 +631,10 @@ impl FunctionTranslator<'_> {
                         .ins()
                         .iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(method_name.to_le_bytes())));
 
-                    let func_id = self.jit_utility_func.get("get_virtual_function").expect("get_virtual_function not loaded");
                     let method_args = self.get_call_arguments_as_vec();
                     let method_instructions = self.builder
                         .ins()
-                        .call(*func_id, &[
+                        .call(get_virt_func_func, &[
                             method_args[0],
                             class_name_value,
                             source_class_value,
