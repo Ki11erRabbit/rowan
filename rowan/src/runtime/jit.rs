@@ -1,10 +1,10 @@
 
 use std::collections::HashMap;
 
-use codegen::ir::{self, FuncRef};
+use codegen::{ir::{self, FuncRef}, CodegenError};
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{FuncId, Linkage, Module, ModuleResult};
+use cranelift_module::{FuncId, Linkage, Module, ModuleError, ModuleResult};
 use rowan_shared::bytecode::linked::Bytecode;
 
 use rowan_shared::TypeTag;
@@ -207,12 +207,26 @@ impl JITCompiler {
             todo!("add error handling for non-bytecode value");
         };
 
+        println!("[Translating]");
         self.translate(&bytecode, module)?;
 
 
+        println!("[Defining]");
         module
             .define_function(*id, &mut self.context)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| {
+                match e {
+                    ModuleError::Compilation(e) => {
+                        match e {
+                            CodegenError::Verifier(es) => {
+                                es.0.iter().map(|e| e.to_string()).collect::<Vec<String>>().join("\n")
+                            }
+                            e => e.to_string(),
+                        }
+                    }
+                    e => e.to_string()
+                }
+            })?;
 
         module.clear_context(&mut self.context);
 
@@ -361,6 +375,8 @@ impl FunctionTranslator<'_> {
 
 
     pub fn translate(&mut self, bytecode: &[Bytecode], module: &mut JITModule) -> Result<(), String> {
+
+        println!("Bytecode: {:#?}", bytecode);
 
         for bytecode in bytecode.iter() {
             match bytecode {
@@ -656,6 +672,9 @@ impl FunctionTranslator<'_> {
             }
 
         }
+
+
+        self.builder.ins().return_(&[]);
 
         Ok(())
     }
