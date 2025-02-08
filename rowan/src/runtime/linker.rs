@@ -29,12 +29,15 @@ pub fn link_class_files(
     vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, Arc<RwLock<FunctionValue>>)>>>,
     string_map: &mut HashMap<String, Symbol>,
     class_map: &mut HashMap<String, Symbol>,
-) -> Result<(), ()> {
+) -> Result<(Symbol, Symbol), ()> {
+
+    let mut main_class_symbol = None;
+    let mut main_class_ready_symbol = None;
 
     for class in classes.iter() {
         let ClassFile { name, parents, vtables, signals, .. } = class;
         let name_str = class.index_string_table(*name);
-        let class_name_symbol = if let Some(symbol) = class_map.get(name_str) {
+        let class_symbol = if let Some(symbol) = class_map.get(name_str) {
             *symbol
         } else {
             let string_table_index = string_table.add_string(name_str);
@@ -49,6 +52,9 @@ pub fn link_class_files(
 
             symbol
         };
+        if name_str == "Main" {
+            main_class_symbol = Some(class_symbol);
+        }
 
         for parent in parents.iter() {
             let name_str = class.index_string_table(*parent);
@@ -120,6 +126,10 @@ pub fn link_class_files(
                     symbol
                 };
 
+                if name_str == "ready" {
+                    main_class_ready_symbol = Some(name_symbol);
+                }
+
                 let responds_to_symbol = if *sub_class_name != 0 {
                     let responds_to_str = class.index_string_table(*sub_class_name);
                     if let Some(symbol) = class_map.get(responds_to_str) {
@@ -148,11 +158,11 @@ pub fn link_class_files(
             }
             vtables_map.entry(vtable_class_name_symbol)
                 .and_modify(|map| {
-                    map.insert(class_name_symbol, current_vtable.clone());
+                    map.insert(class_symbol, current_vtable.clone());
                 })
                 .or_insert({
                     let mut map = HashMap::new();
-                    map.insert(class_name_symbol, current_vtable);
+                    map.insert(class_symbol, current_vtable);
                     map
                 });
         }
@@ -298,7 +308,7 @@ pub fn link_class_files(
                         .enumerate()
                         .map(|(i, (base, derived))| {
                             let (base_name_symbol, base_responds_to, base_signature, base_bytecode, base_value) = base;
-                            let (derived_name_symbol, derived_responds_to, derived_signature, derived_bytecode, derived_value) = base;
+                            let (derived_name_symbol, derived_responds_to, derived_signature, derived_bytecode, derived_value) = derived;
                             functions_mapper.insert(*derived_name_symbol, i);
                             let return_type = convert_type(&base_signature[0]);
                             let arguments = base_signature[1..]
@@ -441,8 +451,10 @@ pub fn link_class_files(
         class_parts = class_parts_to_try_again;
     }
 
-
-    Ok(())
+    match (main_class_symbol, main_class_ready_symbol) {
+        (Some(main_class_symbol), Some(main_class_ready_symbol)) => Ok((main_class_symbol, main_class_ready_symbol)),
+        _ => Err(()),
+    }
 }
 
 fn convert_type(tag: &rowan_shared::TypeTag) -> class::TypeTag {

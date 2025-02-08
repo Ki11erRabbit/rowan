@@ -71,6 +71,8 @@ impl Class {
     }
 
     pub fn get_vtable(&self, sym: &(Symbol, Option<Symbol>)) -> VTableIndex {
+        println!("{:?}", sym);
+        println!("{:?}", self.vtables);
         *self.vtables.get(sym).unwrap()
     }
 }

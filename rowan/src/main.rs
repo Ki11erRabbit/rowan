@@ -31,9 +31,16 @@ fn main() {
 
     let classes = vec![class];
 
-    context.link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map, &mut class_map);
+    let (main_symbol, ready_symbol) = context.link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map, &mut class_map);
 
     context.finish_linking_classes(pre_class_table);
-    
+
+    let main_object_ref = context.new_object(main_symbol);
+    let main_object = context.get_object(main_object_ref);
+    let main_object = unsafe { main_object.as_ref().unwrap() };
+
+    let method = context.get_method(main_object.class, 1, None, ready_symbol);
+    let method = unsafe { std::mem::transmute::<_, fn(u64)>(method) };
+    method(main_object_ref);
 
 }

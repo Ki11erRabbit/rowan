@@ -78,7 +78,7 @@ impl Context {
         vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, Arc<RwLock<FunctionValue>>)>>>,
         string_map: &mut HashMap<String, Symbol>,
         class_map: &mut HashMap<String, Symbol>
-    ) {
+    ) -> (Symbol, Symbol) {
         let Ok(mut string_table) = STRING_TABLE.write() else {
             panic!("Lock poisoned");
         };
@@ -102,7 +102,7 @@ impl Context {
             vtables_map,
             string_map,
             class_map,
-            ).unwrap();
+            ).unwrap()
     }
 
 
@@ -199,13 +199,25 @@ impl Context {
 
         let vtable = &vtables_table[vtable_index];
         let function = vtable.get_function(method_name);
-        // TODO: either make sure that this is always compiled/builtin or add code to jit it on the fly
 
         let value = function.value.read().expect("Lock poisoned");
         match &*value {
             FunctionValue::Builtin(ptr, _) => *ptr,
             FunctionValue::Compiled(ptr, _) => *ptr,
-            _ => panic!("Method not compiled yet"),
+            _ => {
+                drop(value);
+                let mut compiler = self.create_jit_compiler();
+                let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
+                    panic!("Lock poisoned");
+                };
+                compiler.compile(&function, &mut jit_controller.module).unwrap();
+
+                let value = function.value.read().expect("Lock poisoned");
+                match &*value {
+                    FunctionValue::Compiled(ptr, _) => *ptr,
+                    _ => panic!("Function wasn't compiled")
+                }
+            }
         }
 
     }
@@ -247,6 +259,47 @@ impl Context {
             _ => panic!("Method not compiled yet"),
         }
     }
+
+    pub fn new_object(&self, class_symbol: Symbol) -> Reference {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let SymbolEntry::ClassRef(class_ref) = symbol_table[class_symbol] else {
+            panic!("class wasn't a class");
+        };
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let class = &class_table[class_ref];
+        let parent_objects = &class.parents;
+
+        let mut parents = Vec::new();
+        
+        for parent in parent_objects.iter() {
+            parents.push(self.new_object(*parent));
+        }
+
+        let data_size = class.get_member_size();
+
+        let object = Object::new(class_symbol, parents.into_boxed_slice(), data_size);
+        
+        let Ok(mut object_table) = OBJECT_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+
+        let reference = object_table.add(object);
+        
+        reference
+    }
+
+    pub fn get_pointer(&self, reference: Reference) -> *mut Object {
+        let Ok(object_table) = OBJECT_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        object_table[reference]
+    }
+
 }
 
 
@@ -267,4 +320,11 @@ pub extern "C" fn get_virtual_function(object: Reference, class_symbol: u64, sou
     let method_ptr = context.get_method(object_class_symbol, class_symbol, source_class, method_name);
 
     method_ptr as usize as u64
+}
+
+pub extern "C" fn new_object(class_symbol: u64) -> u64 {
+    let context = Context::new();
+    let class_symbol = class_symbol as Symbol;
+    let object = context.new_object(class_symbol);
+    object as usize as u64
 }
