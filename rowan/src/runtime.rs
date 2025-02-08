@@ -1,9 +1,11 @@
 use std::{collections::HashMap, sync::{LazyLock, RwLock}};
+use std::sync::Arc;
 
 use class::{Class, MemberInfo, SignalInfo};
 use cranelift_jit::{JITModule, JITBuilder};
-use cranelift::codegen;
+use cranelift::{codegen, prelude::Signature};
 use cranelift::prelude::Configurable;
+use jit::{JITCompiler, JITController};
 use linker::TableEntry;
 use object::Object;
 use rowan_shared::classfile::{BytecodeEntry, BytecodeIndex, ClassFile, Member, Signal, SignatureIndex, VTableEntry};
@@ -52,19 +54,9 @@ static OBJECT_TABLE: LazyLock<RwLock<ObjectTable>> = LazyLock::new(|| {
     RwLock::new(table)
 });
 
-static JIT_MODULE: LazyLock<RwLock<JITModule>> = LazyLock::new(|| {
-    let mut flag_builder = codegen::settings::builder();
-    flag_builder.set("use_colocated_libcalls", "false").unwrap();
-    flag_builder.set("is_pic", "false").unwrap();
-    let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
-        panic!("host machine is not supported: {}", msg);
-    });
-    let isa = isa_builder
-        .finish(codegen::settings::Flags::new(flag_builder))
-        .unwrap();
-    let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
-    let module = JITModule::new(builder);
-    RwLock::new(module)
+static JIT_CONTROLLER: LazyLock<RwLock<JITController>> = LazyLock::new(|| {
+    let jit_controller = JITController::default();
+    RwLock::new(jit_controller)
 });
 
 
@@ -83,7 +75,7 @@ impl Context {
         // The first hashmap is the class symbol which the vtable comes from.
         // The second hashmap is the class that has a custom version of the vtable
         // For example, two matching symbols means that that is the vtable of that particular class
-        vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, FunctionValue)>>>,
+        vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, Arc<RwLock<FunctionValue>>)>>>,
         string_map: &mut HashMap<String, Symbol>,
         class_map: &mut HashMap<String, Symbol>
     ) {
@@ -96,9 +88,13 @@ impl Context {
         let Ok(mut vtable_tables) = VTABLES.write() else {
             panic!("Lock poisoned");
         };
+        let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
+            panic!("Lock poisoned");
+        };
 
         linker::link_class_files(
             classes,
+            &mut jit_controller,
             &mut symbol_table,
             pre_class_table,
             &mut string_table,
@@ -117,7 +113,7 @@ impl Context {
         // The first hashmap is the class symbol which the vtable comes from.
         // The second hashmap is the class that has a custom version of the vtable
         // For example, two matching symbols means that that is the vtable of that particular class
-        vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, FunctionValue)>>>,
+        vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, Arc<RwLock<FunctionValue>>)>>>,
         string_map: &mut HashMap<String, Symbol>,
         class_map: &mut HashMap<String, Symbol>
     ) {
@@ -130,9 +126,13 @@ impl Context {
         let Ok(mut vtable_tables) = VTABLES.write() else {
             panic!("Lock poisoned");
         };
+        let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
+            panic!("Lock poisoned");
+        };
 
         linker::link_vm_classes(
             classes,
+            &mut jit_controller,
             &mut symbol_table,
             pre_class_table,
             &mut string_table,
@@ -200,12 +200,52 @@ impl Context {
         let vtable = &vtables_table[vtable_index];
         let function = vtable.get_function(method_name);
         // TODO: either make sure that this is always compiled/builtin or add code to jit it on the fly
-        match function.value {
-            FunctionValue::Builtin(ptr) => ptr,
-            FunctionValue::Compiled(ptr) => ptr,
+
+        let value = function.value.read().expect("Lock poisoned");
+        match &*value {
+            FunctionValue::Builtin(ptr, _) => *ptr,
+            FunctionValue::Compiled(ptr, _) => *ptr,
             _ => panic!("Method not compiled yet"),
         }
 
+    }
+
+    pub fn create_jit_compiler(&self) -> JITCompiler {
+        let Ok(jit_controller) = JIT_CONTROLLER.write() else {
+            panic!("Lock poisoned");
+        };
+        let context = jit_controller.new_context();
+        let utility_funcs = jit_controller.get_utility_functions();
+
+        JITCompiler::new(context, utility_funcs)
+    }
+
+    pub fn get_method_signature(&self, class_symbol: Symbol, method_name: Symbol) -> Signature {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let SymbolEntry::ClassRef(object_class_index) = symbol_table[class_symbol] else {
+            panic!("class wasn't a class");
+        };
+
+        let class = &class_table[object_class_index];
+        let vtable_index = class.get_vtable(&(class_symbol, None));
+        let Ok(vtables_table) = VTABLES.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let vtable = &vtables_table[vtable_index];
+        let function = vtable.get_function(method_name);
+        let value = function.value.read().expect("Lock poisoned");
+        match &*value {
+            FunctionValue::Builtin(_, signature) => signature.clone(),
+            FunctionValue::Compiled(_, signature) => signature.clone(),
+            _ => panic!("Method not compiled yet"),
+        }
     }
 }
 

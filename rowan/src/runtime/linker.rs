@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, RwLock};
 
 use rowan_shared::classfile::{self, ClassFile, Signal, VTableEntry};
 
-use super::{class::{self, Class, MemberInfo, SignalInfo}, stdlib::{VMClass, VMMember, VMMethod, VMSignal, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Symbol, VTableIndex};
+use super::{class::{self, Class, MemberInfo, SignalInfo}, jit::JITController, stdlib::{VMClass, VMMember, VMMethod, VMSignal, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Symbol, VTableIndex};
 
 
 pub enum TableEntry<T> {
@@ -17,6 +18,7 @@ pub enum TableEntry<T> {
 
 pub fn link_class_files(
     classes: Vec<ClassFile>,
+    jit_controller: &mut JITController,
     symbol_table: &mut SymbolTable,
     class_table: &mut Vec<TableEntry<Class>>,
     string_table: &mut StringTable,
@@ -24,7 +26,7 @@ pub fn link_class_files(
     // The first hashmap is the class symbol which the vtable comes from.
     // The second hashmap is the class that has a custom version of the vtable
     // For example, two matching symbols means that that is the vtable of that particular class
-    vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, FunctionValue)>>>,
+    vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, Arc<RwLock<FunctionValue>>)>>>,
     string_map: &mut HashMap<String, Symbol>,
     class_map: &mut HashMap<String, Symbol>,
 ) -> Result<(), ()> {
@@ -140,7 +142,9 @@ pub fn link_class_files(
                     class.index_bytecode_table(*bytecode).code.clone()
                 };
                 
-                current_vtable.push((name_symbol, responds_to_symbol, signature, bytecode, FunctionValue::Blank));
+                current_vtable.push(
+                    (name_symbol, responds_to_symbol, signature, bytecode, Arc::new(RwLock::new(FunctionValue::Blank)))
+                );
             }
             vtables_map.entry(vtable_class_name_symbol)
                 .and_modify(|map| {
@@ -281,7 +285,7 @@ pub fn link_class_files(
                     let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
 
                     for (_,_,_,_,value) in base_functions {
-                        if value.is_blank() {
+                        if value.read().expect("lock poisoned").is_blank() {
                             // We bail if any of base has not yet been linked
                             class_parts_to_try_again.push((class_symbol, parents, members, signals, class, vtables));
                             continue 'outer;
@@ -318,7 +322,16 @@ pub fn link_class_files(
                             functions_mapper.insert(*name_symbol, i);
 
                             let bytecode = link_bytecode(class, &bytecode, string_map, class_map, string_table, symbol_table);
-                            let value = FunctionValue::Bytecode(bytecode);
+
+                            let SymbolEntry::StringRef(name_index) = &symbol_table[*name_symbol] else {
+                                unreachable!("Expected name symbol to be a string reference");
+                            };
+                            let name = &string_table[*name_index];
+
+                            let cranelift_sig = jit_controller.create_signature(&signature[1..], &signature[0]);
+                            let func_id = jit_controller.declare_function(name, &cranelift_sig).expect("Failed to declare function");
+                            let value = FunctionValue::Bytecode(bytecode, func_id, cranelift_sig);
+                            let value = Arc::new(RwLock::new(value));
                             (*name_symbol, *responds_to, signature.clone(), Vec::new(), value)
                         })
                         .collect::<Vec<_>>();
@@ -347,7 +360,7 @@ pub fn link_class_files(
                     let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
 
                     for (_,_,_,_,value) in base_functions {
-                        if value.is_blank() {
+                        if value.read().expect("lock is poisoned").is_blank() {
                             // We bail if any of base has not yet been linked
                             class_parts_to_try_again.push((class_symbol, parents, members, signals, class, vtables));
                             continue 'outer;
@@ -359,13 +372,21 @@ pub fn link_class_files(
                         .zip(derived_functions.into_iter())
                         .enumerate()
                         .map(|(i, (base, derived))| {
-                            let (base_name_symbol, base_responds_to, base_signature, _, _) = base;
-                            let (derived_name_symbol, derived_responds_to, derived_signature, derived_bytecode, _) = base;
+                            let (_base_name_symbol, base_responds_to, base_signature, _, _) = base;
+                            let (derived_name_symbol, derived_responds_to, derived_signature, derived_bytecode, _) = derived;
                             let bytecode = link_bytecode(class, &derived_bytecode, string_map, class_map, string_table, symbol_table);
-                            let value = FunctionValue::Bytecode(bytecode);
+                            let SymbolEntry::StringRef(name_index) = &symbol_table[*derived_name_symbol] else {
+                                unreachable!("Expected name symbol to be a string reference");
+                            };
+                            let name = &string_table[*name_index];
+
+                            let cranelift_sig = jit_controller.create_signature(&base_signature[1..], &base_signature[0]);
+                            let func_id = jit_controller.declare_function(name, &cranelift_sig).expect("Failed to declare function");
+                            let value = FunctionValue::Bytecode(bytecode, func_id, cranelift_sig);
+                            let value = Arc::new(RwLock::new(value));
                             functions_mapper.insert(*derived_name_symbol, i);
 
-                            (*derived_name_symbol, *derived_responds_to, derived_signature.clone(), Vec::new(), value)
+                            (*derived_name_symbol, *base_responds_to, derived_signature.clone(), Vec::new(), value)
                         })
                         .collect::<Vec<_>>();
                     *vtables_map.get_mut(class_name).unwrap().get_mut(class_name).unwrap() = functions.clone();
@@ -630,7 +651,7 @@ fn link_bytecode(
                 let class_str = class_file.index_string_table(class_index);
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
-                let source_class = if source_class == 0 {
+                let source_class = if source_class != 0 {
                     let class_str = class_file.index_string_table(source_class);
                     let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
                     Some(class_symbol as u64)
@@ -799,6 +820,7 @@ fn link_bytecode(
 
 pub fn link_vm_classes(
     classes: Vec<VMClass>,
+    jit_controller: &mut JITController,
     symbol_table: &mut SymbolTable,
     class_table: &mut Vec<TableEntry<Class>>,
     string_table: &mut StringTable,
@@ -806,7 +828,7 @@ pub fn link_vm_classes(
     // The first hashmap is the class symbol which the vtable comes from.
     // The second hashmap is the class that has a custom version of the vtable
     // For example, two matching symbols means that that is the vtable of that particular class
-    vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, FunctionValue)>>>,
+    vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, Arc<RwLock<FunctionValue>>)>>>,
     string_map: &mut HashMap<String, Symbol>,
     class_map: &mut HashMap<String, Symbol>
 ) {
@@ -960,8 +982,11 @@ pub fn link_vm_classes(
 
                     symbol
                 };
+                let cranelift_sig = jit_controller.create_signature(&signature[1..], &signature[0]);
 
-                current_vtable.push((name_symbol, None, signature, Vec::new(), FunctionValue::Builtin(fn_pointer)));
+                let value = FunctionValue::Builtin(fn_pointer, cranelift_sig);
+                let value = Arc::new(RwLock::new(value));
+                current_vtable.push((name_symbol, None, signature, Vec::new(), value));
             }
             vtables_map.entry(vtable_class_name_symbol)
                 .and_modify(|map| {
@@ -1055,7 +1080,7 @@ pub fn link_vm_classes(
                     let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
 
                     for (_,_,_,_,value) in base_functions {
-                        if value.is_blank() {
+                        if value.read().expect("lock is poisoned").is_blank() {
                             // We bail if any of base has not yet been linked
                             class_parts_to_try_again.push((class_symbol, parents, members, signals, vtables));
                             continue 'outer;
@@ -1067,11 +1092,11 @@ pub fn link_vm_classes(
                         .zip(derived_functions.into_iter())
                         .enumerate()
                         .map(|(i, (base, derived))| {
-                            let (base_name_symbol, base_responds_to, base_signature, _, _) = base;
-                            let (derived_name_symbol, derived_responds_to, derived_signature, derived_bytecode, value) = base;
+                            let (_base_name_symbol, base_responds_to, _base_signature, _, _) = base;
+                            let (derived_name_symbol, _derived_responds_to, derived_signature, _, value) = derived;
                             functions_mapper.insert(*derived_name_symbol, i);
 
-                            (*derived_name_symbol, *derived_responds_to, derived_signature.clone(), Vec::new(), value.clone())
+                            (*derived_name_symbol, *base_responds_to, derived_signature.clone(), Vec::new(), value.clone())
                         })
                         .collect::<Vec<_>>();
                     *vtables_map.get_mut(class_name).unwrap().get_mut(class_name).unwrap() = functions.clone();

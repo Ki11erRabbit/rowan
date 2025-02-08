@@ -1,5 +1,8 @@
-use std::{collections::HashMap, hash::{Hash, Hasher}};
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 
+use cranelift::prelude::Signature;
+use cranelift_module::FuncId;
 use rowan_shared::bytecode::linked::Bytecode;
 
 use crate::runtime::{class::TypeTag, Index, Symbol, VTableIndex};
@@ -30,23 +33,11 @@ impl VTable {
     }
 }
 
-impl PartialEq for VTable {
-    fn eq(&self, other: &Self) -> bool {
-        self.table == other.table
-    }
-}
-
-impl Hash for VTable {
-    fn hash<H: Hasher>(&self, hasher: &mut H) {
-        self.table.hash(hasher)
-    }
-
-}
 
 #[derive(Clone)]
 pub struct Function {
     pub name: Symbol,
-    pub value: FunctionValue,
+    pub value: Arc<RwLock<FunctionValue>>,
     pub responds_to: Option<Symbol>,
     pub arguments: Vec<TypeTag>,
     pub return_type: TypeTag,
@@ -55,7 +46,7 @@ pub struct Function {
 impl Function {
     pub fn new(
         name: Symbol,
-        value: FunctionValue,
+        value: Arc<RwLock<FunctionValue>>,
         responds_to: Option<Symbol>,
         arguments: Vec<TypeTag>,
         return_type: TypeTag
@@ -70,27 +61,13 @@ impl Function {
     }
 }
 
-impl PartialEq for Function {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.responds_to == other.responds_to && self.arguments == other.arguments && self.return_type == other.return_type && self.value == other.value
-    }
-}
 
-impl Hash for Function {
-    fn hash<H: Hasher>(&self, hasher: &mut H) {
-        self.name.hash(hasher);
-        self.responds_to.hash(hasher);
-        self.arguments.hash(hasher);
-        self.return_type.hash(hasher);
-    }
-
-}
 
 #[derive(Clone, Debug)]
 pub enum FunctionValue {
-    Builtin(*const ()),
-    Bytecode(Vec<Bytecode>),
-    Compiled(*const ()),
+    Builtin(*const (), Signature),
+    Bytecode(Vec<Bytecode>, FuncId, Signature),
+    Compiled(*const (), Signature),
     Blank,
 }
 
@@ -103,31 +80,6 @@ impl FunctionValue {
     }
 }
 
-impl PartialEq for FunctionValue {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            /*(FunctionValue::Bytecode(b1), FunctionValue::Bytecode(b2)) => {
-                b1 == b2
-            }*/
-            (FunctionValue::Builtin(b1), FunctionValue::Builtin(b2)) => {
-                b1 == b2
-            }
-            (FunctionValue::Blank, FunctionValue::Builtin(_)) => {
-                true
-            }
-            (FunctionValue::Builtin(_), FunctionValue::Blank) => {
-                true
-            }
-            (FunctionValue::Blank, FunctionValue::Bytecode(_)) => {
-                true
-            }
-            (FunctionValue::Bytecode(_), FunctionValue::Blank) => {
-                true
-            }
-            _ => false,
-        }
-    }
-}
 
 
 unsafe impl Send for FunctionValue {}

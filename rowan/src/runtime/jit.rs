@@ -7,7 +7,8 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module, ModuleResult};
 use rowan_shared::bytecode::linked::Bytecode;
 
-use super::{class::TypeTag, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue}}};
+use rowan_shared::TypeTag;
+use super::{tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue}}, Context, Symbol};
 use std::sync::Arc;
 
 
@@ -102,7 +103,14 @@ impl JITController {
     pub fn declare_function(&mut self, name: &str, signature: &Signature) -> ModuleResult<FuncId> {
         self.module.declare_function(name, Linkage::Export, signature)
     }
-    
+
+    pub fn new_context(&self) -> codegen::Context {
+        self.module.make_context()
+    }
+
+    pub fn get_utility_functions(&self) -> Arc<HashMap<String, FuncRef>> {
+        self.jit_utility_func.clone()
+    }
 }
 
 unsafe impl Send for JITController {}
@@ -127,57 +135,46 @@ impl JITCompiler {
 
     pub fn compile(
         &mut self,
-        symbol_table: &SymbolTable,
-        string_table: &StringTable,
-        function: &mut Function
+        function: &mut Function,
+        module: &mut JITModule,
     ) -> Result<(), String> {
 
-        let FunctionValue::Bytecode(bytecode) = &function.value else {
+        let Ok(mut value) = function.value.write() else {
+            panic!("Lock poisoned");
+        };
+
+        let FunctionValue::Bytecode(bytecode, id, sig) = &*value else {
             todo!("add error handling for non-bytecode value");
         };
 
-        self.translate(&function.arguments, &function.return_type, &bytecode)?;
+        self.translate(&bytecode)?;
 
-        let function_name_symbol = symbol_table[function.name];
-        let SymbolEntry::StringRef(name_index) = function_name_symbol else {
-            todo!("Add error handling for symbol not being a string")
-        };
-        let name: &str = &string_table[name_index];
 
-        let id = self
-            .module
-            .declare_function(name, Linkage::Export, &self.context.func.signature)
+        module
+            .define_function(*id, &mut self.context)
             .map_err(|e| e.to_string())?;
 
-        self.module
-            .define_function(id, &mut self.context)
-            .map_err(|e| e.to_string())?;
+        module.clear_context(&mut self.context);
 
-        self.module.clear_context(&mut self.context);
+        module.finalize_definitions().unwrap();
 
-        self.module.finalize_definitions().unwrap();
+        let code = module.get_finalized_function(*id);
 
-        let code = self.module.get_finalized_function(id);
+        let new_function_value = FunctionValue::Compiled(code as *const (), sig.clone());
 
-        let value = FunctionValue::Compiled(code as *const ());
-
-        function.value = value;
+        *value = new_function_value;
         
         Ok(())
     }
 
     pub fn translate(
         &mut self,
-        args: &[TypeTag],
-        return_type: &TypeTag,
         bytecode: &[Bytecode]
     ) -> Result<(), String> {
 
         let mut function_translator = FunctionTranslator::new(
             &mut self.context,
             &mut self.builder_context,
-            args,
-            return_type,
             &self.jit_utility_func
         );
 
@@ -202,38 +199,8 @@ impl FunctionTranslator<'_> {
     pub fn new<'a>(
         context: &'a mut codegen::Context,
         builder_context: &'a mut FunctionBuilderContext,
-        args: &[TypeTag],
-        return_type: &TypeTag,
         jit_utility_func: &'a HashMap<String, FuncRef>,
     ) -> FunctionTranslator<'a> {
-        for ty in args {
-            let ty = match ty {
-                TypeTag::U8 | TypeTag::I8 => cranelift::codegen::ir::types::I8,
-                TypeTag::U16 | TypeTag::I16 => cranelift::codegen::ir::types::I16,
-                TypeTag::U32 | TypeTag::I32 => cranelift::codegen::ir::types::I32,
-                TypeTag::U64 | TypeTag::I64 | TypeTag::Object | TypeTag::Str => cranelift::codegen::ir::types::I64,
-                TypeTag::F32 => cranelift::codegen::ir::types::F32,
-                TypeTag::F64 => cranelift::codegen::ir::types::F64,
-                _ => unreachable!("void in argument types"),
-            };
-
-            context.func.signature.params.push(AbiParam::new(ty));
-        }
-        loop {
-            let ty = match return_type {
-                TypeTag::U8 | TypeTag::I8 => cranelift::codegen::ir::types::I8,
-                TypeTag::U16 | TypeTag::I16 => cranelift::codegen::ir::types::I16,
-                TypeTag::U32 | TypeTag::I32 => cranelift::codegen::ir::types::I32,
-                TypeTag::U64 | TypeTag::I64 | TypeTag::Object | TypeTag::Str => cranelift::codegen::ir::types::I64,
-                TypeTag::F32 => cranelift::codegen::ir::types::F32,
-                TypeTag::F64 => cranelift::codegen::ir::types::F64,
-                TypeTag::Void => break,
-            };
-
-            context.func.signature.returns.push(AbiParam::new(ty));
-            break;
-        }
-
         let mut builder = FunctionBuilder::new(&mut context.func, builder_context);
 
         let entry_block = builder.create_block();
@@ -549,6 +516,9 @@ impl FunctionTranslator<'_> {
                 // TODO: implement array ops
                 // TODO: implement object ops
                 Bytecode::InvokeVirt(class_name, source_class, method_name) => {
+                    let ctx = Context::new();
+                    let sig = ctx.get_method_signature(*class_name as Symbol, *method_name as Symbol);
+                    
                     let class_name_value = self.builder
                         .ins()
                         .iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(class_name.to_le_bytes())));
@@ -580,8 +550,9 @@ impl FunctionTranslator<'_> {
                         ]);
                     let method_value = self.builder.inst_results(method_instructions)[0];
                     let call_args = self.get_call_arguments_as_vec();
-                    self.builder.ins().call_indirect(&sig, method_value, &call_args);
-
+                    let sig = self.builder.import_signature(sig);
+                    
+                    self.builder.ins().call_indirect(sig, method_value, &call_args);
                 }
                 // TODO: implement signal ops
                 x => todo!("remaining ops"),
