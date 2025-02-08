@@ -670,11 +670,27 @@ impl Compiler {
 
                 let name = name.segments.last().unwrap();
                 let class = self.classes.get(ty).expect("Classes are in a bad order of compiling");
-                println!("{:#?}", class);
+                //println!("{:#?}", class);
                 let vtable = class.get_vtable(name).expect("add proper handling of missing vtable");
                 let method_entry = class.get_method_entry(name).expect("add proper handling of missing method");
 
-                output.push(Bytecode::InvokeVirt(vtable.class_name, vtable.sub_class_name, method_entry.name));
+                println!("{}", class.index_string_table(vtable.class_name));
+
+                let class_name = class.index_string_table(vtable.class_name);
+                let vtable_class_name = partial_class.add_string(class_name);
+
+                let source_class = if vtable.sub_class_name == 0 {
+                    0
+                } else {
+                    let class_name = class.index_string_table(vtable.sub_class_name);
+                    partial_class.add_string(class_name)
+                };
+
+                let method_name = class.index_string_table(method_entry.name);
+                let method_name = partial_class.add_string(method_name);
+                
+                
+                output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
                 
             }
             Expression::New(ty, arr_size, _) => {
