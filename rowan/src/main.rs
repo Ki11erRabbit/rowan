@@ -39,10 +39,10 @@ fn main() {
     let main_object = context.get_object(main_object_ref);
     let main_object = unsafe { main_object.as_ref().unwrap() };
 
-    println!("[Main] {}", context.get_class_name(12));
+    /*println!("[Main] {}", context.get_class_name(12));
 
     let class = context.get_class(main_object.class);
-    println!("[Main] Class: {:?}", unsafe {class.read()});
+    println!("[Main] Class: {:?}", unsafe {class.read()});*/
 
     let method = context.get_method(main_object.class, 1, None, ready_symbol);
     let method = unsafe { std::mem::transmute::<_, fn(u64)>(method) };

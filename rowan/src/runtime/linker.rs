@@ -49,8 +49,6 @@ pub fn link_class_files(
             let symbol = symbol_table.add_class(class_table_index);
             
             class_map.insert(String::from(name_str), symbol);
-            println!("[link_class_files] Class: {}", name_str);
-            println!("[link_class_files] Symbol: {}", symbol);
 
             symbol
         };
@@ -58,11 +56,8 @@ pub fn link_class_files(
             main_class_symbol = Some(class_symbol);
         }
 
-        println!("[link_class_files] Class: {}", name_str);
-        println!("[link_class_files] len: {}", parents.len());
         for parent in parents.iter() {
             let name_str = class.index_string_table(*parent);
-            println!("Parent: {}", name_str);
             let symbol = if let Some(symbol) = class_map.get(name_str) {
                 *symbol
             } else {
@@ -77,7 +72,6 @@ pub fn link_class_files(
                 class_map.insert(String::from(name_str), symbol);
                 symbol
             };
-            println!("Symbol: {}", symbol);
         }
 
         for vtable in vtables {
@@ -376,8 +370,6 @@ pub fn link_class_files(
                     // We also update vtables_map to hold updated function values so that we can link future vtables
 
 
-                    println!("[link_class_files] class_name: {}", class_name);
-                    println!("[link_class_files] class_symbol: {}", class_symbol);
                     let derived_functions = vtables_map.get(class_name).unwrap().get(&class_symbol).unwrap();
                     let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
 
@@ -463,8 +455,6 @@ pub fn link_class_files(
         class_parts = class_parts_to_try_again;
     }
 
-    println!("[link_class_files] class_map: {:#?}", class_map);
-    println!("[link_class_files] class_table: {:#?}", class_table);
 
     match (main_class_symbol, main_class_ready_symbol) {
         (Some(main_class_symbol), Some(main_class_ready_symbol)) => Ok((main_class_symbol, main_class_ready_symbol)),
@@ -676,7 +666,6 @@ fn link_bytecode(
             }
             compiled::Bytecode::InvokeVirt(class_index, source_class, method_index) => {
                 let class_str = class_file.index_string_table(class_index);
-                println!("[link_bytecode] class_str: {}", class_str);
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let source_class = if source_class != 0 {

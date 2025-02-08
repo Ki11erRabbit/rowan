@@ -660,6 +660,7 @@ impl Compiler {
                 let object = self.get_variable(var).expect("There should be method calling by this point");
                 output.push(Bytecode::LoadLocal(object));
                 output.push(Bytecode::StoreArgument(argument_pos));
+                argument_pos += 1;
 
                 for arg in args {
                     self.compile_expression(class_name, partial_class, arg, output)?;

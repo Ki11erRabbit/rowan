@@ -207,11 +207,11 @@ impl JITCompiler {
             todo!("add error handling for non-bytecode value");
         };
 
-        println!("[Translating]");
+        //println!("[Translating]");
         self.translate(&bytecode, module)?;
 
 
-        println!("[Defining]");
+        //println!("[Defining]");
         module
             .define_function(*id, &mut self.context)
             .map_err(|e| {
@@ -253,7 +253,7 @@ impl JITCompiler {
             &self.jit_utility_func
         );
 
-        println!("[JIT] Translating function");
+        //println!("[JIT] Translating function");
         function_translator.translate(bytecode, module)?;
         
 
@@ -376,7 +376,7 @@ impl FunctionTranslator<'_> {
 
     pub fn translate(&mut self, bytecode: &[Bytecode], module: &mut JITModule) -> Result<(), String> {
 
-        println!("Bytecode: {:#?}", bytecode);
+        //println!("Bytecode: {:#?}", bytecode);
 
         for bytecode in bytecode.iter() {
             match bytecode {
@@ -625,7 +625,7 @@ impl FunctionTranslator<'_> {
 
                     
                     let ctx = Context::new();
-                    println!("[translate] class_name from invoke virt: {}", class_name);
+                    //println!("[translate] class_name from invoke virt: {}", class_name);
                     let sig = ctx.get_method_signature(*class_name as Symbol, *method_name as Symbol);
                     
                     let class_name_value = self.builder
