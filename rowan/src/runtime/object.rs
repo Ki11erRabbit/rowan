@@ -7,6 +7,7 @@ pub struct Object {
     pub class: Symbol,
     pub parent_objects: Box<[Reference]>,
     pub children: Vec<Reference>,
+    pub custom_drop: Option<fn(&mut Object)>,
     //data: [u8]
 }
 
@@ -32,6 +33,7 @@ impl Object {
                 class,
                 parent_objects: parents,
                 children: Vec::new(),
+                custom_drop: None,
             });
         }
         pointer
@@ -43,6 +45,10 @@ impl Object {
             // Dropping boxed and vec members from pointer
             drop(ptr.read().parent_objects);
             drop(ptr.read().children);
+            let self_ptr = ptr.as_mut().unwrap();
+            if let Some(func) = self_ptr.custom_drop {
+                func(self_ptr);
+            }
         }
 
         let layout = Layout::new::<Object>();
@@ -77,5 +83,9 @@ impl Object {
         let class_symbol = self.class;
 
         (class_symbol, &self.parent_objects)
+    }
+
+    pub fn add_custom_drop(&mut self, func: fn(&mut Object)) {
+        self.custom_drop = Some(func);
     }
 }

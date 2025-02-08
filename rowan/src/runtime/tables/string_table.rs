@@ -37,6 +37,16 @@ impl StringTable {
 
         out
     }
+
+    pub fn get_string(&self, index: usize) -> &'static str {
+        let (size, ptr) = self.table[index];
+        let s = unsafe {
+            let slice = std::slice::from_raw_parts(ptr, size);
+
+            std::str::from_utf8_unchecked(slice)
+        };
+        s
+    }
 }
 
 impl std::ops::Index<usize> for StringTable {

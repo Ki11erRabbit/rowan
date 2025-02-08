@@ -295,13 +295,6 @@ impl Context {
         reference
     }
 
-    pub fn get_pointer(&self, reference: Reference) -> *mut Object {
-        let Ok(object_table) = OBJECT_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-        object_table[reference]
-    }
-
     pub fn get_class_name(&self, class_symbol: Symbol) -> String {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
@@ -334,6 +327,19 @@ impl Context {
             panic!("Lock poisoned");
         };
         &class_table[class_index]
+    }
+
+    pub fn get_string(&self, string_symbol: Symbol) -> &'static str {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(string_table) = STRING_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let SymbolEntry::StringRef(string_index) = symbol_table[string_symbol] else {
+            panic!("string symbol wasn't a string");
+        }; 
+        string_table.get_string(string_index)
     }
 
 }

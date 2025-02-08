@@ -54,14 +54,17 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     let names = vec![
         "println-int",
         "println-float",
+        "println",
     ];
     let responds_to = vec![
+        "",
         "",
         "",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::U64]),
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::F64]),
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object]),
     ];
     let vtable = VTable::new(functions);
     
@@ -69,7 +72,232 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     printer.make_not_printable();
     classes.insert(String::from("Printer"), printer);
 
+    
+    let mut string = PartialClass::new();
+    string.set_name("String");
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "load-str",
+        "init",
+        "len",
+    ];
+    let responds_to = vec![
+        "",
+        "",
+        "",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
+        SignatureEntry::new(vec![TypeTag::Void]),
+        SignatureEntry::new(vec![TypeTag::U64]),
+    ];
+    let vtable = VTable::new(functions);
+    
+    string.add_vtable("String", vtable, &names, &responds_to, &signatures);
+    string.make_not_printable();
+    classes.insert(String::from("String"), string);
 
+    
+    let mut array = PartialClass::new();
+    array.set_name("Array8");
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "load-str",
+        "init",
+        "len",
+    ];
+    let responds_to = vec![
+        "",
+        "",
+        "",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
+        SignatureEntry::new(vec![TypeTag::Void]),
+        SignatureEntry::new(vec![TypeTag::U64]),
+    ];
+    let vtable = VTable::new(functions);
+    
+    array.add_vtable("Array8", vtable, &names, &responds_to, &signatures);
+    array.make_not_printable();
+    classes.insert(String::from("Array8"), array);
+
+    let mut array = PartialClass::new();
+    array.set_name("Array16");
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "load-str",
+        "init",
+        "len",
+    ];
+    let responds_to = vec![
+        "",
+        "",
+        "",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
+        SignatureEntry::new(vec![TypeTag::Void]),
+        SignatureEntry::new(vec![TypeTag::U64]),
+    ];
+    let vtable = VTable::new(functions);
+    
+    array.add_vtable("Array16", vtable, &names, &responds_to, &signatures);
+    array.make_not_printable();
+    classes.insert(String::from("Array16"), array);
+
+    let mut array = PartialClass::new();
+    array.set_name("Array32");
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "load-str",
+        "init",
+        "len",
+    ];
+    let responds_to = vec![
+        "",
+        "",
+        "",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
+        SignatureEntry::new(vec![TypeTag::Void]),
+        SignatureEntry::new(vec![TypeTag::U64]),
+    ];
+    let vtable = VTable::new(functions);
+    
+    array.add_vtable("Array32", vtable, &names, &responds_to, &signatures);
+    array.make_not_printable();
+    classes.insert(String::from("Array32"), array);
+
+    let mut array = PartialClass::new();
+    array.set_name("Array64");
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "load-str",
+        "init",
+        "len",
+    ];
+    let responds_to = vec![
+        "",
+        "",
+        "",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
+        SignatureEntry::new(vec![TypeTag::Void]),
+        SignatureEntry::new(vec![TypeTag::U64]),
+    ];
+    let vtable = VTable::new(functions);
+    
+    array.add_vtable("Array64", vtable, &names, &responds_to, &signatures);
+    array.make_not_printable();
+    classes.insert(String::from("Array64"), array);
+
+    let mut array = PartialClass::new();
+    array.set_name("Arrayf32");
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "load-str",
+        "init",
+        "len",
+    ];
+    let responds_to = vec![
+        "",
+        "",
+        "",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
+        SignatureEntry::new(vec![TypeTag::Void]),
+        SignatureEntry::new(vec![TypeTag::U64]),
+    ];
+    let vtable = VTable::new(functions);
+    
+    array.add_vtable("Arrayf32", vtable, &names, &responds_to, &signatures);
+    array.make_not_printable();
+    classes.insert(String::from("Arrayf32"), array);
+
+    let mut array = PartialClass::new();
+    array.set_name("Arrayf64");
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "load-str",
+        "init",
+        "len",
+    ];
+    let responds_to = vec![
+        "",
+        "",
+        "",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
+        SignatureEntry::new(vec![TypeTag::Void]),
+        SignatureEntry::new(vec![TypeTag::U64]),
+    ];
+    let vtable = VTable::new(functions);
+    
+    array.add_vtable("Arrayf64", vtable, &names, &responds_to, &signatures);
+    array.make_not_printable();
+    classes.insert(String::from("Arrayf64"), array);
+
+    let mut array = PartialClass::new();
+    array.set_name("ArrayObject");
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "load-str",
+        "init",
+        "len",
+    ];
+    let responds_to = vec![
+        "",
+        "",
+        "",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
+        SignatureEntry::new(vec![TypeTag::Void]),
+        SignatureEntry::new(vec![TypeTag::U64]),
+    ];
+    let vtable = VTable::new(functions);
+    
+    array.add_vtable("ArrayObject", vtable, &names, &responds_to, &signatures);
+    array.make_not_printable();
+    classes.insert(String::from("ArrayObject"), array);
+    
     classes
 }
 
