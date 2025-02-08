@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::{Symbol, VTableIndex};
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum TypeTag {
     U8,
     U16,
@@ -40,7 +40,7 @@ impl TypeTag {
     }
 }
 
-
+#[derive(Debug)]
 pub struct Class {
     pub name: Symbol,
     pub parents: Vec<Symbol>,
@@ -78,6 +78,7 @@ impl Class {
 }
 
 
+#[derive(Debug)]
 pub struct MemberInfo {
     name: Symbol,
     ty: TypeTag,
@@ -97,6 +98,7 @@ impl MemberInfo {
 }
 
 
+#[derive(Debug)]
 pub struct SignalInfo {
     name: Symbol,
     is_static: bool,

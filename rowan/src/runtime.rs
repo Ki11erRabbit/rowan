@@ -302,6 +302,40 @@ impl Context {
         object_table[reference]
     }
 
+    pub fn get_class_name(&self, class_symbol: Symbol) -> String {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol] else {
+            panic!("class symbol wasn't a class");
+        }; 
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let class = &class_table[class_index];
+        
+        let Ok(string_table) = STRING_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let SymbolEntry::StringRef(class_name) = symbol_table[class.name] else {
+            panic!("class name wasn't a string");
+        }; 
+        String::from(&string_table[class_name])
+    }
+
+    pub fn get_class(&self, class_symbol: Symbol) -> *const Class {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol] else {
+            panic!("class symbol wasn't a class");
+        }; 
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        &class_table[class_index]
+    }
+
 }
 
 

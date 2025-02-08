@@ -609,8 +609,8 @@ impl FunctionTranslator<'_> {
 
                     
                     let ctx = Context::new();
-                    //*class_name as Symbol
-                    let sig = ctx.get_method_signature(0, *method_name as Symbol);
+                    println!("[translate] class_name from invoke virt: {}", class_name);
+                    let sig = ctx.get_method_signature(*class_name as Symbol, *method_name as Symbol);
                     
                     let class_name_value = self.builder
                         .ins()

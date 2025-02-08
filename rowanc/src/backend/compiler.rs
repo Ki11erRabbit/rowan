@@ -238,6 +238,7 @@ impl Compiler {
             let (vtable, names, responds_to, signatures) = &vtables[0];
 
             partial_class.add_vtable("Object", vtable.clone(), names, responds_to, signatures);
+            partial_class.add_parent("Object");
         }
         
         for vtables in parent_vtables {
