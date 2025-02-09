@@ -1,6 +1,7 @@
 pub mod backend;
 pub mod parser;
 pub mod ast;
+pub mod typechecker;
 
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();
