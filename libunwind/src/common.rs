@@ -1,4 +1,5 @@
 use std::cell::UnsafeCell;
+use libunwind_sys as unwind;
 
 #[derive(Debug)]
 pub enum Error {
@@ -78,13 +79,13 @@ impl From<std::os::raw::c_uint> for CachingPolicy {
 
 pub trait UnwindCursorData {
     /// This is for internal use only and should not be called
-    fn get_cursor(&self) -> *mut crate::unw_cursor_t;
+    fn get_cursor(&self) -> *mut unwind::unw_cursor_t;
     fn get_register(&self, reg: super::machine::Register) -> Result<u64> {
         let cursor = self.get_cursor();
         let register = reg.into();
         let mut value = 0;
         let result = unsafe {
-            crate::_Ux86_64_get_reg(cursor, register, &mut value)
+            unwind::unw_get_reg(cursor, register, &mut value)
         };
         let error: Error = result.into();
         if error.is_success() {
@@ -97,7 +98,7 @@ pub trait UnwindCursorData {
         let cursor = self.get_cursor();
         let register = reg.into();
         let result = unsafe {
-            crate::_Ux86_64_set_reg(cursor, register, value)
+            unwind::unw_set_reg(cursor, register, value)
         };
         let error: Error = result.into();
         if error.is_success() {
@@ -107,9 +108,9 @@ pub trait UnwindCursorData {
         }
     }
     fn resume(&self) -> ! {
-        let cursor = self.get_cursor() as *const crate::unw_cursor_t;
+        let cursor = self.get_cursor() as *const unwind::unw_cursor_t;
         unsafe {
-            crate::_Ux86_64_resume(cursor as *mut crate::unw_cursor_t)
+            unwind::unw_resume(cursor as *mut unwind::unw_cursor_t)
         };
         todo!("remote resume");
     }
@@ -117,7 +118,7 @@ pub trait UnwindCursorData {
         let cursor = self.get_cursor();
         let mut offset = 0;
         let result = unsafe {
-            crate::_Ux86_64_get_proc_name(cursor, buf.as_mut_ptr() as *mut i8, buf.len(), &mut offset)
+            unwind::unw_get_proc_name(cursor, buf.as_mut_ptr() as *mut i8, buf.len(), &mut offset)
         };
 
         let error: Error = result.into();
@@ -135,14 +136,14 @@ pub trait UnwindCursorData {
 /// frame to frame. It is safe to make (shallow) copies of variables
 /// of this type.
 pub struct Cursor<'a> {
-    cursor: UnsafeCell<crate::unw_cursor_t>,
+    cursor: UnsafeCell<unwind::unw_cursor_t>,
     phantom: std::marker::PhantomData<&'a ()>,
 }
 
 impl Iterator for Cursor<'_> {
     type Item = CursorData;
     fn next(&mut self) -> Option<Self::Item> {
-        if unsafe { crate::_Ux86_64_step(self.cursor.get()) } > 0 {
+        if unsafe { unwind::unw_step(self.cursor.get()) } > 0 {
             Some(CursorData {
                 cursor: self.cursor.get(),
             })
@@ -153,11 +154,11 @@ impl Iterator for Cursor<'_> {
 }
 
 pub struct CursorData {
-    cursor: *mut crate::unw_cursor_t,
+    cursor: *mut unwind::unw_cursor_t,
 }
 
 impl UnwindCursorData for CursorData {
-    fn get_cursor(&self) -> *mut crate::unw_cursor_t {
+    fn get_cursor(&self) -> *mut unwind::unw_cursor_t {
         self.cursor
     }
 }
@@ -167,14 +168,14 @@ impl UnwindCursorData for CursorData {
 /// frame to frame. It is safe to make (shallow) copies of variables
 /// of this type.
 pub struct CursorMut<'a> {
-    cursor: UnsafeCell<crate::unw_cursor_t>,
+    cursor: UnsafeCell<unwind::unw_cursor_t>,
     phantom: std::marker::PhantomData<&'a ()>,
 }
 
 impl Iterator for CursorMut<'_> {
     type Item = CursorDataMut;
     fn next(&mut self) -> Option<Self::Item> {
-        if unsafe { crate::_Ux86_64_step(self.cursor.get()) } > 0 {
+        if unsafe { unwind::unw_step(self.cursor.get()) } > 0 {
             Some(CursorDataMut {
                 cursor: self.cursor.get(),
             })
@@ -185,22 +186,22 @@ impl Iterator for CursorMut<'_> {
 }
 
 pub struct CursorDataMut {
-    cursor: *mut crate::unw_cursor_t,
+    cursor: *mut unwind::unw_cursor_t,
 }
 
 impl UnwindCursorData for CursorDataMut {
-    fn get_cursor(&self) -> *mut crate::unw_cursor_t {
+    fn get_cursor(&self) -> *mut unwind::unw_cursor_t {
         self.cursor
     }
 }
 
 pub struct Context {
-    ctx: crate::unw_context_t,
+    ctx: unwind::unw_context_t,
 }
 
 impl Context {
     pub fn get_context() -> Result<Self> {
-        let mut ctx = crate::unw_context_t {
+        let mut ctx = unwind::unw_context_t {
             uc_flags: 0,
             uc_link: unsafe { std::mem::zeroed() },
             uc_stack: unsafe { std::mem::zeroed() },
@@ -211,7 +212,7 @@ impl Context {
             
             
         };
-        let result = unsafe { crate::_Ux86_64_getcontext(&mut ctx) };
+        let result = unsafe { unwind::unw_getcontext(&mut ctx) };
         let error: Error = result.into();
         if error.is_success() {
             Ok(Context {
@@ -223,11 +224,11 @@ impl Context {
     }
 
     pub fn cursor<'a>(&'a self) -> Result<Cursor<'a>> {
-        let mut cursor = crate::unw_cursor_t {
+        let mut cursor = unwind::unw_cursor_t {
             opaque: unsafe { std::mem::zeroed() },
         };
         let result = unsafe {
-            crate::_Ux86_64_init_local(&mut cursor, &self.ctx as *const crate::unw_context_t  as *mut crate::unw_context_t)
+            unwind::unw_init_local(&mut cursor, &self.ctx as *const unwind::unw_context_t  as *mut unwind::unw_context_t)
         };
         let error: Error = result.into();
         if error.is_success() {
@@ -241,11 +242,11 @@ impl Context {
     }
 
     pub fn cursor_mut<'a>(&'a mut self) -> Result<CursorMut<'a>> {
-        let mut cursor = crate::unw_cursor_t {
+        let mut cursor = unwind::unw_cursor_t {
             opaque: unsafe { std::mem::zeroed() },
         };
         let result = unsafe {
-            crate::_Ux86_64_init_local(&mut cursor, &mut self.ctx)
+            unwind::unw_init_local(&mut cursor, &mut self.ctx)
         };
         let error: Error = result.into();
         if error.is_success() {
@@ -268,7 +269,7 @@ mod test {
         let context = Context::get_context().unwrap();
         let mut cursor = context.cursor().unwrap();
         // Skip this current function call
-        _ = cursor.next();
+        //_ = cursor.next();
 
         while let Some(data) = cursor.next() {
             let mut buffer = vec![0; 1024];

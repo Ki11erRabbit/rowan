@@ -3,7 +3,5 @@ name = "libunwind"
 version = "0.1.0"
 edition = "2024"
 
-[build-dependencies]
-bindgen = "0.71.1"
-
 [dependencies]
+libunwind-sys = { git = "https://github.com/Ki11erRabbit/libunwind-sys" }
