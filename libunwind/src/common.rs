@@ -269,9 +269,9 @@ mod test {
         let context = Context::get_context().unwrap();
         let mut cursor = context.cursor().unwrap();
         // Skip this current function call
-        //_ = cursor.next();
+        _ = cursor.next();
 
-        while let Some(data) = cursor.next() {
+        while let Some(mut data) = cursor.next() {
             let mut buffer = vec![0; 1024];
 
             data.get_procedure_name(&mut buffer).unwrap();
@@ -281,17 +281,33 @@ mod test {
             }
             buffer.truncate(i + 1);
             let string = unsafe { String::from_utf8_unchecked(buffer) };
-            println!("{}", string);
+            if string.contains("some_func") {
+                _ = data.set_register(crate::x86_64::Register::RAX, 1);
+                data.resume();
+                break;
+            }
         }
         
         panic!("backtrace");
     }
 
+    fn some_func() -> u64 {
+        other_func()
+    }
+
+    fn other_func() -> u64 {
+        backtrace();
+        0
+    }
+
     
     #[test]
     fn test_backtrace() {
-        backtrace();
-
+        if some_func() != 0 {
+            assert!(true);
+        } else {
+            assert!(false);
+        }
     }
     
 }
