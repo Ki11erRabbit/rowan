@@ -3,12 +3,12 @@ use std::path::PathBuf;
 
 fn main() {
     // Tell cargo to look for shared libraries in the specified directory
-    let var = env::var("LIBUNWIND_PATH").map(Ok(String::from("/usr/include/")));
+    let var = env::var("LIBUNWIND_PATH").unwrap_or(String::from("/usr/lib/"));
     println!("cargo:rustc-link-search={}", var);
 
     // Tell cargo to tell rustc to link the system libunwind
     // shared library.
-    println!("cargo:rustc-link-lib=unwind");
+    println!("cargo:rustc-link-lib=dylib=unwind");
 
     //let libc = env::var("LIBC_INCLUDES_PATH").unwrap();
     //let gcc = env::var("GCC_INCLUDES_PATH").unwrap();
