@@ -1,14 +1,13 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub mod common;
+pub mod dynamic;
+#[cfg(target_arch = "x86_64")]
+pub mod x86_64;
+#[cfg(target_arch = "x86_64")]
+pub use x86_64 as machine;
+//pub mod machine;
