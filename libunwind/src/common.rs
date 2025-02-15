@@ -77,59 +77,6 @@ impl From<std::os::raw::c_uint> for CachingPolicy {
     }
 }
 
-pub trait UnwindCursorData {
-    /// This is for internal use only and should not be called
-    fn get_cursor(&self) -> *mut unwind::unw_cursor_t;
-    fn get_register(&self, reg: super::machine::Register) -> Result<u64> {
-        let cursor = self.get_cursor();
-        let register = reg.into();
-        let mut value = 0;
-        let result = unsafe {
-            unwind::unw_get_reg(cursor, register, &mut value)
-        };
-        let error: Error = result.into();
-        if error.is_success() {
-            Ok(value)
-        } else {
-            Err(error)
-        }
-    }
-    fn set_register(&mut self, reg: super::machine::Register, value: u64) -> Result<()> {
-        let cursor = self.get_cursor();
-        let register = reg.into();
-        let result = unsafe {
-            unwind::unw_set_reg(cursor, register, value)
-        };
-        let error: Error = result.into();
-        if error.is_success() {
-            Ok(())
-        } else {
-            Err(error)
-        }
-    }
-    fn resume(&self) -> ! {
-        let cursor = self.get_cursor() as *const unwind::unw_cursor_t;
-        unsafe {
-            unwind::unw_resume(cursor as *mut unwind::unw_cursor_t)
-        };
-        todo!("remote resume");
-    }
-    fn get_procedure_name(&self, buf: &mut [u8]) -> Result<usize> {
-        let cursor = self.get_cursor();
-        let mut offset = 0;
-        let result = unsafe {
-            unwind::unw_get_proc_name(cursor, buf.as_mut_ptr() as *mut i8, buf.len(), &mut offset)
-        };
-
-        let error: Error = result.into();
-        if error.is_success() {
-            Ok(offset as usize)
-        } else {
-            Err(error)
-        }
-    }
-}
-
 
 /// The unwind cursor starts at the youngest (most deeply nested) frame
 /// and is used to track the frame state as the unwinder steps from
@@ -157,43 +104,172 @@ pub struct CursorData {
     cursor: *mut unwind::unw_cursor_t,
 }
 
-impl UnwindCursorData for CursorData {
+
+
+impl CursorData {
     fn get_cursor(&self) -> *mut unwind::unw_cursor_t {
         self.cursor
     }
-}
 
-/// The unwind cursor starts at the youngest (most deeply nested) frame
-/// and is used to track the frame state as the unwinder steps from
-/// frame to frame. It is safe to make (shallow) copies of variables
-/// of this type.
-pub struct CursorMut<'a> {
-    cursor: UnsafeCell<unwind::unw_cursor_t>,
-    phantom: std::marker::PhantomData<&'a ()>,
-}
+    pub fn resume(&self) -> ! {
+        let cursor = self.get_cursor() as *const unwind::unw_cursor_t;
+        unsafe {
+            unwind::unw_resume(cursor as *mut unwind::unw_cursor_t)
+        };
+        todo!("remote resume");
+    }
 
-impl Iterator for CursorMut<'_> {
-    type Item = CursorDataMut;
-    fn next(&mut self) -> Option<Self::Item> {
-        if unsafe { unwind::unw_step(self.cursor.get()) } > 0 {
-            Some(CursorDataMut {
-                cursor: self.cursor.get(),
-            })
+
+    pub fn get_register(&self, reg: super::machine::Register) -> Result<u64> {
+        let cursor = self.get_cursor();
+        let register = reg.into();
+        let mut value = 0;
+        let result = unsafe {
+            unwind::unw_get_reg(cursor, register, &mut value)
+        };
+        let error: Error = result.into();
+        if error.is_success() {
+            Ok(value)
         } else {
-            None
+            Err(error)
+        }
+    }
+
+    pub fn set_register(&mut self, reg: super::machine::Register, value: u64) -> Result<()> {
+        let cursor = self.get_cursor();
+        let register = reg.into();
+        let result = unsafe {
+            unwind::unw_set_reg(cursor, register, value)
+        };
+        let error: Error = result.into();
+        if error.is_success() {
+            Ok(())
+        } else {
+            Err(error)
+        }
+    }
+
+    pub fn get_floating_point_register(&mut self, reg: super::machine::Register) -> Result<unwind::unw_fpreg_t> {
+        let cursor = self.get_cursor();
+        let register = reg.into();
+        let mut value: unwind::unw_fpreg_t = 0;
+        let result = unsafe {
+            unwind::unw_get_fpreg(cursor, register, &mut value)
+        };
+        let error: Error = result.into();
+        if error.is_success() {
+            Ok(value)
+        } else {
+            Err(error)
+        }
+    }
+
+    pub fn set_floating_point_register(&mut self, reg: super::machine::Register, value: unwind::unw_fpreg_t) -> Result<()> {
+        let cursor = self.get_cursor();
+        let register = reg.into();
+        let result = unsafe {
+            unwind::unw_set_fpreg(cursor, register, value)
+        };
+        let error: Error = result.into();
+        if error.is_success() {
+            Ok(())
+        } else {
+            Err(error)
+        }
+    }
+
+    /// The get_procedure_info() routine returns auxiliary information about the procedure
+    /// that created the stack frame identified by the current CursorData.
+    pub fn get_proceture_info(&self) -> Result<ProcedureInfo> {
+        let cursor = self.get_cursor();
+        let mut proc_info = unwind::unw_proc_info_t {
+            end_ip: unsafe { std::mem::zeroed() },
+            extra: unsafe { std::mem::zeroed() },
+            flags: unsafe { std::mem::zeroed() },
+            format: unsafe { std::mem::zeroed() },
+            gp: unsafe { std::mem::zeroed() },
+            handler: unsafe { std::mem::zeroed() },
+            lsda: unsafe { std::mem::zeroed() },
+            start_ip: unsafe { std::mem::zeroed() },
+            unwind_info: unsafe { std::mem::zeroed() },
+            unwind_info_size: unsafe { std::mem::zeroed() },
+        };
+        let result = unsafe {
+            unwind::unw_get_proc_info(cursor, &mut proc_info)
+        };
+        let error: Error = result.into();
+        if error.is_success() {
+            Ok(ProcedureInfo { proc_info })
+        } else {
+            Err(error)
+        }
+    }
+
+    pub fn get_procedure_name(&self, buf: &mut [u8]) -> Result<usize> {
+        let cursor = self.get_cursor();
+        let mut offset = 0;
+        let result = unsafe {
+            unwind::unw_get_proc_name(cursor, buf.as_mut_ptr() as *mut i8, buf.len(), &mut offset)
+        };
+
+        let error: Error = result.into();
+        if error.is_success() {
+            Ok(offset as usize)
+        } else {
+            Err(error)
         }
     }
 }
 
-pub struct CursorDataMut {
-    cursor: *mut unwind::unw_cursor_t,
+pub struct ProcedureInfo {
+    proc_info: unwind::unw_proc_info_t,
 }
 
-impl UnwindCursorData for CursorDataMut {
-    fn get_cursor(&self) -> *mut unwind::unw_cursor_t {
-        self.cursor
+impl ProcedureInfo {
+    /// The address of the first instruction of the procedure.
+    /// If this address cannot be determined (e.g., due to lack of unwind information),
+    /// the start_ip member is cleared to 0. 
+    pub fn get_start_ip(&self) -> usize {
+        self.proc_info.start_ip as usize
+    }
+    /// The address of the first instruction beyond the end of the procedure.
+    /// If this address cannot be determined (e.g., due to lack of unwind information),
+    /// the end_ip member is cleared to 0. 
+    pub fn get_end_ip(&self) -> usize {
+        self.proc_info.start_ip as usize
+    }
+    /// The address of the language-specific data-area (LSDA).
+    /// This area normally contains language-specific information needed during exception handling.
+    /// If the procedure has no such area, this member is cleared to 0. 
+    pub fn get_lsda(&self) -> usize {
+        self.proc_info.lsda as usize
+    }
+    /// The address of the exception handler routine.
+    /// This is sometimes called the personality routine.
+    /// If the procedure does not define a personality routine, the handler member is cleared to 0.
+    pub fn get_handler(&self) -> *const u8 {
+        let ptr = self.proc_info.handler as *const u8;
+        ptr
+    }
+    /// The global-pointer of the procedure.
+    /// On platforms that do not use a global pointer,
+    /// this member may contain an undefined value.
+    /// On all other platforms, it must be set either to the
+    /// correct global-pointer value of the procedure or to 0
+    /// if the proper global-pointer cannot be obtained for some reason. 
+    pub fn get_global_pointer(&self) -> *const u8 {
+        self.proc_info.gp as *const u8
+    }
+
+    /// A set of flags. There are currently no target-independent flags.
+    /// For the IA-64 target, the flag UNW_PI_FLAG_IA64_RBS_SWITCH is set
+    /// if the procedure may switch the register-backing store.
+    /// TODO: change this so that it can return a bitflags enum.
+    pub fn get_flags(&self) -> u64 {
+        self.proc_info.flags
     }
 }
+
 
 pub struct Context {
     ctx: unwind::unw_context_t,
@@ -241,23 +317,6 @@ impl Context {
         }
     }
 
-    pub fn cursor_mut<'a>(&'a mut self) -> Result<CursorMut<'a>> {
-        let mut cursor = unwind::unw_cursor_t {
-            opaque: unsafe { std::mem::zeroed() },
-        };
-        let result = unsafe {
-            unwind::unw_init_local(&mut cursor, &mut self.ctx)
-        };
-        let error: Error = result.into();
-        if error.is_success() {
-            Ok(CursorMut {
-                cursor: UnsafeCell::new(cursor),
-                phantom: std::marker::PhantomData,
-            })
-        } else {
-            Err(error)
-        }
-    }
 }
 
 
