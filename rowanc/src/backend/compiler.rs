@@ -1,7 +1,7 @@
 use std::{collections::HashMap, io::Write, path::{Path, PathBuf}};
 use rowan_shared::{bytecode::compiled::Bytecode, classfile::{Member, Signal, SignatureEntry, VTable, VTableEntry}, TypeTag};
 
-use crate::{ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator}, backend::compiler_utils::Frame};
+use crate::{ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator, Text}, backend::compiler_utils::Frame};
 
 use super::compiler_utils::{PartialClass, PartialClassError};
 
@@ -428,11 +428,11 @@ impl Compiler {
         } = class;
 
         let mut partial_class = PartialClass::new();
-        partial_class.set_name(name);
+        partial_class.set_name(&name);
 
         let parent_vtables = parents.iter().map(|parent_name| {
-            let partial_class = self.classes.get(parent_name.name).expect("Order of files is wrong");
-            let vtables = partial_class.get_vtables(parent_name.name);
+            let partial_class = self.classes.get(&parent_name.name.clone().to_string()).expect("Order of files is wrong");
+            let vtables = partial_class.get_vtables(&parent_name.name);
             vtables.into_iter().map(|(table, names, responds_to, signatures)| {
                 let class_name = partial_class.index_string_table(table.class_name);
                 let source_class = if table.sub_class_name == 0 {
@@ -445,13 +445,13 @@ impl Compiler {
             
         });
         parents.iter().for_each(|parent| {
-            partial_class.add_parent(parent.name);
+            partial_class.add_parent(&parent.name);
         });
 
-        let (vtable, names, responds_to, signatures) = self.construct_vtable(name, &methods, &mut partial_class)?;
+        let (vtable, names, responds_to, signatures) = self.construct_vtable(&name, &methods, &mut partial_class)?;
 
         if vtable.functions.len() != 0 {
-            partial_class.add_vtable(name, vtable, &names, &responds_to, &signatures);
+            partial_class.add_vtable(&name, vtable, &names, &responds_to, &signatures);
         } else {
             drop(vtable);
             drop(names);
@@ -492,7 +492,7 @@ impl Compiler {
             partial_class.add_signal(signal, name, SignatureEntry::new(signature));
         });
 
-        self.compile_methods(name, &mut partial_class, methods)?;
+        self.compile_methods(&name, &mut partial_class, methods)?;
         
         self.classes.insert(name.to_string(), partial_class);
         
@@ -612,7 +612,7 @@ impl Compiler {
             }).collect::<Vec<_>>();
 
             //println!("{}", name);
-            let vtable = partial_class.get_vtable(name).unwrap();
+            let vtable = partial_class.get_vtable(&name).unwrap();
             let method_class_name = String::from(partial_class.index_string_table(vtable.class_name));
             //println!("{}", method_class_name);
 
@@ -694,7 +694,7 @@ impl Compiler {
         match expr {
             Expression::Variable(var, _, span) => {
                 let index = self.get_variable(var)
-                    .ok_or(CompilerError::UnboundIdentifer(String::from(*var), span.start, span.end))?;
+                    .ok_or(CompilerError::UnboundIdentifer(var.clone().to_string(), span.start, span.end))?;
                 output.push(Bytecode::LoadLocal(index));
                 
             }
@@ -710,7 +710,7 @@ impl Compiler {
                                 }
                             }
                             Constant::Character(char_str, span) => {
-                                let chr = match *char_str {
+                                let chr = match char_str.as_str() {
                                     "\\n" => '\n',
                                     "\\t" => '\t',
                                     "\\r" => '\r',
@@ -721,7 +721,7 @@ impl Compiler {
                                     x if x.chars().count() == 1 => {
                                         x.chars().next().unwrap()
                                     }
-                                    x => return Err(CompilerError::MalformedCharacter(String::from(x), span.start, span.end)),
+                                    x => return Err(CompilerError::MalformedCharacter(x.to_string(), span.start, span.end)),
                                 };
 
                                 let value = chr as u32;
@@ -872,10 +872,10 @@ impl Compiler {
                     Expression::MemberAccess { object, field, span } => {
                         match object.as_ref() {
                             Expression::Variable(var, Some(Type::Object(ty, _)), _) => {
-                                (field, *ty, *var)
+                                (field, ty.clone(), var.clone())
                             }
                             Expression::This(_) => {
-                                (field, class_name, "self")
+                                (field, Text::Borrowed(class_name), Text::Borrowed("self"))
                             }
                             x => todo!("add additional sources to call from {:?}", x)
                         }
@@ -898,7 +898,7 @@ impl Compiler {
 
 
                 let name = name.segments.last().unwrap();
-                let class = self.classes.get(ty).expect("Classes are in a bad order of compiling");
+                let class = self.classes.get(&ty.to_string()).expect("Classes are in a bad order of compiling");
                 //println!("{:#?}", class);
                 let vtable = class.get_vtable(name).expect("add proper handling of missing vtable");
                 let method_entry = class.get_method_entry(name).expect("add proper handling of missing method");

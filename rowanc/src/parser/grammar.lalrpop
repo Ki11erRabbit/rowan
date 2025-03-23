@@ -64,11 +64,11 @@ extern {
         "str" => Token::Str,
         "True" => Token::True,
         "False" => Token::False,
-        Int_lit => Token::IntLiteral(<&'a str>),
-        Float_lit => Token::FloatLiteral(<&'a str>),
-        Char_lit => Token::CharLiteral(<&'a str>),
-        String_lit => Token::StringLiteral(<&'a str>),
-        Identifier => Token::Identifier(<&'a str>),
+        Int_lit => Token::IntLiteral(<Text<'a>>),
+        Float_lit => Token::FloatLiteral(<Text<'a>>),
+        Char_lit => Token::CharLiteral(<Text<'a>>),
+        String_lit => Token::StringLiteral(<Text<'a>>),
+        Identifier => Token::Identifier(<Text<'a>>),
         Plus => Token::Plus,
         Minus => Token::Minus,
         Mult => Token::Multiply,
@@ -507,7 +507,7 @@ Statement: Statement<'a> = {
 // TODO: remove Some() from Variable
 TermExpr: Expression<'a> = {
     <start: @L> <id:Identifier> <end: @R> => {
-        Expression::Variable(id, Some(Type::Object("Printer", Span::new(0, 2))), Span::new(start, end))
+        Expression::Variable(id, Some(Type::Object(Text::Borrowed("Printer"), Span::new(0, 2))), Span::new(start, end))
     },
     <lit:Literal> => Expression::Literal(lit),
     <start: @L> Minus <expr:TermExpr> <end: @R> => {

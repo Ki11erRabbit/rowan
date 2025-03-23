@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use crate::ast::Text;
 
 #[derive(Debug)]
 pub struct SpannedToken<'a> {
@@ -13,7 +14,7 @@ impl<'a> SpannedToken<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token<'a> {
     // Keywords
     // Control Flow
@@ -78,12 +79,12 @@ pub enum Token<'a> {
     True,
     False,
     // Literals
-    IntLiteral(&'a str),
-    FloatLiteral(&'a str),
-    CharLiteral(&'a str),
-    StringLiteral(&'a str),
+    IntLiteral(Text<'a>),
+    FloatLiteral(Text<'a>),
+    CharLiteral(Text<'a>),
+    StringLiteral(Text<'a>),
     // Identifiers
-    Identifier(&'a str),
+    Identifier(Text<'a>),
     // Operators
     Plus,
     Minus,
@@ -545,7 +546,7 @@ impl<'a> TokenLexer<'a> {
                                 break;
                             }
                         }
-                        Ok(SpannedToken::new(Token::Identifier(ident), start, end))
+                        Ok(SpannedToken::new(Token::Identifier(Text::Borrowed(ident)), start, end))
                     }
                 }
             }
@@ -571,10 +572,10 @@ impl<'a> TokenLexer<'a> {
                         }
                     }
                     let lit = &self.input[start..end];
-                    Ok(SpannedToken::new(Token::FloatLiteral(lit), start, end))
+                    Ok(SpannedToken::new(Token::FloatLiteral(Text::Borrowed(lit)), start, end))
                 } else {
                     let lit = &self.input[start..end];
-                    Ok(SpannedToken::new(Token::IntLiteral(lit), start, end))
+                    Ok(SpannedToken::new(Token::IntLiteral(Text::Borrowed(lit)), start, end))
                 }
             }
             '\'' => {
@@ -598,7 +599,7 @@ impl<'a> TokenLexer<'a> {
                     return Err(SpannedLexerError::new(LexerError::UnclosedCharLiteral, start, end));
                 }
                 let lit = &self.input[start + 1..end - 1];
-                Ok(SpannedToken::new(Token::CharLiteral(lit), start, end))
+                Ok(SpannedToken::new(Token::CharLiteral(Text::Borrowed(lit)), start, end))
             }
             '"' => {
                 let mut end = start + 1;
@@ -621,7 +622,7 @@ impl<'a> TokenLexer<'a> {
                     return Err(SpannedLexerError::new(LexerError::UnclosedStringLiteral, start, end));
                 }
                 let lit = &self.input[start + 1..end - 1];
-                Ok(SpannedToken::new(Token::StringLiteral(lit), start, end))
+                Ok(SpannedToken::new(Token::StringLiteral(Text::Borrowed(lit)), start, end))
             }
             '\n' => {
                 let mut end = start + 1;
@@ -826,10 +827,10 @@ mod tests {
         let input = "123 123.456 'a' \"hello\"";
         let mut lexer = TokenLexer::new(input);
         let expected = vec![
-            Token::IntLiteral("123"),
-            Token::FloatLiteral("123.456"),
-            Token::CharLiteral("a"),
-            Token::StringLiteral("hello"),
+            Token::IntLiteral(Text::Borrowed("123")),
+            Token::FloatLiteral(Text::Borrowed("123.456")),
+            Token::CharLiteral(Text::Borrowed("a")),
+            Token::StringLiteral(Text::Borrowed("hello")),
         ];
         for token in expected {
             let result = lexer.next_token().unwrap();
@@ -842,14 +843,14 @@ mod tests {
         let input = "abc _abc abc123 _abc123 abc' abc-abc abc-a2' abc''";
         let mut lexer = TokenLexer::new(input);
         let expected = vec![
-            Token::Identifier("abc"),
-            Token::Identifier("_abc"),
-            Token::Identifier("abc123"),
-            Token::Identifier("_abc123"),
-            Token::Identifier("abc'"),
-            Token::Identifier("abc-abc"),
-            Token::Identifier("abc-a2'"),
-            Token::Identifier("abc''"),
+            Token::Identifier(Text::Borrowed("abc")),
+            Token::Identifier(Text::Borrowed("_abc")),
+            Token::Identifier(Text::Borrowed("abc123")),
+            Token::Identifier(Text::Borrowed("_abc123")),
+            Token::Identifier(Text::Borrowed("abc'")),
+            Token::Identifier(Text::Borrowed("abc-abc")),
+            Token::Identifier(Text::Borrowed("abc-a2'")),
+            Token::Identifier(Text::Borrowed("abc''")),
         ];
         for token in expected {
             let result = lexer.next_token().unwrap();

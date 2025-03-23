@@ -568,10 +568,10 @@ mod tests {
         let parents = vec![1, 2];
         let vtables = vec![
             VTable {
+                class_name: 1,
+                sub_class_name: 2,
                 functions: [
                     VTableEntry {
-                        class_name: 1,
-                        sub_class_name: 2,
                         name: 1,
                         responds_to: 2,
                         signature: 3,

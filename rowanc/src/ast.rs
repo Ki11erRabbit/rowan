@@ -1,5 +1,106 @@
 use either::Either;
 
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Text<'a> {
+    Borrowed(&'a str),
+    Owned(String),
+}
+
+impl Text<'_> {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Text::Borrowed(s) => s,
+            Text::Owned(s) => s,
+        }
+    }
+}
+
+impl std::ops::Deref for Text<'_> {
+    type Target = str;
+    fn deref(&self) -> &str {
+        match self {
+            Text::Borrowed(s) => s,
+            Text::Owned(s) => s,
+        }
+    }
+}
+
+impl<'a> From<&'a str> for Text<'a> {
+    fn from(s: &'a str) -> Text<'a> {
+        Text::Borrowed(s)
+    }
+}
+
+impl From<String> for Text<'_> {
+    fn from(s: String) -> Text<'static> {
+        Text::Owned(s)
+    }
+}
+
+impl std::fmt::Display for Text<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Text::Borrowed(s) => write!(f, "{}", s),
+            Text::Owned(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+impl AsRef<str> for Text<'_> {
+    fn as_ref(&self) -> &str {
+        match self {
+            Text::Borrowed(s) => s,
+            Text::Owned(s) => s,
+        }
+    }
+}
+
+impl std::cmp::PartialEq<str> for Text<'_> {
+    fn eq(&self, other: &str) -> bool {
+        self.as_ref() == other
+    }
+}
+
+impl std::cmp::PartialEq<Text<'_>> for str {
+    fn eq(&self, other: &Text<'_>) -> bool {
+        self == other.as_ref()
+    }
+}
+
+impl std::cmp::PartialEq<&str> for Text<'_> {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_ref() == *other
+    }
+}
+
+impl std::cmp::PartialEq<Text<'_>> for &str {
+    fn eq(&self, other: &Text<'_>) -> bool {
+        *self == other.as_ref()
+    }
+}
+
+impl std::cmp::PartialEq<String> for Text<'_> {
+    fn eq(&self, other: &String) -> bool {
+        self.as_ref() == other.as_str()
+    }
+}
+
+impl std::cmp::PartialEq<Text<'_>> for String {
+    fn eq(&self, other: &Text<'_>) -> bool {
+        self.as_str() == other.as_ref()
+    }
+}
+
+impl std::borrow::Borrow<str> for Text<'_> {
+    fn borrow(&self) -> &str {
+        self.as_ref()
+    }
+}
+
+
+
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Copy)]
 pub struct Span {
     pub start: usize,
@@ -47,12 +148,12 @@ impl File<'_> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct PathName<'a> {
-    pub segments: Vec<&'a str>,
+    pub segments: Vec<Text<'a>>,
     pub span: Span,
 }
 
 impl PathName<'_> {
-    pub fn new<'a>(segments: Vec<&'a str>, span: Span) -> PathName<'a> {
+    pub fn new<'a>(segments: Vec<Text<'a>>, span: Span) -> PathName<'a> {
         PathName { segments, span }
     }
 }
@@ -77,7 +178,7 @@ impl Import<'_> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Class<'a> {
-    pub name: &'a str,
+    pub name: Text<'a>,
     pub parents: Vec<ParentDec<'a>>,
     pub members: Vec<Member<'a>>,
     pub methods: Vec<Method<'a>>,
@@ -88,7 +189,7 @@ pub struct Class<'a> {
 
 impl Class<'_> {
     pub fn new<'a>(
-        name: &'a str,
+        name: Text<'a>,
         parents: Vec<ParentDec<'a>>,
         members: Vec<Member<'a>>,
         methods: Vec<Method<'a>>,
@@ -111,7 +212,7 @@ impl Class<'_> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct ParentDec<'a> {
-    pub name: &'a str,
+    pub name: Text<'a>,
     pub type_params: Vec<TypeParameter<'a>>,
     pub span: Span,
 }
@@ -126,14 +227,14 @@ pub enum ClassMember<'a> {
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Member<'a> {
     pub visibility: Visibility,
-    pub name: &'a str,
+    pub name: Text<'a>,
     pub ty: Type<'a>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Method<'a> {
-    pub name: &'a str,
+    pub name: Text<'a>,
     pub annotations: Vec<Annotation<'a>>,
     pub visibility: Visibility,
     pub type_params: Vec<TypeParameter<'a>>,
@@ -145,8 +246,8 @@ pub struct Method<'a> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Annotation<'a> {
-    pub name: &'a str,
-    pub parameters: Vec<&'a str>,
+    pub name: Text<'a>,
+    pub parameters: Vec<Text<'a>>,
     pub span: Span,
 }
 
@@ -193,7 +294,7 @@ pub enum Type<'a> {
     Char,
     Str,
     Array(Box<Type<'a>>, Span),
-    Object(&'a str, Span),
+    Object(Text<'a>, Span),
     TypeArg(Box<Type<'a>>, Vec<Type<'a>>, Span),
     Function(Vec<Type<'a>>, Box<Type<'a>>, Span),
     Tuple(Vec<Type<'a>>, Span),
@@ -201,13 +302,13 @@ pub enum Type<'a> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct TypeParameter<'a> {
-    pub name: &'a str,
+    pub name: Text<'a>,
     pub constraints: Vec<Constraint<'a>>,
     pub span: Span,
 }
 
 impl TypeParameter<'_> {
-    pub fn new<'a>(name: &'a str, constraints: Vec<Constraint<'a>>, span: Span) -> TypeParameter<'a> {
+    pub fn new<'a>(name: Text<'a>, constraints: Vec<Constraint<'a>>, span: Span) -> TypeParameter<'a> {
         TypeParameter {
             name,
             constraints,
@@ -224,7 +325,7 @@ pub enum Constraint<'a> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Signal<'a> {
-    pub name: &'a str,
+    pub name: Text<'a>,
     pub is_static: bool,
     pub parameters: Vec<Type<'a>>,
     pub span: Span,
@@ -252,13 +353,13 @@ pub enum Statement<'a> {
         span: Span,
     },
     While {
-        label: Option<&'a str>,
+        label: Option<Text<'a>>,
         test: Expression<'a>,
         body: Vec<Statement<'a>>,
         span: Span,
     },
     For {
-        label: Option<&'a str>,
+        label: Option<Text<'a>>,
         bindings: Pattern<'a>,
         bindings_type: Type<'a>,
         iterable: Expression<'a>,
@@ -301,7 +402,7 @@ impl Statement<'_> {
     }
 
     pub fn new_while<'a>(
-        label: Option<&'a str>,
+        label: Option<Text<'a>>,
         test: Expression<'a>,
         body: Vec<Statement<'a>>,
         span: Span,
@@ -315,7 +416,7 @@ impl Statement<'_> {
     }
 
     pub fn new_for<'a>(
-        label: Option<&'a str>,
+        label: Option<Text<'a>>,
         bindings: Pattern<'a>,
         bindings_type: Type<'a>,
         iterable: Expression<'a>,
@@ -350,7 +451,7 @@ impl Statement<'_> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Pattern<'a> {
-    Variable(&'a str, bool, Span),
+    Variable(Text<'a>, bool, Span),
     Tuple(Vec<Pattern<'a>>, Span),
     Constant(Constant<'a>),
     WildCard(Span),
@@ -358,16 +459,16 @@ pub enum Pattern<'a> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Constant<'a> {
-    Integer(&'a str, Option<Type<'a>>, Span),
-    Float(&'a str, Option<Type<'a>>, Span),
-    String(&'a str, Span),
-    Character(&'a str, Span),
+    Integer(Text<'a>, Option<Type<'a>>, Span),
+    Float(Text<'a>, Option<Type<'a>>, Span),
+    String(Text<'a>, Span),
+    Character(Text<'a>, Span),
     Bool(bool, Span),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Expression<'a> {
-    Variable(&'a str, Option<Type<'a>>, Span),
+    Variable(Text<'a>, Option<Type<'a>>, Span),
     Literal(Literal<'a>),
     This(Span),
     Call {
@@ -406,22 +507,22 @@ pub enum Expression<'a> {
     Connect {
         source: Box<Expression<'a>>,
         destination: Box<Expression<'a>>,
-        signal_name: &'a str,
+        signal_name: Text<'a>,
         span: Span,
     },
     Disconnect {
         source: Box<Expression<'a>>,
         destination: Box<Expression<'a>>,
-        signal_name: &'a str,
+        signal_name: Text<'a>,
         span: Span,
     },
     Loop {
-        label: Option<&'a str>,
+        label: Option<Text<'a>>,
         body: Vec<Statement<'a>>,
         span: Span,
     },
-    Continue(Option<&'a str>, Span),
-    Break(Option<&'a str>, Option<Box<Expression<'a>>>, Span),
+    Continue(Option<Text<'a>>, Span),
+    Break(Option<Text<'a>>, Option<Box<Expression<'a>>>, Span),
     As {
         source: Box<Expression<'a>>,
         typ: Type<'a>,
@@ -432,7 +533,7 @@ pub enum Expression<'a> {
         typ: Type<'a>,
         span: Span,
     },
-    Emit(&'a str, Vec<Expression<'a>>,Span),
+    Emit(Text<'a>, Vec<Expression<'a>>,Span),
 }
 
 impl Expression<'_> {
@@ -501,7 +602,7 @@ impl Expression<'_> {
     pub fn new_connect_expression<'a>(
         source: Box<Expression<'a>>,
         destination: Box<Expression<'a>>,
-        signal_name: &'a str,
+        signal_name: Text<'a>,
         span: Span,
     ) -> Expression<'a> {
         Expression::Connect {
@@ -515,7 +616,7 @@ impl Expression<'_> {
     pub fn new_disconnect_expression<'a>(
         source: Box<Expression<'a>>,
         destination: Box<Expression<'a>>,
-        signal_name: &'a str,
+        signal_name: Text<'a>,
         span: Span,
     ) -> Expression<'a> {
         Expression::Disconnect {
@@ -527,7 +628,7 @@ impl Expression<'_> {
     }
 
     pub fn new_loop<'a>(
-        label: Option<&'a str>,
+        label: Option<Text<'a>>,
         body: Vec<Statement<'a>>,
         span: Span
     ) -> Expression<'a> {
