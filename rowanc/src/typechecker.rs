@@ -18,7 +18,7 @@ pub enum TypeCheckerError {
 
 }
 
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum TypeCheckerType {
     Void,
     U8,
@@ -79,6 +79,42 @@ impl<'a> From<&Type<'a>> for TypeCheckerType {
 impl<'a> From<&mut Type<'a>> for TypeCheckerType {
     fn from(ty: &mut Type<'a>) -> TypeCheckerType {
         TypeCheckerType::from(ty.clone())
+    }
+}
+
+impl<'a> Into<Type<'a>> for TypeCheckerType {
+    fn into(self: TypeCheckerType) -> Type<'a> {
+        match self {
+            TypeCheckerType::Void => Type::Void,
+            TypeCheckerType::U8 => Type::U8,
+            TypeCheckerType::U16 => Type::U16,
+            TypeCheckerType::U32 => Type::U32,
+            TypeCheckerType::U64 => Type::U64,
+            TypeCheckerType::I8 => Type::I8,
+            TypeCheckerType::I16 => Type::I16,
+            TypeCheckerType::I32 => Type::I32,
+            TypeCheckerType::I64 => Type::I64,
+            TypeCheckerType::F32 => Type::F32,
+            TypeCheckerType::F64 => Type::F64,
+            TypeCheckerType::Char => Type::Char,
+            TypeCheckerType::Str => Type::Str,
+            TypeCheckerType::Array(ty) => Type::Array(Box::new((*ty).into()), crate::ast::Span::new(0, 0)),
+            TypeCheckerType::Object(name) => Type::Object(crate::ast::Text::Owned(name), crate::ast::Span::new(0, 0)),
+            TypeCheckerType::TypeArg(name, constraint) => Type::TypeArg(
+                Box::new((*name).into()),
+                constraint.into_iter().map(|x| x.into()).collect(), crate::ast::Span::new(0, 0)),
+            TypeCheckerType::Function(args, ret) => Type::Function(
+                args.into_iter().map(|x| x.into()).collect(),
+                Box::new((*ret).into()), crate::ast::Span::new(0, 0)
+            ),
+            TypeCheckerType::Tuple(tys) => Type::Tuple(tys.into_iter().map(|x| x.into()).collect(), crate::ast::Span::new(0, 0))
+        }
+    }
+}
+
+impl<'a> Into<Type<'a>> for &'a TypeCheckerType {
+    fn into(self: &'a TypeCheckerType) -> Type<'a> {
+        (*self).clone().into()
     }
 }
 
@@ -265,12 +301,39 @@ impl TypeChecker {
                 self.bind_pattern(bindings, ty);
             }
             Statement::Assignment { target, value, .. } => {
-
+                let lhs = self.get_type(target)?;
+                self.annotate_expr(&lhs, value)?;
             }
         }
 
         Ok(())
     }
+
+    fn get_type<'a>(&self, expr: &mut crate::ast::Expression<'a>) -> Result<Type, TypeCheckerError> {
+        use crate::ast::{Expression, Literal, Constant};
+        match expr {
+            Expression::Literal(Literal::Constant(Constant::Bool(_, _))) => Ok(Type::U8),
+            Expression::Literal(Literal::Constant(Constant::Float(_, annotation, _))) => match annotation {
+                Some(ty) => Ok(ty.clone()),
+                None => todo!("report literal missing annotation"),
+            },
+            Expression::Literal(Literal::Constant(Constant::Integer(_, annotation, _))) => match annotation {
+                Some(ty) => Ok(ty.clone()),
+                None => todo!("report literal missing annotation"),
+            },
+            Expression::Literal(Literal::Constant(Constant::Character(_, _))) => Ok(Type::Char),
+            Expression::Variable(name, annotation, _) => {
+                if let Some(ty) = self.lookup_var(name) {
+                    *annotation = Some(ty.into());
+                    Ok(ty.into())
+                } else {
+                    todo!("report unbound variable")
+                }
+
+            }
+        }
+    }
+    
 
     fn annotate_expr<'a, E: BorrowMut<crate::ast::Expression<'a>>>(&self, ty: &Type<'a>, mut value: E) -> Result<(), TypeCheckerError> {
         use crate::ast::{Expression, Literal, Constant, BinaryOperator};
