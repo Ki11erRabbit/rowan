@@ -1,5 +1,7 @@
 use std::{borrow::BorrowMut, collections::HashMap};
 
+use either::Either;
+
 use crate::ast::{Span, Type};
 
 fn create_stdlib<'a>() -> HashMap<String, HashMap<String, ClassAttribute>> {
@@ -112,8 +114,8 @@ impl<'a> Into<Type<'a>> for TypeCheckerType {
     }
 }
 
-impl<'a> Into<Type<'a>> for &'a TypeCheckerType {
-    fn into(self: &'a TypeCheckerType) -> Type<'a> {
+impl<'a, 'b> Into<Type<'a>> for &'b TypeCheckerType {
+    fn into(self: &'b TypeCheckerType) -> Type<'a> {
         (*self).clone().into()
     }
 }
@@ -255,11 +257,9 @@ impl TypeChecker {
             }
         }
 
-        self.push_scope();
 
-        self.check_body(TypeCheckerType::from(return_type.clone()), body)?;
+        self.check_body(&TypeCheckerType::from(return_type.clone()), body)?;
         
-        self.pop_scope();
         self.pop_scope();
         Ok(())
     }
@@ -279,12 +279,14 @@ impl TypeChecker {
         }
     }
 
-    fn check_body<'a>(&mut self, return_type: TypeCheckerType, body: &mut Vec<crate::ast::Statement<'a>>) -> Result<(), TypeCheckerError> {
+    fn check_body<'a>(&mut self, return_type: &TypeCheckerType, body: &mut Vec<crate::ast::Statement<'a>>) -> Result<(), TypeCheckerError> {
 
+        self.push_scope();
         for statement in body {
             self.check_statement(&return_type, statement)?;
         }
         
+        self.pop_scope();
         Ok(())
     }
 
@@ -304,12 +306,103 @@ impl TypeChecker {
                 let lhs = self.get_type(target)?;
                 self.annotate_expr(&lhs, value)?;
             }
+            Statement::Expression(expr, _) => {
+                self.check_expr(return_type, expr)?;
+            }
         }
 
         Ok(())
     }
 
-    fn get_type<'a>(&self, expr: &mut crate::ast::Expression<'a>) -> Result<Type, TypeCheckerError> {
+    fn check_expr<'a>(&mut self, return_type: &TypeCheckerType, expr: &mut crate::ast::Expression<'a>) -> Result<(), TypeCheckerError> {
+        use crate::ast::{Expression, BinaryOperator, UnaryOperator};
+
+        match expr {
+            Expression::IfExpression(expr, _) => {
+                // TODO: check if if expression return values are the same
+                self.check_if_expr(return_type, expr)?;
+            }
+            Expression::Return(None, _) => {
+                if *return_type != TypeCheckerType::Void {
+                    todo!("report type mismatch returning void when non-void")
+                }
+            }
+            Expression::Return(Some(expr), _) => {
+                self.annotate_expr(&return_type.into(), expr.as_mut())?;
+            }
+            Expression::BinaryOperation { operator: BinaryOperator::And, left, right, .. } => {
+                let lhs = self.get_type(left)?;
+                let rhs = self.get_type(right)?;
+
+                if lhs != Type::U8 || rhs != Type::U8 {
+                    todo!("report boolean operands aren't booleans")
+                }
+                if lhs != rhs {
+                    todo!("report type mismatch");
+                }
+            }
+            Expression::BinaryOperation { operator: BinaryOperator::Or, left, right, .. } => {
+                let lhs = self.get_type(left)?;
+                let rhs = self.get_type(right)?;
+
+                if lhs != Type::U8 || rhs != Type::U8 {
+                    todo!("report boolean operands aren't booleans")
+                }
+                if lhs != rhs {
+                    todo!("report type mismatch");
+                }
+            }
+            Expression::BinaryOperation { operator, left, right, .. } => {
+                // TODO: add conversion when traits are added
+                let lhs = self.get_type(left)?;
+                let rhs = self.get_type(right)?;
+
+                if lhs != rhs {
+                    todo!("report type mismatch");
+                }
+            }
+            Expression::UnaryOperation { operator: UnaryOperator::Neg, operand, .. } => {
+                let ty = self.get_type(operand)?;
+                // TODO check if ty is a numeric type
+            }
+            Expression::UnaryOperation { operator: UnaryOperator::Not, operand, .. } => {
+                let ty = self.get_type(operand)?;
+
+                if ty != Type::U8 {
+                    todo!("report boolean operands aren't booleans")
+                }
+                
+            }
+        }
+
+        Ok(())
+    }
+
+    fn check_if_expr<'a>(&mut self, return_type: &TypeCheckerType, expr: &mut crate::ast::IfExpression<'a>) -> Result<(), TypeCheckerError> {
+        use crate::ast::IfExpression;
+        let IfExpression { condition, then_branch, else_branch, .. } = expr;
+
+        let condition_type = self.get_type(condition.as_mut())?;
+        if condition_type != Type::U8 {
+            todo!("report type mismatch if condition");
+        }
+
+        self.check_body(return_type, then_branch)?;
+
+        match else_branch {
+            Some(Either::Left(expr)) => {
+                self.check_if_expr(return_type, expr)?;
+            }
+            Some(Either::Right(else_branch)) => {
+                self.check_body(return_type, else_branch)?;
+            }
+            None => {}
+        }
+
+        Ok(())
+    }
+
+    fn get_type<'a>(&self, expr: &mut crate::ast::Expression<'a>) -> Result<Type<'a>, TypeCheckerError> {
         use crate::ast::{Expression, Literal, Constant};
         match expr {
             Expression::Literal(Literal::Constant(Constant::Bool(_, _))) => Ok(Type::U8),
@@ -329,8 +422,8 @@ impl TypeChecker {
                 } else {
                     todo!("report unbound variable")
                 }
-
             }
+            _ => todo!("finish get_type"),
         }
     }
     
