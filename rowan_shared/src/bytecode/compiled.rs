@@ -31,6 +31,8 @@ pub enum Bytecode {
     LoadF32(f32),
     /// Load constants
     LoadF64(f64),
+    /// Load symbol
+    LoadSymbol(StringIndex),
     // Stack operations
     /// Pop the top value off the stack
     Pop,
@@ -57,15 +59,13 @@ pub enum Bytecode {
     /// Wrapping Modulus
     Mod,
     /// Saturating Addition
-    SatAdd,
+    SatAddSigned,
     /// Saturating Subtraction
-    SatSub,
-    /// Saturating Multiplication
-    SatMul,
-    /// Saturating Division
-    SatDiv,
-    /// Saturating Modulus
-    SatMod,
+    SatSubSigned,
+    /// Saturating Addition
+    SatAddUnsigned,
+    /// Saturating Subtraction
+    SatSubUnsigned,
     // Bitwise operations
     /// Bitwise AND
     And,
@@ -75,10 +75,8 @@ pub enum Bytecode {
     Xor,
     /// Bitwise NOT
     Not,
-    /// Arithmetic Shift Left
-    AShl,
-    /// Logical Shift Left
-    LShl,
+    /// Shift Left
+    Shl,
     /// Arithmetic Shift Right
     AShr,
     /// Logical Shift Right
@@ -91,13 +89,21 @@ pub enum Bytecode {
     /// Not equal comparison
     NotEqual,
     /// Greater than comparison
-    Greater,
+    GreaterSigned,
     /// Less than comparison
-    Less,
+    LessSigned,
     /// Greater than or equal comparison
-    GreaterOrEqual,
+    GreaterOrEqualSigned,
     /// Less than or equal comparison
-    LessOrEqual,
+    LessOrEqualSigned,
+    /// Greater than comparison
+    GreaterUnsigned,
+    /// Less than comparison
+    LessUnsigned,
+    /// Greater than or equal comparison
+    GreaterOrEqualUnsigned,
+    /// Less than or equal comparison
+    LessOrEqualUnsigned,
     // Type conversions
     /// Convert the top value on the stack to the specified type
     Convert(TypeTag),
@@ -164,6 +170,10 @@ pub enum Bytecode {
     /// Return from a function
     /// This pops nothing off the stack and returns void
     ReturnVoid,
+    /// Catch an exception with the specified class symbol
+    Catch(StringIndex),
+    /// Throw an exception, pops an object off of the stack and throws it
+    Throw,
     /// Start a new block of code
     StartBlock(u64),
     /// Goto a block of code via an offset from the current block
@@ -250,67 +260,78 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::LoadF64(value));
                 },
-                12 => result.push(Bytecode::Pop),
-                13 => result.push(Bytecode::Dup),
-                14 => result.push(Bytecode::Swap),
-                15 => {
+                12 => {
+                    let index = u64::from_le_bytes([
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::LoadSymbol(index));
+                },
+                13 => result.push(Bytecode::Pop),
+                14 => result.push(Bytecode::Dup),
+                15 => result.push(Bytecode::Swap),
+                16 => {
                     let index = *iter.next().ok_or("Expected u8 value")?;
                     result.push(Bytecode::StoreLocal(index));
                 },
-                16 => {
+                17 => {
                     let index = *iter.next().ok_or("Expected u8 value")?;
                     result.push(Bytecode::LoadLocal(index));
                 },
-                17 => {
+                18 => {
                     let index = *iter.next().ok_or("Expected u8 value")?;
                     result.push(Bytecode::StoreArgument(index));
                 },
-                18 => result.push(Bytecode::Add),
-                19 => result.push(Bytecode::Sub),
-                20 => result.push(Bytecode::Mul),
-                21 => result.push(Bytecode::Div),
-                22 => result.push(Bytecode::Mod),
-                23 => result.push(Bytecode::SatAdd),
-                24 => result.push(Bytecode::SatSub),
-                25 => result.push(Bytecode::SatMul),
-                26 => result.push(Bytecode::SatDiv),
-                27 => result.push(Bytecode::SatMod),
+                19 => result.push(Bytecode::Add),
+                20 => result.push(Bytecode::Sub),
+                21 => result.push(Bytecode::Mul),
+                22 => result.push(Bytecode::Div),
+                23 => result.push(Bytecode::Mod),
+                24 => result.push(Bytecode::SatAddSigned),
+                25 => result.push(Bytecode::SatSubSigned),
+                26 => result.push(Bytecode::SatAddUnsigned),
+                27 => result.push(Bytecode::SatSubUnsigned),
                 28 => result.push(Bytecode::And),
                 29 => result.push(Bytecode::Or),
                 30 => result.push(Bytecode::Xor),
                 31 => result.push(Bytecode::Not),
-                32 => result.push(Bytecode::AShl),
-                33 => result.push(Bytecode::LShl),
-                34 => result.push(Bytecode::AShr),
-                35 => result.push(Bytecode::LShr),
-                36 => result.push(Bytecode::Neg),
-                37 => result.push(Bytecode::Equal),
-                38 => result.push(Bytecode::NotEqual),
-                39 => result.push(Bytecode::Greater),
-                40 => result.push(Bytecode::Less),
-                41 => result.push(Bytecode::GreaterOrEqual),
-                42 => result.push(Bytecode::LessOrEqual),
-                43 => {
+                32 => result.push(Bytecode::Shl),
+                33 => result.push(Bytecode::AShr),
+                34 => result.push(Bytecode::LShr),
+                35 => result.push(Bytecode::Neg),
+                36 => result.push(Bytecode::Equal),
+                37 => result.push(Bytecode::NotEqual),
+                38 => result.push(Bytecode::GreaterSigned),
+                39 => result.push(Bytecode::LessSigned),
+                40 => result.push(Bytecode::GreaterOrEqualSigned),
+                41 => result.push(Bytecode::LessOrEqualSigned),
+                42 => result.push(Bytecode::GreaterUnsigned),
+                43 => result.push(Bytecode::LessUnsigned),
+                44 => result.push(Bytecode::GreaterOrEqualUnsigned),
+                45 => result.push(Bytecode::LessOrEqualUnsigned),
+                46 => {
                     let tag = TypeTag::from(*iter.next().ok_or("Expected u8 value")?);
                     result.push(Bytecode::Convert(tag));
                 },
-                44 => {
+                47 => {
                     let tag = TypeTag::from(*iter.next().ok_or("Expected u8 value")?);
                     result.push(Bytecode::BinaryConvert(tag));
                 },
-                45 => {
+                48 => {
                     let tag = TypeTag::from(*iter.next().ok_or("Expected u8 value")?);
                     result.push(Bytecode::CreateArray(tag));
                 },
-                46 => {
+                49 => {
                     let tag = TypeTag::from(*iter.next().ok_or("Expected u8 value")?);
                     result.push(Bytecode::ArrayGet(tag));
                 },
-                47 => {
+                50 => {
                     let tag = TypeTag::from(*iter.next().ok_or("Expected u8 value")?);
                     result.push(Bytecode::ArraySet(tag));
                 },
-                48 => {
+                51 => {
                     let index = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -319,7 +340,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::NewObject(index));
                 },
-                49 => {
+                52 => {
                     let class_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -340,7 +361,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::GetField(class_name, parent_class_name, member_index));
                 },
-                50 => {
+                53 => {
                     let class_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -361,7 +382,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::SetField(class_name, parent_class_name, member_index));
                 },
-                51 => {
+                54 => {
                     let class_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -370,7 +391,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::IsA(class_name));
                 },
-                52 => {
+                55 => {
                     let class_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -391,7 +412,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::InvokeVirt(class_name, parent_class_name, method_name));
                 },
-                53 => {
+                56 => {
                     let class_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -412,7 +433,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::InvokeVirtTail(class_name, parent_class_name, method_name));
                 },
-                54 => {
+                57 => {
                     let class_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -427,7 +448,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::EmitSignal(class_name, signal_name));
                 },
-                55 => {
+                58 => {
                     let class_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -442,7 +463,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::EmitStaticSignal(class_name, signal_name));
                 },
-                56 => {
+                59 => {
                     let signal_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -469,7 +490,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::ConnectSignal(signal_name, class_name, parent_class_name, method_name));
                 },
-                57 => {
+                60 => {
                     let signal_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -484,7 +505,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::DisconnectSignal(signal_name, method_name));
                 }
-                58 => {
+                61 => {
                     let index = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -493,9 +514,19 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::GetStrRef(index));
                 },
-                59 => result.push(Bytecode::Return),
-                60 => result.push(Bytecode::ReturnVoid),
-                61 => {
+                62 => result.push(Bytecode::Return),
+                63 => result.push(Bytecode::ReturnVoid),
+                64 => {
+                    let index = u64::from_le_bytes([
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::Catch(index))
+                }
+                65 => result.push(Bytecode::Throw),
+                66 => {
                     let id = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -504,7 +535,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::StartBlock(id));
                 },
-                62 => {
+                67 => {
                     let offset = i64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -513,7 +544,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::Goto(offset));
                 },
-                63 => {
+                68 => {
                     let true_offset = i64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -528,7 +559,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::If(true_offset, false_offset));
                 },
-                64 => {
+                69 => {
                     let cases_len = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -612,141 +643,152 @@ impl Bytecode {
                 result.push(11);
                 result.extend_from_slice(&value.to_le_bytes());
             },
-            Bytecode::Pop => result.push(12),
-            Bytecode::Dup => result.push(13),
-            Bytecode::Swap => result.push(14),
+            Bytecode::LoadSymbol(index) => {
+                result.push(12);
+                result.extend_from_slice(&index.to_le_bytes());
+            }
+            Bytecode::Pop => result.push(13),
+            Bytecode::Dup => result.push(14),
+            Bytecode::Swap => result.push(15),
             Bytecode::StoreLocal(index) => {
-                result.push(15);
-                result.push(*index);
-            },
-            Bytecode::LoadLocal(index) => {
                 result.push(16);
                 result.push(*index);
             },
-            Bytecode::StoreArgument(index) => {
+            Bytecode::LoadLocal(index) => {
                 result.push(17);
                 result.push(*index);
             },
-            Bytecode::Add => result.push(18),
-            Bytecode::Sub => result.push(19),
-            Bytecode::Mul => result.push(20),
-            Bytecode::Div => result.push(21),
-            Bytecode::Mod => result.push(22),
-            Bytecode::SatAdd => result.push(23),
-            Bytecode::SatSub => result.push(24),
-            Bytecode::SatMul => result.push(25),
-            Bytecode::SatDiv => result.push(26),
-            Bytecode::SatMod => result.push(27),
+            Bytecode::StoreArgument(index) => {
+                result.push(18);
+                result.push(*index);
+            },
+            Bytecode::Add => result.push(19),
+            Bytecode::Sub => result.push(20),
+            Bytecode::Mul => result.push(21),
+            Bytecode::Div => result.push(22),
+            Bytecode::Mod => result.push(23),
+            Bytecode::SatAddSigned => result.push(24),
+            Bytecode::SatSubSigned => result.push(25),
+            Bytecode::SatAddUnsigned => result.push(26),
+            Bytecode::SatSubUnsigned => result.push(27),
             Bytecode::And => result.push(28),
             Bytecode::Or => result.push(29),
             Bytecode::Xor => result.push(30),
             Bytecode::Not => result.push(31),
-            Bytecode::AShl => result.push(32),
-            Bytecode::LShl => result.push(33),
-            Bytecode::AShr => result.push(34),
-            Bytecode::LShr => result.push(35),
-            Bytecode::Neg => result.push(36),
-            Bytecode::Equal => result.push(37),
-            Bytecode::NotEqual => result.push(38),
-            Bytecode::Greater => result.push(39),
-            Bytecode::Less => result.push(40),
-            Bytecode::GreaterOrEqual => result.push(41),
-            Bytecode::LessOrEqual => result.push(42),
+            Bytecode::Shl => result.push(32),
+            Bytecode::AShr => result.push(33),
+            Bytecode::LShr => result.push(34),
+            Bytecode::Neg => result.push(35),
+            Bytecode::Equal => result.push(36),
+            Bytecode::NotEqual => result.push(37),
+            Bytecode::GreaterSigned => result.push(38),
+            Bytecode::LessSigned => result.push(39),
+            Bytecode::GreaterOrEqualSigned => result.push(40),
+            Bytecode::LessOrEqualSigned => result.push(41),
+            Bytecode::GreaterUnsigned => result.push(42),
+            Bytecode::LessUnsigned => result.push(43),
+            Bytecode::GreaterOrEqualUnsigned => result.push(44),
+            Bytecode::LessOrEqualUnsigned => result.push(45),
             Bytecode::Convert(tag) => {
-                result.push(43);
-                result.push(tag.as_byte());
-            },
-            Bytecode::BinaryConvert(tag) => {
-                result.push(44);
-                result.push(tag.as_byte());
-            },
-            Bytecode::CreateArray(tag) => {
-                result.push(45);
-                result.push(tag.as_byte());
-            },
-            Bytecode::ArrayGet(tag) => {
                 result.push(46);
                 result.push(tag.as_byte());
             },
-            Bytecode::ArraySet(tag) => {
+            Bytecode::BinaryConvert(tag) => {
                 result.push(47);
                 result.push(tag.as_byte());
             },
-            Bytecode::NewObject(index) => {
+            Bytecode::CreateArray(tag) => {
                 result.push(48);
+                result.push(tag.as_byte());
+            },
+            Bytecode::ArrayGet(tag) => {
+                result.push(49);
+                result.push(tag.as_byte());
+            },
+            Bytecode::ArraySet(tag) => {
+                result.push(50);
+                result.push(tag.as_byte());
+            },
+            Bytecode::NewObject(index) => {
+                result.push(51);
                 result.extend_from_slice(&index.to_le_bytes());
             },
             Bytecode::GetField(class_name, parent_class_name, member_index) => {
-                result.push(49);
+                result.push(52);
                 result.extend_from_slice(&class_name.to_le_bytes());
                 result.extend_from_slice(&parent_class_name.to_le_bytes());
                 result.extend_from_slice(&member_index.to_le_bytes());
             },
             Bytecode::SetField(class_name, parent_class_name, member_index) => {
-                result.push(50);
+                result.push(53);
                 result.extend_from_slice(&class_name.to_le_bytes());
                 result.extend_from_slice(&parent_class_name.to_le_bytes());
                 result.extend_from_slice(&member_index.to_le_bytes());
             },
             Bytecode::IsA(class_name) => {
-                result.push(51);
+                result.push(54);
                 result.extend_from_slice(&class_name.to_le_bytes());
             },
             Bytecode::InvokeVirt(class_name, parent_class_name, method_name) => {
-                result.push(52);
+                result.push(55);
                 result.extend_from_slice(&class_name.to_le_bytes());
                 result.extend_from_slice(&parent_class_name.to_le_bytes());
                 result.extend_from_slice(&method_name.to_le_bytes());
             },
             Bytecode::InvokeVirtTail(class_name, parent_class_name, method_name) => {
-                result.push(53);
+                result.push(56);
                 result.extend_from_slice(&class_name.to_le_bytes());
                 result.extend_from_slice(&parent_class_name.to_le_bytes());
                 result.extend_from_slice(&method_name.to_le_bytes());
             },
             Bytecode::EmitSignal(class_name, signal_name) => {
-                result.push(54);
+                result.push(57);
                 result.extend_from_slice(&class_name.to_le_bytes());
                 result.extend_from_slice(&signal_name.to_le_bytes());
             },
             Bytecode::EmitStaticSignal(class_name, signal_name) => {
-                result.push(55);
+                result.push(58);
                 result.extend_from_slice(&class_name.to_le_bytes());
                 result.extend_from_slice(&signal_name.to_le_bytes());
             },
             Bytecode::ConnectSignal(class_name, parent_class_name, method_name, target_class_name) => {
-                result.push(56);
+                result.push(59);
                 result.extend_from_slice(&class_name.to_le_bytes());
                 result.extend_from_slice(&parent_class_name.to_le_bytes());
                 result.extend_from_slice(&method_name.to_le_bytes());
                 result.extend_from_slice(&target_class_name.to_le_bytes());
             },
             Bytecode::DisconnectSignal(signal_name, method_name) => {
-                result.push(57);
+                result.push(60);
                 result.extend_from_slice(&signal_name.to_le_bytes());
                 result.extend_from_slice(&method_name.to_le_bytes());
             },
             Bytecode::GetStrRef(index) => {
-                result.push(58);
+                result.push(61);
                 result.extend_from_slice(&index.to_le_bytes());
             },
-            Bytecode::Return => result.push(59),
-            Bytecode::ReturnVoid => result.push(60),
+            Bytecode::Return => result.push(62),
+            Bytecode::ReturnVoid => result.push(63),
+            Bytecode::Catch(index) => {
+                result.push(64);
+                result.extend_from_slice(&index.to_le_bytes());
+            }
+            Bytecode::Throw => result.push(65),
             Bytecode::StartBlock(id) => {
-                result.push(61);
+                result.push(66);
                 result.extend_from_slice(&id.to_le_bytes());
             },
             Bytecode::Goto(offset) => {
-                result.push(62);
+                result.push(67);
                 result.extend_from_slice(&offset.to_le_bytes());
             },
             Bytecode::If(true_offset, false_offset) => {
-                result.push(63);
+                result.push(68);
                 result.extend_from_slice(&true_offset.to_le_bytes());
                 result.extend_from_slice(&false_offset.to_le_bytes());
             },
             Bytecode::Switch(cases, default) => {
-                result.push(64);
+                result.push(69);
                 result.extend_from_slice(&(cases.len() as u64).to_le_bytes());
                 for case in cases {
                     result.extend_from_slice(&case.to_le_bytes());

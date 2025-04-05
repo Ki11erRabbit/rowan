@@ -1,3 +1,4 @@
+use crate::bytecode::compiled::StringIndex;
 use crate::TypeTag;
 
 pub type BlockIdOffset = i64;
@@ -29,6 +30,8 @@ pub enum Bytecode {
     LoadF32(f32),
     /// Load constants
     LoadF64(f64),
+    /// Load Symbol
+    LoadSymbol(Symbol),
     // Stack operations
     /// Pop the top value off the stack
     Pop,
@@ -55,15 +58,13 @@ pub enum Bytecode {
     /// Wrapping Modulus
     Mod,
     /// Saturating Addition
-    SatAdd,
+    SatAddSigned,
     /// Saturating Subtraction
-    SatSub,
-    /// Saturating Multiplication
-    SatMul,
-    /// Saturating Division
-    SatDiv,
-    /// Saturating Modulus
-    SatMod,
+    SatSubSigned,
+    /// Saturating Addition
+    SatAddUnsigned,
+    /// Saturating Subtraction
+    SatSubUnsigned,
     // Bitwise operations
     /// Bitwise AND
     And,
@@ -73,10 +74,8 @@ pub enum Bytecode {
     Xor,
     /// Bitwise NOT
     Not,
-    /// Arithmetic Shift Left
-    AShl,
-    /// Logical Shift Left
-    LShl,
+    /// Shift Left
+    Shl,
     /// Arithmetic Shift Right
     AShr,
     /// Logical Shift Right
@@ -89,13 +88,21 @@ pub enum Bytecode {
     /// Not equal comparison
     NotEqual,
     /// Greater than comparison
-    Greater,
+    GreaterSigned,
     /// Less than comparison
-    Less,
+    LessSigned,
     /// Greater than or equal comparison
-    GreaterOrEqual,
+    GreaterOrEqualSigned,
     /// Less than or equal comparison
-    LessOrEqual,
+    LessOrEqualSigned,
+    /// Greater than comparison
+    GreaterUnsigned,
+    /// Less than comparison
+    LessUnsigned,
+    /// Greater than or equal comparison
+    GreaterOrEqualUnsigned,
+    /// Less than or equal comparison
+    LessOrEqualUnsigned,
     // Type conversions
     /// Convert the top value on the stack to the specified type
     Convert(TypeTag),
@@ -162,6 +169,10 @@ pub enum Bytecode {
     /// Return from a function
     /// This pops nothing off the stack and returns void
     ReturnVoid,
+    /// Catch an exception with the specified class symbol
+    Catch(StringIndex),
+    /// Throw an exception, pops an object off of the stack and throws it
+    Throw,
     /// Start a new block of code
     StartBlock(u64),
     /// Goto a block of code via an offset from the current block
