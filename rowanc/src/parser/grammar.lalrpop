@@ -507,7 +507,7 @@ Statement: Statement<'a> = {
 // TODO: remove Some() from Variable
 TermExpr: Expression<'a> = {
     <start: @L> <id:Identifier> <end: @R> => {
-        Expression::Variable(id, Some(Type::Object(Text::Borrowed("Printer"), Span::new(0, 2))), Span::new(start, end))
+        Expression::Variable(id, None, Span::new(start, end))
     },
     <lit:Literal> => Expression::Literal(lit),
     <start: @L> Minus <expr:TermExpr> <end: @R> => {
@@ -764,7 +764,7 @@ Pattern: Pattern<'a> = {
 
 // TODO: remove default literal typing
 Constant: Constant<'a> = {
-    <start: @L> <int:Int_lit> <end: @R> => Constant::Integer(int, Some(Type::U64), Span::new(start, end)),
+    <start: @L> <int:Int_lit> <end: @R> => Constant::Integer(int, Some(Type::I32), Span::new(start, end)),
     <start: @L> <float:Float_lit> <end: @R> => Constant::Float(float, Some(Type::F64), Span::new(start, end)),
     <start: @L> <char:Char_lit> <end: @R> => Constant::Character(char, Span::new(start, end)),
     <start: @L> <string:String_lit> <end: @R> => Constant::String(string, Span::new(start, end)),

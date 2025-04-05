@@ -10,6 +10,13 @@ fn create_stdlib<'a>() -> HashMap<String, HashMap<String, ClassAttribute>> {
     object_attributes.insert("tick".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::F64], Box::new(TypeCheckerType::Void))));
 
     info.insert("Object".to_string(), object_attributes);
+
+    let mut info = HashMap::new();
+    let mut printer_attributes = HashMap::new();
+    printer_attributes.insert("println-int".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64], Box::new(TypeCheckerType::Void))));
+
+    info.insert("Printer".to_string(), printer_attributes);
+
     
     info
 }
@@ -120,6 +127,7 @@ impl<'a, 'b> Into<Type<'a>> for &'b TypeCheckerType {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum ClassAttribute {
     Member(TypeCheckerType),
     Method(TypeCheckerType),
@@ -181,6 +189,13 @@ impl TypeChecker {
         if let Some(frame) = self.scopes.last_mut() {
             frame.insert(var.as_ref(), ty)
         }
+    }
+
+    fn get_attribute<S: AsRef<str>>(&self, class: S, attribute: S) -> Option<&ClassAttribute> {
+        self.class_information.get(class.as_ref()).and_then(|attributes| {
+            let out = attributes.get(attribute.as_ref());
+            out
+        })
     }
 
     pub fn check<'a>(&mut self, files: Vec<crate::ast::File<'a>>) -> Result<Vec<crate::ast::File<'a>>, TypeCheckerError> {
@@ -309,6 +324,7 @@ impl TypeChecker {
             Statement::Expression(expr, _) => {
                 self.check_expr(return_type, expr)?;
             }
+            _ => {}
         }
 
         Ok(())
@@ -371,8 +387,44 @@ impl TypeChecker {
                 if ty != Type::U8 {
                     todo!("report boolean operands aren't booleans")
                 }
+            }
+            Expression::Variable(name, annotation, _) => {
+                if let Some(ty) = self.lookup_var(name) {
+                    // annotate the expression with the type
+                    *annotation = Some(ty.clone().into());
+                } else {
+                    todo!("report unbound variable");
+                }
+            }
+            Expression::Call { name, type_args: _, args, .. } => {
+                self.check_expr(return_type, name)?;
+                let method = self.get_type(name)?;
+
+                for (i, arg) in args.iter_mut().enumerate() {
+                    // check each argument in the call
+                    self.check_expr(return_type, arg)?;
+                    let arg_ty = self.get_type(arg)?;
+                    match &method {
+                        Type::Function(arg_types, return_type, _) => {
+                            if i < arg_types.len() {
+                                let expected_ty = &arg_types[i];
+                                if arg_ty != *expected_ty {
+                                    todo!("report type mismatch for argument {} in method call", i);
+                                }
+                            } else {
+                                todo!("report too many arguments in method call");
+                            }
+                        
+                        }
+                        _ => unreachable!("expected method to be a function type but got {:?}", method),
+                    }
+                }
                 
             }
+            Expression::MemberAccess { object, field, .. } => {
+                self.check_expr(return_type, object)?;
+            }
+            _ => {}
         }
 
         Ok(())
@@ -423,7 +475,51 @@ impl TypeChecker {
                     todo!("report unbound variable")
                 }
             }
-            _ => todo!("finish get_type"),
+            Expression::As { source, typ, .. } => {
+                let _source_ty = self.get_type(source.as_mut())?;
+                let target_ty = typ.clone(); // convert to Type
+                // TODO: check if source_ty can be converted to target_ty
+                Ok(target_ty)
+            }
+            Expression::Into { source, typ, .. } => {
+                let _source_ty = self.get_type(source.as_mut())?;
+                let target_ty = typ.clone(); // convert to Type
+                // TODO: check if source_ty can be converted binary wise to target_ty
+                Ok(target_ty)
+            }
+            Expression::New(object, _, _) => {
+                Ok(object.clone())
+            }
+            Expression::MemberAccess { object, field, .. } => {
+                match object.as_mut() {
+                    Expression::Variable(name,ty, _) => {
+                        let var_ty = self.lookup_var(name) // lookup the type of the variable
+                            .ok_or_else(|| {
+                                todo!("report unbound variable in member access")
+                            })?;
+                        *ty = Some(var_ty.into()); // annotate the type of the variable
+                        match var_ty {
+                            TypeCheckerType::Object(name) => {
+                                match self.get_attribute(name.to_string(), field.to_string()) {
+                                    Some(ClassAttribute::Member(ty)) => {
+                                        Ok(ty.clone().into())
+                                    }
+                                    Some(ClassAttribute::Method(ty)) => {
+                                        Ok(ty.clone().into())
+                                    }
+                                    _ => {
+                                        eprintln!("Failed to find attribute {} in class {}", field.to_string(), name);
+                                        todo!("report unknown member access")
+                                    }
+                                }
+                            }
+                            _ => todo!("report member access on non-object type"),
+                        }
+                    }
+                    _ => todo!("report member access on non-variable expression"),
+                }
+            }
+            x => todo!("finish get_type: {:?}", x),
         }
     }
     

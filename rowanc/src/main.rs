@@ -27,6 +27,9 @@ fn main() {
         class_files.push(file);
     }
 
+    let mut typechecker = typechecker::TypeChecker::new();
+    let class_files = typechecker.check(class_files).unwrap();
+
     let mut compiler = backend::Compiler::new();
     compiler.compile_files(class_files).unwrap();
 

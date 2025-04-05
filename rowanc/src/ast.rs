@@ -158,6 +158,18 @@ impl PathName<'_> {
     }
 }
 
+impl std::fmt::Display for PathName<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        for (i, segment) in self.segments.iter().enumerate() {
+            if i > 0 {
+                write!(f, "::")?;
+            }
+            write!(f, "{}", segment)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum TopLevelStatement<'a> {
     Import(Import<'a>),
