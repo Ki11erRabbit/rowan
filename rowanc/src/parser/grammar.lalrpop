@@ -775,13 +775,13 @@ Constant: Constant<'a> = {
 
 Literal: Literal<'a> = {
     <constant:Constant> => Literal::Constant(constant),
-    <start: @L> "[" "]" <end: @R> => Literal::Array(Vec::new(), Span::new(start, end)),
+    <start: @L> "[" "]" <end: @R> => Literal::Array(Vec::new(), None, Span::new(start, end)),
     <start: @L> "[" <expr:Expr> <exprs:("," <Expr>)*> "]" <end: @R> => {
         let mut v = vec![expr];
         for e in exprs.into_iter() {
             v.push(e);
         }
-        Literal::Array(v, Span::new(start, end))
+        Literal::Array(v, None, Span::new(start, end))
     },
     <start: @L> "void" <end: @R> => Literal::Void(Span::new(start, end)),
     <t:Tuple> => t,
@@ -793,7 +793,7 @@ Tuple: Literal<'a> = {
         for e in exprs.into_iter() {
             v.push(e);
         }
-        Literal::Tuple(v, Span::new(start, end))
+        Literal::Tuple(v, None, Span::new(start, end))
     },
 };
 

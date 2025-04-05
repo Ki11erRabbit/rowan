@@ -1,5 +1,5 @@
 use either::Either;
-
+use rowan_shared::TypeTag;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Text<'a> {
@@ -310,6 +310,38 @@ pub enum Type<'a> {
     TypeArg(Box<Type<'a>>, Vec<Type<'a>>, Span),
     Function(Vec<Type<'a>>, Box<Type<'a>>, Span),
     Tuple(Vec<Type<'a>>, Span),
+}
+
+impl Type<'_> {
+    pub fn is_integer(&self) -> bool {
+        match self {
+            Type::U8 | Type::U16 | Type::U32 | Type::U64 => true,
+            Type::I8 | Type::I16 | Type::I32 | Type::I64 => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_float(&self) -> bool {
+        match self {
+            Type::F32 | Type::F64 => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_unsigned(&self) -> bool {
+        match self {
+            Type::U8 | Type::U16 | Type::U32 | Type::U64 => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_signed(&self) -> bool {
+        match self {
+            Type::I8 | Type::I16 | Type::I32 | Type::I64 => true,
+            _ => false,
+        }
+    }
+
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
@@ -674,14 +706,47 @@ impl Expression<'_> {
             span
         }
     }
+
+    pub fn get_type(&self) -> Option<Type> {
+        match self {
+            Expression::As {typ, ..} => Some(typ.clone()),
+            Expression::Into {typ, ..} => Some(typ.clone()),
+            Expression::Literal(Literal::Constant(Constant::Bool(_, _))) => {
+                Some(Type::U8)
+            }
+            Expression::Literal(Literal::Constant(Constant::Character(_, _))) => {
+                Some(Type::U32)
+            }
+            Expression::Literal(Literal::Constant(Constant::Integer(_, ty, _))) => {
+                ty.clone()
+            }
+            Expression::Literal(Literal::Constant(Constant::Float(_, ty, _))) => {
+                ty.clone()
+            }
+            Expression::Literal(Literal::Constant(Constant::String(_, _))) => {
+                Some(Type::Str)
+            }
+            Expression::Literal(Literal::Void(_)) => {
+                Some(Type::Void)
+            }
+            Expression::Literal(Literal::Tuple(_, ty, _)) => {
+                ty.clone()
+            }
+            Expression::Literal(Literal::Array(_, ty, _)) => {
+                ty.clone()
+            }
+            _ => todo!("Expression::get_type"),
+        }
+
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Literal<'a> {
     Constant(Constant<'a>),
     Void(Span),
-    Tuple(Vec<Expression<'a>>, Span),
-    Array(Vec<Expression<'a>>, Span),
+    Tuple(Vec<Expression<'a>>, Option<Type<'a>>, Span),
+    Array(Vec<Expression<'a>>, Option<Type<'a>>, Span),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]

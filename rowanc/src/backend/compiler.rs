@@ -807,44 +807,77 @@ impl Compiler {
                 self.compile_expression(class_name, partial_class, left.as_ref(), output)?;
                 self.compile_expression(class_name, partial_class, right.as_ref(), output)?;
 
-                match operator {
-                    BinaryOperator::Add => {
-                        output.push(Bytecode::Add)
+                match (left.get_type(), operator, right.get_type()) {
+                    (Some(lhs), BinaryOperator::Add, Some(rhs)) if lhs.is_integer() && rhs.is_integer() => {
+                        output.push(Bytecode::AddInt)
                     }
-                    BinaryOperator::Sub => {
-                        output.push(Bytecode::Sub)
+                    (Some(lhs), BinaryOperator::Sub, Some(rhs)) if lhs.is_integer() && rhs.is_integer() => {
+                        output.push(Bytecode::SubInt)
                     }
-                    BinaryOperator::Mul => {
-                        output.push(Bytecode::Mul)
+                    (Some(lhs), BinaryOperator::Mul, Some(rhs)) if lhs.is_integer() && rhs.is_integer() => {
+                        output.push(Bytecode::MulInt)
                     }
-                    BinaryOperator::Div => {
-                        output.push(Bytecode::Div)
+                    (Some(lhs), BinaryOperator::Div, Some(rhs)) if lhs.is_integer() && rhs.is_integer() => {
+                        output.push(Bytecode::DivInt)
                     }
-                    BinaryOperator::Mod => {
-                        output.push(Bytecode::Mod)
+                    (Some(lhs), BinaryOperator::Mod, Some(rhs)) if lhs.is_integer() && rhs.is_integer() => {
+                        output.push(Bytecode::ModInt)
                     }
-                    BinaryOperator::Eq => {
+                    (Some(lhs), BinaryOperator::Add, Some(rhs)) if lhs.is_float() || rhs.is_float() => {
+                        output.push(Bytecode::AddFloat)
+                    }
+                    (Some(lhs), BinaryOperator::Sub, Some(rhs)) if lhs.is_float() || rhs.is_float() => {
+                        output.push(Bytecode::SubFloat)
+                    }
+                    (Some(lhs), BinaryOperator::Mul, Some(rhs)) if lhs.is_float() || rhs.is_float() => {
+                        output.push(Bytecode::MulFloat)
+                    }
+                    (Some(lhs), BinaryOperator::Div, Some(rhs)) if lhs.is_float() || rhs.is_float() => {
+                        output.push(Bytecode::DivFloat)
+                    }
+                    (Some(lhs), BinaryOperator::Mod, Some(rhs)) if lhs.is_float() || rhs.is_float() => {
+                        output.push(Bytecode::ModFloat)
+                    }
+                    (Some(lhs), BinaryOperator::Eq, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::Equal)
                     }
-                    BinaryOperator::Ne => {
+                    (Some(lhs), BinaryOperator::Eq, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                        output.push(Bytecode::Equal)
+                    }
+                    (Some(lhs), BinaryOperator::Ne, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::NotEqual)
                     }
-                    BinaryOperator::Lt => {
-                        output.push(Bytecode::Less)
+                    (Some(lhs), BinaryOperator::Ne, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                        output.push(Bytecode::NotEqual)
                     }
-                    BinaryOperator::Le => {
-                        output.push(Bytecode::LessOrEqual)
+                    (Some(lhs), BinaryOperator::Lt, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                        output.push(Bytecode::LessUnsigned)
                     }
-                    BinaryOperator::Gt => {
-                        output.push(Bytecode::Greater)
+                    (Some(lhs), BinaryOperator::Lt, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                        output.push(Bytecode::LessSigned)
                     }
-                    BinaryOperator::Ge => {
-                        output.push(Bytecode::GreaterOrEqual)
+                    (Some(lhs), BinaryOperator::Le, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                        output.push(Bytecode::LessOrEqualUnsigned)
                     }
-                    BinaryOperator::And => {
+                    (Some(lhs), BinaryOperator::Le, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                        output.push(Bytecode::LessOrEqualSigned)
+                    }
+                    (Some(lhs), BinaryOperator::Gt, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                        output.push(Bytecode::GreaterUnsigned)
+                    }
+                    (Some(lhs), BinaryOperator::Gt, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                        output.push(Bytecode::GreaterSigned)
+                    }
+                    (Some(lhs), BinaryOperator::Ge, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                        output.push(Bytecode::GreaterOrEqualUnsigned)
+                    }
+                    (Some(lhs), BinaryOperator::Ge, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                        output.push(Bytecode::GreaterOrEqualSigned)
+                    }
+                    (_, BinaryOperator::And, _) => {
                         output.push(Bytecode::And)
                     }
-                    BinaryOperator::Or => {
+                    (_, BinaryOperator::Or, _) => {
                         output.push(Bytecode::Or)
                     }
                     _ => todo!("binary operator")

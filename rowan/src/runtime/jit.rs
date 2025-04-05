@@ -421,6 +421,10 @@ impl FunctionTranslator<'_> {
                     let value = self.builder.ins().f64const(*value);
                     self.push(value);
                 }
+                Bytecode::LoadSymbol(symbol) => {
+                    let value = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(symbol.to_le_bytes())));
+                    self.push(value);
+                }
                 Bytecode::Pop => {
                     self.pop();
                 }
@@ -442,64 +446,46 @@ impl FunctionTranslator<'_> {
                     let value = self.pop();
                     self.set_argument(*index, value);
                 }
-                Bytecode::Add => {
+                Bytecode::AddInt => {
                     let value_rhs = self.pop();
                     let value_lhs = self.pop();
                     let value_out = self.builder.ins().iadd(value_lhs, value_rhs);
                     self.push(value_out);
                 }
-                Bytecode::Sub => {
+                Bytecode::SubInt => {
                     let value_rhs = self.pop();
                     let value_lhs = self.pop();
                     let value_out = self.builder.ins().isub(value_lhs, value_rhs);
                     self.push(value_out);
                 }
-                Bytecode::Mul => {
+                Bytecode::MulInt => {
                     let value_rhs = self.pop();
                     let value_lhs = self.pop();
                     let value_out = self.builder.ins().imul(value_lhs, value_rhs);
                     self.push(value_out);
                 }
-                Bytecode::Div => {
+                Bytecode::DivInt => {
                     let value_rhs = self.pop();
                     let value_lhs = self.pop();
                     let value_out = self.builder.ins().udiv(value_lhs, value_rhs);
                     self.push(value_out);
                 }
-                Bytecode::Mod => {
+                Bytecode::ModInt => {
                     let value_rhs = self.pop();
                     let value_lhs = self.pop();
                     let value_out = self.builder.ins().urem(value_lhs, value_rhs);
                     self.push(value_out);
                 }
-                Bytecode::SatAdd => {
+                Bytecode::SatAddIntUnsigned => {
                     let value_rhs = self.pop();
                     let value_lhs = self.pop();
                     let value_out = self.builder.ins().uadd_sat(value_lhs, value_rhs);
                     self.push(value_out);
                 }
-                Bytecode::SatSub => {
+                Bytecode::SatSubIntUnsigned => {
                     let value_rhs = self.pop();
                     let value_lhs = self.pop();
                     let value_out = self.builder.ins().usub_sat(value_lhs, value_rhs);
-                    self.push(value_out);
-                }
-                Bytecode::SatMul => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
-                    let value_out = self.builder.ins().imul(value_lhs, value_rhs);
-                    self.push(value_out);
-                }
-                Bytecode::SatDiv => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
-                    let value_out = self.builder.ins().udiv(value_lhs, value_rhs);
-                    self.push(value_out);
-                }
-                Bytecode::SatMod => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
-                    let value_out = self.builder.ins().urem(value_lhs, value_rhs);
                     self.push(value_out);
                 }
                 Bytecode::And => {
@@ -525,13 +511,7 @@ impl FunctionTranslator<'_> {
                     let value = self.builder.ins().bnot(value);
                     self.push(value);
                 }
-                Bytecode::AShl => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
-                    let value_out = self.builder.ins().ishl(value_lhs, value_rhs);
-                    self.push(value_out);
-                }
-                Bytecode::LShl => {
+                Bytecode::Shl => {
                     let value_rhs = self.pop();
                     let value_lhs = self.pop();
                     let value_out = self.builder.ins().ishl(value_lhs, value_rhs);
@@ -566,28 +546,52 @@ impl FunctionTranslator<'_> {
                     let value_out = self.builder.ins().icmp(IntCC::NotEqual, value_lhs, value_rhs);
                     self.push(value_out);
                 }
-                Bytecode::Greater => {
+                Bytecode::GreaterUnsigned => {
                     let value_rhs = self.pop();
                     let value_lhs = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::UnsignedGreaterThan, value_lhs, value_rhs);
                     self.push(value_out);
                 }
-                Bytecode::Less => {
+                Bytecode::LessUnsigned => {
                     let value_rhs = self.pop();
                     let value_lhs = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::UnsignedLessThan, value_lhs, value_rhs);
                     self.push(value_out);
                 }
-                Bytecode::GreaterOrEqual => {
+                Bytecode::GreaterOrEqualUnsigned => {
                     let value_rhs = self.pop();
                     let value_lhs = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::UnsignedGreaterThanOrEqual, value_lhs, value_rhs);
                     self.push(value_out);
                 }
-                Bytecode::LessOrEqual => {
+                Bytecode::LessOrEqualUnsigned => {
                     let value_rhs = self.pop();
                     let value_lhs = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::UnsignedLessThanOrEqual, value_lhs, value_rhs);
+                    self.push(value_out);
+                }
+                Bytecode::GreaterSigned => {
+                    let value_rhs = self.pop();
+                    let value_lhs = self.pop();
+                    let value_out = self.builder.ins().icmp(IntCC::SignedGreaterThan, value_lhs, value_rhs);
+                    self.push(value_out);
+                }
+                Bytecode::LessSigned => {
+                    let value_rhs = self.pop();
+                    let value_lhs = self.pop();
+                    let value_out = self.builder.ins().icmp(IntCC::SignedLessThan, value_lhs, value_rhs);
+                    self.push(value_out);
+                }
+                Bytecode::GreaterOrEqualSigned => {
+                    let value_rhs = self.pop();
+                    let value_lhs = self.pop();
+                    let value_out = self.builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, value_lhs, value_rhs);
+                    self.push(value_out);
+                }
+                Bytecode::LessOrEqualSigned => {
+                    let value_rhs = self.pop();
+                    let value_lhs = self.pop();
+                    let value_out = self.builder.ins().icmp(IntCC::SignedLessThanOrEqual, value_lhs, value_rhs);
                     self.push(value_out);
                 }
                 // TODO: implement conversions

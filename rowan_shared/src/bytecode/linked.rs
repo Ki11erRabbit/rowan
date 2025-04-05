@@ -48,23 +48,33 @@ pub enum Bytecode {
     StoreArgument(u8),
     // Arithmetic operations
     /// Wrapping Addition
-    Add,
+    AddInt,
     /// Wrapping Subtraction
-    Sub,
+    SubInt,
     /// Wrapping Multiplication
-    Mul,
+    MulInt,
     /// Wrapping Division
-    Div,
+    DivInt,
     /// Wrapping Modulus
-    Mod,
+    ModInt,
+    /// Wrapping Addition
+    AddFloat,
+    /// Wrapping Subtraction
+    SubFloat,
+    /// Wrapping Multiplication
+    MulFloat,
+    /// Wrapping Division
+    DivFloat,
+    /// Wrapping Modulus
+    ModFloat,
     /// Saturating Addition
-    SatAddSigned,
+    SatAddIntSigned,
     /// Saturating Subtraction
-    SatSubSigned,
+    SatSubIntSigned,
     /// Saturating Addition
-    SatAddUnsigned,
+    SatAddIntUnsigned,
     /// Saturating Subtraction
-    SatSubUnsigned,
+    SatSubIntUnsigned,
     // Bitwise operations
     /// Bitwise AND
     And,

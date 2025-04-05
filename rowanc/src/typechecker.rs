@@ -572,10 +572,13 @@ impl TypeChecker {
                     }
                 }
             }
-            (Type::Tuple(tys, _), Expression::Literal(Literal::Tuple(exprs, _))) => {
+            (Type::Tuple(tys, _), Expression::Literal(Literal::Tuple(exprs, annotation, _))) => {
+                let mut type_vec = Vec::new();
                 for (ty, expr) in tys.iter().zip(exprs.iter_mut()) {
                     self.annotate_expr(ty, expr)?;
+                    type_vec.push(ty.clone());
                 }
+                *annotation = Some(Type::Tuple(type_vec, Span::new(0, 0)));
             }
             (ty, Expression::BinaryOperation {
                 operator: BinaryOperator::Add, left, right, .. }) => {
