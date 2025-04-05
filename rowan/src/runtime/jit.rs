@@ -266,7 +266,7 @@ impl JITCompiler {
 pub struct FunctionTranslator<'a> {
     builder: FunctionBuilder<'a>,
     var_store_and_stack: Vec<Option<Value>>,
-    blocks: Vec<Block>,
+    blocks: Vec<(Block, usize, usize)>,
     current_block: usize,
     jit_utility_func: &'a HashMap<String, (FuncId, ir::function::Function)>,
 }
@@ -289,10 +289,11 @@ impl FunctionTranslator<'_> {
             var_store_and_stack[i + 256] = Some(value.clone());
         }
 
+        let store_end = builder.block_params(entry_block).len();
         FunctionTranslator {
             builder,
             var_store_and_stack,
-            blocks: vec![entry_block],
+            blocks: vec![(entry_block, 0, store_end)],
             current_block: 0,
             jit_utility_func
         }
@@ -362,15 +363,49 @@ impl FunctionTranslator<'_> {
         output
     }
 
-    pub fn get_args_as_vec(&self) -> Vec<Value> {
+    pub fn get_args_as_vec(&self) -> (Vec<Value>, usize, usize) {
         let mut output = Vec::new();
-        for value in self.var_store_and_stack.iter() {
+        let mut found_call_arg_end = false;
+        let mut found_store_end = false;
+        let mut in_none_area = false;
+        let mut call_arg_end = 0;
+        let mut store_end = 0;
+        for (i, value) in self.var_store_and_stack.iter().enumerate() {
             match value {
-                Some(v) => output.push(*v),
-                None => {}
+                Some(v) => {
+                    output.push(*v);
+                    in_none_area = false;
+                },
+                None => {
+                    if found_call_arg_end && !in_none_area {
+                        found_call_arg_end = true;
+                        call_arg_end = i;
+                        in_none_area = true;
+                    } else if found_store_end && !in_none_area {
+                        found_store_end = true;
+                        in_none_area = true;
+                        store_end = i;
+                    }
+                }
             }
         }
-        output 
+        (output, call_arg_end, store_end)
+    }
+
+    fn restore_store_and_stack(&mut self, store_and_stack: &[Value], call_arg_end: usize, store_end: usize) {
+        let args = store_and_stack[..call_arg_end].iter();
+        for (value, arg_value) in self.var_store_and_stack[..256].iter_mut().zip(args) {
+            *value = Some(*arg_value);
+        }
+        let store = store_and_stack[call_arg_end..store_end].iter();
+        for (value, store_value) in self.var_store_and_stack[256..512].iter_mut().zip(store) {
+            *value = Some(*store_value);
+        }
+        let mut stack = store_and_stack[store_end..].iter();
+        for (value, stack_value) in self.var_store_and_stack[512..].iter_mut().zip(&mut stack) {
+            *value = Some(*stack_value);
+        }
+        self.var_store_and_stack.extend(stack.map(|value| Some(*value)));
     }
 
 
@@ -668,9 +703,57 @@ impl FunctionTranslator<'_> {
                 }
                 // TODO: implement signal ops
                 Bytecode::StartBlock(index) => {
-                    let block = self.blocks[*index as usize];
+                    let (block, arg_end, store_end)  = self.blocks[*index as usize];
+                    let params = self.builder.block_params(block).to_vec();
+                    self.restore_store_and_stack(&params, arg_end, store_end);
                     self.builder.switch_to_block(block);
-                    
+                }
+                Bytecode::Goto(offset) => {
+                    let block = (self.current_block as i64 + *offset) as usize;
+
+                    while self.blocks.len() < block {
+                        self.blocks.push((self.builder.create_block(), 0, 0));
+                    }
+
+                    let (stack, arg_end_pos, store_end_pos) = self.get_args_as_vec();
+
+                    let (block, arg_end, store_end) = &mut self.blocks[block];
+
+                    *arg_end = arg_end_pos;
+                    *store_end = store_end_pos;
+                    self.builder.ins().jump(*block, &stack);
+                }
+                Bytecode::If(then_offset, else_offset) => {
+                    let value = self.pop();
+                    let then_block = (self.current_block as i64 + *then_offset) as usize;
+                    let else_block = (self.current_block as i64 + *else_offset) as usize;
+
+                    while self.blocks.len() < then_block || self.blocks.len() < else_block {
+                        self.blocks.push((self.builder.create_block(), 0, 0));
+                    }
+
+                    let (current_stack, arg_end_pos, store_end_pos) = self.get_args_as_vec();
+
+                    {
+                        let (_, then_arg_end, then_store_end) = &mut self.blocks[then_block];
+                        *then_arg_end = arg_end_pos;
+                        *then_store_end = store_end_pos;
+                    }
+                    {
+                        let (_, else_arg_end, else_store_end) = &mut self.blocks[else_block];
+                        *else_arg_end = arg_end_pos;
+                        *else_store_end = store_end_pos;
+                    }
+                    let (then_block, _, _) = self.blocks[then_block];
+                    let (else_block, _, _) = self.blocks[else_block];
+
+                    self.builder.ins().brif(
+                        value,
+                        then_block,
+                        &current_stack,
+                        else_block,
+                        &current_stack
+                    );
                 }
                 x => todo!("remaining ops {:?}", x),
             }

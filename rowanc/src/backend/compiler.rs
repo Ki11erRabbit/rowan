@@ -1,8 +1,9 @@
 use std::{collections::HashMap, io::Write, path::{Path, PathBuf}};
+use either::Either;
 use rowan_shared::{bytecode::compiled::Bytecode, classfile::{Member, Signal, SignatureEntry, VTable, VTableEntry}, TypeTag};
 
 use crate::{ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator, Text}, backend::compiler_utils::Frame};
-
+use crate::ast::IfExpression;
 use super::compiler_utils::{PartialClass, PartialClassError};
 
 
@@ -641,7 +642,7 @@ impl Compiler {
     fn compile_method_body(&mut self, class_name: &str, partial_class: &mut PartialClass, body: Vec<Statement>) -> Result<Vec<Bytecode>, CompilerError> {
         let mut output = Vec::new();
 
-        self.compile_block(class_name, partial_class, body, &mut output)?;
+        self.compile_block(class_name, partial_class, &body, &mut output)?;
 
         Ok(output)
     }
@@ -650,7 +651,7 @@ impl Compiler {
         &mut self,
         class_name: &str,
         partial_class: &mut PartialClass,
-        body: Vec<Statement>,
+        body: &Vec<Statement>,
         output: &mut Vec<Bytecode>
     ) -> Result<(), CompilerError> {
 
@@ -965,7 +966,54 @@ impl Compiler {
 
                 output.push(Bytecode::NewObject(string_ref));
             }
+            Expression::IfExpression(if_expr, _) => {
+
+                self.compile_if_expression(class_name, partial_class, if_expr, output)?;
+            }
             _ => todo!("add remaining expressions")
+        }
+        Ok(())
+    }
+
+    fn compile_if_expression(
+        &mut self,
+        class_name: &str,
+        partial_class: &mut PartialClass,
+        expr: &IfExpression,
+        output: &mut Vec<Bytecode>
+    ) -> Result<(), CompilerError> {
+        match expr {
+            IfExpression { condition, then_branch, else_branch: None, ..} => {
+                self.compile_expression(class_name, partial_class, condition.as_ref(), output)?;
+                output.push(Bytecode::If(1, 2));
+                self.compile_block(class_name, partial_class, then_branch, output)?;
+                output.push(Bytecode::Goto(1));
+                self.increment_block();
+                let block = self.current_block;
+                output.push(Bytecode::StartBlock(block));
+            }
+            IfExpression { condition, then_branch, else_branch: Some(Either::Right(else_branch)), ..} => {
+                self.compile_expression(class_name, partial_class, condition.as_ref(), output)?;
+                output.push(Bytecode::If(1, 2));
+                self.compile_block(class_name, partial_class, then_branch, output)?;
+                output.push(Bytecode::Goto(2));
+                self.compile_block(class_name, partial_class, else_branch, output)?;
+                output.push(Bytecode::Goto(1));
+                self.increment_block();
+                let block = self.current_block;
+                output.push(Bytecode::StartBlock(block));
+            }
+            IfExpression { condition, then_branch, else_branch: Some(Either::Left(else_branch)), ..} => {
+                self.compile_expression(class_name, partial_class, condition.as_ref(), output)?;
+                output.push(Bytecode::If(1, 2));
+                self.compile_block(class_name, partial_class, then_branch, output)?;
+                let mut temp_output = Vec::new();
+                let then_block = self.current_block;
+                self.compile_if_expression(class_name, partial_class, else_branch.as_ref(), &mut temp_output)?;
+                let escape_block = self.current_block;
+                output.push(Bytecode::Goto((escape_block - then_block) as i64));
+                output.extend(temp_output);
+            }
         }
         Ok(())
     }
