@@ -735,7 +735,13 @@ impl Expression<'_> {
             Expression::Literal(Literal::Array(_, ty, _)) => {
                 ty.clone()
             }
-            _ => todo!("Expression::get_type"),
+            Expression::Variable(_, ty, _) => {
+                ty.clone()
+            }
+            Expression::BinaryOperation { operator: BinaryOperator::Add, left,  .. } => {
+                left.get_type()
+            }
+            x => todo!("Expression::get_type {:?}", x),
         }
 
     }

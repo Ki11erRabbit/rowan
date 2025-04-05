@@ -999,7 +999,6 @@ impl Compiler {
                 output.push(Bytecode::Goto(2));
                 self.compile_block(class_name, partial_class, else_branch, output)?;
                 output.push(Bytecode::Goto(1));
-                self.increment_block();
                 let block = self.current_block;
                 output.push(Bytecode::StartBlock(block));
             }

@@ -2,7 +2,7 @@ use std::{borrow::BorrowMut, collections::HashMap};
 
 use either::Either;
 
-use crate::ast::{Span, Type};
+use crate::ast::{BinaryOperator, Span, Type};
 
 fn create_stdlib<'a>() -> HashMap<String, HashMap<String, ClassAttribute>> {
     let mut info = HashMap::new();
@@ -370,11 +370,12 @@ impl TypeChecker {
             }
             Expression::BinaryOperation { operator, left, right, .. } => {
                 // TODO: add conversion when traits are added
+                // TODO: make it so that types get upgraded if they are compatable
                 let lhs = self.get_type(left)?;
                 let rhs = self.get_type(right)?;
 
                 if lhs != rhs {
-                    todo!("report type mismatch");
+                    todo!("report type mismatch {:?} {:?}", lhs, rhs);
                 }
             }
             Expression::UnaryOperation { operator: UnaryOperator::Neg, operand, .. } => {
@@ -468,11 +469,11 @@ impl TypeChecker {
             },
             Expression::Literal(Literal::Constant(Constant::Character(_, _))) => Ok(Type::Char),
             Expression::Variable(name, annotation, _) => {
-                if let Some(ty) = self.lookup_var(name) {
+                if let Some(ty) = self.lookup_var(&name) {
                     *annotation = Some(ty.into());
                     Ok(ty.into())
                 } else {
-                    todo!("report unbound variable")
+                    todo!("report unbound variable {}", name);
                 }
             }
             Expression::As { source, typ, .. } => {
@@ -518,6 +519,26 @@ impl TypeChecker {
                     }
                     _ => todo!("report member access on non-variable expression"),
                 }
+            }
+            Expression::BinaryOperation { operator: BinaryOperator::Add, left, right, .. } => {
+                let lhs = self.get_type(left.as_mut())?;
+                let rhs = self.get_type(right.as_mut())?;
+
+                match (lhs, rhs) {
+                    (Type::F32, _) | (_, Type::F32) => {
+                        Ok(Type::F32)
+                    }
+                    (Type::F64, _) | (_, Type::F64) => {
+                        Ok(Type::F64)
+                    }
+                    (lhs, rhs) => {
+                        if lhs != rhs {
+                            todo!("Report mismatch type")
+                        }
+                        Ok(lhs)
+                    }
+                }
+
             }
             x => todo!("finish get_type: {:?}", x),
         }

@@ -1,4 +1,4 @@
-
+use std::any::Any;
 use std::collections::HashMap;
 
 use codegen::{ir::{self, FuncRef}, CodegenError};
@@ -10,9 +10,7 @@ use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
 use super::{tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue}}, Context, Symbol};
 use std::sync::Arc;
-
-
-
+use crate::runtime;
 
 pub struct JITController {
     builder_context: FunctionBuilderContext,
@@ -208,7 +206,7 @@ impl JITCompiler {
         };
 
         //println!("[Translating]");
-        self.translate(&bytecode, module)?;
+        self.translate(&function.arguments, &bytecode, module)?;
 
 
         //println!("[Defining]");
@@ -219,12 +217,12 @@ impl JITCompiler {
                     ModuleError::Compilation(e) => {
                         match e {
                             CodegenError::Verifier(es) => {
-                                es.0.iter().map(|e| e.to_string()).collect::<Vec<String>>().join("\n")
+                                es.0.iter().map(|e| format!("{}", e)).collect::<Vec<String>>().join("\n")
                             }
-                            e => e.to_string(),
+                            e => format!("{}", e),
                         }
                     }
-                    e => e.to_string()
+                    e => format!("{}", e)
                 }
             })?;
 
@@ -243,11 +241,13 @@ impl JITCompiler {
 
     pub fn translate(
         &mut self,
+        arg_types: &[runtime::class::TypeTag],
         bytecode: &[Bytecode],
         module: &mut JITModule
     ) -> Result<(), String> {
 
         let mut function_translator = FunctionTranslator::new(
+            arg_types,
             &mut self.context,
             &mut self.builder_context,
             &self.jit_utility_func
@@ -265,14 +265,16 @@ impl JITCompiler {
 
 pub struct FunctionTranslator<'a> {
     builder: FunctionBuilder<'a>,
-    var_store_and_stack: Vec<Option<Value>>,
+    var_store_and_stack: Vec<Option<(Value, ir::Type)>>,
     blocks: Vec<(Block, usize, usize)>,
     current_block: usize,
+    block_arg_types: HashMap<usize, Vec<ir::Type>>,
     jit_utility_func: &'a HashMap<String, (FuncId, ir::function::Function)>,
 }
 
 impl FunctionTranslator<'_> {
     pub fn new<'a>(
+        arg_types: &[runtime::class::TypeTag],
         context: &'a mut codegen::Context,
         builder_context: &'a mut FunctionBuilderContext,
         jit_utility_func: &'a HashMap<String, (FuncId, ir::function::Function)>,
@@ -284,10 +286,28 @@ impl FunctionTranslator<'_> {
         builder.append_block_params_for_function_params(entry_block);
         builder.switch_to_block(entry_block);
         builder.seal_block(entry_block);
+
+        let mut block_arg_types = HashMap::new();
+
         let mut var_store_and_stack = vec![None; 512];
-        for (i, value) in builder.block_params(entry_block).iter().enumerate() {
-            var_store_and_stack[i + 256] = Some(value.clone());
+        let mut start_block_args = Vec::new();
+        for (i, (value, ty)) in builder.block_params(entry_block).iter().zip(arg_types.iter()).enumerate() {
+            let ty = match ty {
+                runtime::class::TypeTag::U8 | runtime::class::TypeTag::I8 => ir::types::I8,
+                runtime::class::TypeTag::U16 | runtime::class::TypeTag::I16 => ir::types::I16,
+                runtime::class::TypeTag::U32 | runtime::class::TypeTag::I32 => ir::types::I32,
+                runtime::class::TypeTag::U64 | runtime::class::TypeTag::I64 => ir::types::I64,
+                runtime::class::TypeTag::F32 => ir::types::F32,
+                runtime::class::TypeTag::F64 => ir::types::F64,
+                runtime::class::TypeTag::Str => ir::types::I64,
+                runtime::class::TypeTag::Void => ir::types::I64,
+                runtime::class::TypeTag::Object => ir::types::I64,
+            };
+            start_block_args.push(ty.clone());
+            var_store_and_stack[i + 256] = Some((value.clone(), ty));
         }
+
+        block_arg_types.insert(0, start_block_args);
 
         let store_end = builder.block_params(entry_block).len();
         FunctionTranslator {
@@ -295,19 +315,20 @@ impl FunctionTranslator<'_> {
             var_store_and_stack,
             blocks: vec![(entry_block, 0, store_end)],
             current_block: 0,
+            block_arg_types,
             jit_utility_func
         }
     }
-    pub fn set_argument(&mut self, pos: u8, value: Value) {
-        self.var_store_and_stack[pos as usize] = Some(value);
+    pub fn set_argument(&mut self, pos: u8, value: Value, ty: ir::Type) {
+        self.var_store_and_stack[pos as usize] = Some((value, ty));
     }
 
-    pub fn set_var(&mut self, pos: u8, value: Value) {
+    pub fn set_var(&mut self, pos: u8, value: Value, ty: ir::Type) {
         let pos = (pos as usize) + 256;
-        self.var_store_and_stack[pos] = Some(value);
+        self.var_store_and_stack[pos] = Some((value, ty));
     }
 
-    pub fn get_var(&mut self, pos: u8) -> Value {
+    pub fn get_var(&mut self, pos: u8) -> (Value, ir::Type) {
         let pos = (pos as usize) + 256;
         match self.var_store_and_stack[pos] {
             Some(v) => v,
@@ -315,11 +336,11 @@ impl FunctionTranslator<'_> {
         }
     }
 
-    pub fn push(&mut self, value: Value) {
-        self.var_store_and_stack.push(Some(value));
+    pub fn push(&mut self, value: Value, ty: ir::Type) {
+        self.var_store_and_stack.push(Some((value, ty)));
     }
 
-    pub fn pop(&mut self) -> Value {
+    pub fn pop(&mut self) -> (Value, ir::Type) {
         if self.var_store_and_stack.len() <= 512 {
             panic!("Code was compiled wrong, stack underflow");
         }
@@ -354,12 +375,10 @@ impl FunctionTranslator<'_> {
                 break;
             }
             match value {
-                Some(v) => output.push(*v),
+                Some((v, _)) => output.push(*v),
                 None => break,
             }
         }
-
-
         output
     }
 
@@ -372,7 +391,7 @@ impl FunctionTranslator<'_> {
         let mut store_end = 0;
         for (i, value) in self.var_store_and_stack.iter().enumerate() {
             match value {
-                Some(v) => {
+                Some((v, _)) => {
                     output.push(*v);
                     in_none_area = false;
                 },
@@ -392,20 +411,50 @@ impl FunctionTranslator<'_> {
         (output, call_arg_end, store_end)
     }
 
-    fn restore_store_and_stack(&mut self, store_and_stack: &[Value], call_arg_end: usize, store_end: usize) {
+    pub fn get_args_as_vec_type(&self) -> (Vec<Type>, usize, usize) {
+        let mut output = Vec::new();
+        let mut found_call_arg_end = false;
+        let mut found_store_end = false;
+        let mut in_none_area = false;
+        let mut call_arg_end = 0;
+        let mut store_end = 0;
+        for (i, value) in self.var_store_and_stack.iter().enumerate() {
+            match value {
+                Some((_, ty)) => {
+                    output.push(*ty);
+                    in_none_area = false;
+                },
+                None => {
+                    if found_call_arg_end && !in_none_area {
+                        found_call_arg_end = true;
+                        call_arg_end = i;
+                        in_none_area = true;
+                    } else if found_store_end && !in_none_area {
+                        found_store_end = true;
+                        in_none_area = true;
+                        store_end = i;
+                    }
+                }
+            }
+        }
+        (output, call_arg_end, store_end)
+    }
+
+    fn restore_store_and_stack(&mut self, block_index: usize, store_and_stack: &[Value], call_arg_end: usize, store_end: usize) {
         let args = store_and_stack[..call_arg_end].iter();
-        for (value, arg_value) in self.var_store_and_stack[..256].iter_mut().zip(args) {
-            *value = Some(*arg_value);
+        for ((value, arg_value), ty) in self.var_store_and_stack[..256].iter_mut().zip(args).zip(self.block_arg_types.get(&block_index).unwrap()[..call_arg_end].iter()) {
+            *value = Some((*arg_value, *ty));
         }
         let store = store_and_stack[call_arg_end..store_end].iter();
-        for (value, store_value) in self.var_store_and_stack[256..512].iter_mut().zip(store) {
-            *value = Some(*store_value);
+        for ((value, store_value), ty) in self.var_store_and_stack[256..512].iter_mut().zip(store).zip(self.block_arg_types.get(&block_index).unwrap()[call_arg_end..store_end].iter()) {
+            *value = Some((*store_value, *ty));
         }
         let mut stack = store_and_stack[store_end..].iter();
-        for (value, stack_value) in self.var_store_and_stack[512..].iter_mut().zip(&mut stack) {
-            *value = Some(*stack_value);
+        let mut types = self.block_arg_types.get(&block_index).unwrap()[store_end..].iter();
+        for ((value, stack_value), ty) in self.var_store_and_stack[512..].iter_mut().zip(&mut stack).zip(&mut types) {
+            *value = Some((*stack_value, *ty));
         }
-        self.var_store_and_stack.extend(stack.map(|value| Some(*value)));
+        self.var_store_and_stack.extend(stack.zip(types).map(|(value, ty)| Some((*value, *ty))));
     }
 
 
@@ -418,47 +467,47 @@ impl FunctionTranslator<'_> {
                 Bytecode::Nop | Bytecode::Breakpoint => {}
                 Bytecode::LoadU8(value) => {
                     let value = self.builder.ins().iconst(cranelift::codegen::ir::types::I8, i64::from(*value));
-                    self.push(value);
+                    self.push(value, ir::types::I8);
                 }
                 Bytecode::LoadI8(value) => {
                     let value = self.builder.ins().iconst(cranelift::codegen::ir::types::I8, i64::from(*value));
-                    self.push(value);
+                    self.push(value, ir::types::I8);
                 }
                 Bytecode::LoadU16(value) => {
                     let value = self.builder.ins().iconst(cranelift::codegen::ir::types::I16, i64::from(*value));
-                    self.push(value);
+                    self.push(value, ir::types::I16);
                 }
                 Bytecode::LoadI16(value) => {
                     let value = self.builder.ins().iconst(cranelift::codegen::ir::types::I16, i64::from(*value));
-                    self.push(value);
+                    self.push(value, ir::types::I16);
                 }
                 Bytecode::LoadU32(value) => {
                     let value = self.builder.ins().iconst(cranelift::codegen::ir::types::I32, i64::from(*value));
-                    self.push(value);
+                    self.push(value, ir::types::I32);
                 }
                 Bytecode::LoadI32(value) => {
                     let value = self.builder.ins().iconst(cranelift::codegen::ir::types::I32, i64::from(*value));
-                    self.push(value);
+                    self.push(value, ir::types::I32);
                 }
                 Bytecode::LoadU64(value) => {
                     let value = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(value.to_le_bytes())));
-                    self.push(value);
+                    self.push(value, ir::types::I64);
                 }
                 Bytecode::LoadI64(value) => {
                     let value = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from(*value));
-                    self.push(value);
+                    self.push(value, ir::types::I64);
                 }
                 Bytecode::LoadF32(value) => {
                     let value = self.builder.ins().f32const(*value);
-                    self.push(value);
+                    self.push(value, ir::types::F32);
                 }
                 Bytecode::LoadF64(value) => {
                     let value = self.builder.ins().f64const(*value);
-                    self.push(value);
+                    self.push(value, ir::types::F64);
                 }
                 Bytecode::LoadSymbol(symbol) => {
                     let value = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(symbol.to_le_bytes())));
-                    self.push(value);
+                    self.push(value, ir::types::I64);
                 }
                 Bytecode::Pop => {
                     self.pop();
@@ -470,164 +519,164 @@ impl FunctionTranslator<'_> {
                     self.swap();
                 }
                 Bytecode::StoreLocal(index) => {
-                    let value = self.pop();
-                    self.set_var(*index, value);
+                    let (value, ty) = self.pop();
+                    self.set_var(*index, value, ty);
                 }
                 Bytecode::LoadLocal(index) => {
-                    let value = self.get_var(*index);
-                    self.push(value);
+                    let (value, ty) = self.get_var(*index);
+                    self.push(value, ty);
                 }
                 Bytecode::StoreArgument(index) => {
-                    let value = self.pop();
-                    self.set_argument(*index, value);
+                    let (value, ty) = self.pop();
+                    self.set_argument(*index, value, ty);
                 }
                 Bytecode::AddInt => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().iadd(value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ty);
                 }
                 Bytecode::SubInt => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().isub(value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ty);
                 }
                 Bytecode::MulInt => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().imul(value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ty);
                 }
                 Bytecode::DivInt => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().udiv(value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ty);
                 }
                 Bytecode::ModInt => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().urem(value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ty);
                 }
                 Bytecode::SatAddIntUnsigned => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().uadd_sat(value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ty);
                 }
                 Bytecode::SatSubIntUnsigned => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().usub_sat(value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ty);
                 }
                 Bytecode::And => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().band(value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ty);
                 }
                 Bytecode::Or => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().bor(value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ty);
                 }
                 Bytecode::Xor => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().bxor(value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ty);
                 }
                 Bytecode::Not => {
-                    let value = self.pop();
+                    let (value, ty) = self.pop();
                     let value = self.builder.ins().bnot(value);
-                    self.push(value);
+                    self.push(value, ty);
                 }
                 Bytecode::Shl => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().ishl(value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ty);
                 }
                 Bytecode::AShr => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().sshr(value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ty);
                 }
                 Bytecode::LShr => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().ushr(value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ty);
                 }
                 Bytecode::Neg => {
-                    let value = self.pop();
+                    let (value, ty) = self.pop();
                     let value = self.builder.ins().ineg(value);
-                    self.push(value);
+                    self.push(value, ty);
                 }
                 Bytecode::Equal => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::Equal, value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ir::types::I8);
                 }
                 Bytecode::NotEqual => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::NotEqual, value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ir::types::I8);
                 }
                 Bytecode::GreaterUnsigned => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::UnsignedGreaterThan, value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ir::types::I8);
                 }
                 Bytecode::LessUnsigned => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::UnsignedLessThan, value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ir::types::I8);
                 }
                 Bytecode::GreaterOrEqualUnsigned => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::UnsignedGreaterThanOrEqual, value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ir::types::I8);
                 }
                 Bytecode::LessOrEqualUnsigned => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::UnsignedLessThanOrEqual, value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ir::types::I8);
                 }
                 Bytecode::GreaterSigned => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::SignedGreaterThan, value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ir::types::I8);
                 }
                 Bytecode::LessSigned => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::SignedLessThan, value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ir::types::I8);
                 }
                 Bytecode::GreaterOrEqualSigned => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ir::types::I8);
                 }
                 Bytecode::LessOrEqualSigned => {
-                    let value_rhs = self.pop();
-                    let value_lhs = self.pop();
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::SignedLessThanOrEqual, value_lhs, value_rhs);
-                    self.push(value_out);
+                    self.push(value_out, ir::types::I8);
                 }
                 // TODO: implement conversions
                 // TODO: implement array ops
@@ -646,7 +695,7 @@ impl FunctionTranslator<'_> {
                     let object_symbol = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(symbol.to_le_bytes()));
                     let new_object = self.builder.ins().call(new_object_func, &[object_symbol]);
                     let value = self.builder.inst_results(new_object)[0];
-                    self.push(value);
+                    self.push(value, ir::types::I64);
                 }
                 Bytecode::InvokeVirt(class_name, source_class, method_name) => {
 
@@ -705,34 +754,50 @@ impl FunctionTranslator<'_> {
                 Bytecode::StartBlock(index) => {
                     let (block, arg_end, store_end)  = self.blocks[*index as usize];
                     let params = self.builder.block_params(block).to_vec();
-                    self.restore_store_and_stack(&params, arg_end, store_end);
+                    self.restore_store_and_stack(*index as usize, &params, arg_end, store_end);
                     self.builder.switch_to_block(block);
+                    self.current_block = *index as usize;
                 }
                 Bytecode::Goto(offset) => {
                     let block = (self.current_block as i64 + *offset) as usize;
 
-                    while self.blocks.len() < block {
+                    while self.blocks.len() <= block + 1 {
                         self.blocks.push((self.builder.create_block(), 0, 0));
                     }
 
+                    let (block_args, _, _) = self.get_args_as_vec_type();
+                    self.block_arg_types.insert(block, block_args);
+
                     let (stack, arg_end_pos, store_end_pos) = self.get_args_as_vec();
 
+                    let block_index = block;
                     let (block, arg_end, store_end) = &mut self.blocks[block];
+                    if self.builder.block_params(*block).len() == 0 {
+                        for ty in self.block_arg_types.get(&block_index).unwrap().iter() {
+                            self.builder.append_block_param(*block, *ty);
+                        }
+                    }
 
                     *arg_end = arg_end_pos;
                     *store_end = store_end_pos;
                     self.builder.ins().jump(*block, &stack);
                 }
                 Bytecode::If(then_offset, else_offset) => {
-                    let value = self.pop();
+                    let (value, _) = self.pop();
                     let then_block = (self.current_block as i64 + *then_offset) as usize;
                     let else_block = (self.current_block as i64 + *else_offset) as usize;
 
-                    while self.blocks.len() < then_block || self.blocks.len() < else_block {
+                    while self.blocks.len() <= then_block + 1 || self.blocks.len() <= else_block + 1 {
                         self.blocks.push((self.builder.create_block(), 0, 0));
                     }
 
                     let (current_stack, arg_end_pos, store_end_pos) = self.get_args_as_vec();
+
+                    let (block_args, _, _) = self.get_args_as_vec_type();
+                    self.block_arg_types.insert(then_block, block_args);
+
+                    let (block_args, _, _) = self.get_args_as_vec_type();
+                    self.block_arg_types.insert(else_block, block_args);
 
                     {
                         let (_, then_arg_end, then_store_end) = &mut self.blocks[then_block];
@@ -744,8 +809,22 @@ impl FunctionTranslator<'_> {
                         *else_arg_end = arg_end_pos;
                         *else_store_end = store_end_pos;
                     }
+
+                    let then_index = then_block;
                     let (then_block, _, _) = self.blocks[then_block];
+                    if self.builder.block_params(then_block).len() == 0 {
+                        for ty in self.block_arg_types.get(&then_index).unwrap().iter() {
+                            self.builder.append_block_param(then_block, *ty);
+                        }
+                    }
+
+                    let else_index = else_block;
                     let (else_block, _, _) = self.blocks[else_block];
+                    if self.builder.block_params(else_block).len() == 0 {
+                        for ty in self.block_arg_types.get(&else_index).unwrap().iter() {
+                            self.builder.append_block_param(else_block, *ty);
+                        }
+                    }
 
                     self.builder.ins().brif(
                         value,
