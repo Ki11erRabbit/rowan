@@ -24,7 +24,10 @@ fn create_stdlib<'a>() -> HashMap<String, HashMap<String, ClassAttribute>> {
 
 #[derive(Debug)]
 pub enum TypeCheckerError {
-
+    UnableToDeduceType {
+        start: usize,
+        end: usize,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -324,6 +327,10 @@ impl TypeChecker {
             Statement::Expression(expr, _) => {
                 self.check_expr(return_type, expr)?;
             }
+            Statement::While { test, body, ..} => {
+                self.check_expr(return_type, test)?;
+                self.check_body(return_type, body)?;
+            }
             _ => {}
         }
 
@@ -371,8 +378,29 @@ impl TypeChecker {
             Expression::BinaryOperation { operator, left, right, .. } => {
                 // TODO: add conversion when traits are added
                 // TODO: make it so that types get upgraded if they are compatable
-                let lhs = self.get_type(left)?;
-                let rhs = self.get_type(right)?;
+
+                let lhs = match self.get_type(left) {
+                    Ok(ty) => Some(ty),
+                    Err(TypeCheckerError::UnableToDeduceType {..}) => None,
+                };
+                let rhs = match self.get_type(right) {
+                    Ok(ty) => Some(ty),
+                    Err(TypeCheckerError::UnableToDeduceType {..}) => None,
+                };
+
+                let (lhs, rhs) = match (lhs, rhs) {
+                    (Some(lhs), Some(rhs)) => (lhs, rhs),
+                    (Some(lhs), None) => {
+                        self.annotate_expr(&lhs, right.as_mut())?;
+                        (lhs.clone(), lhs)
+                    }
+                    (None, Some(rhs)) => {
+                        self.annotate_expr(&rhs, left.as_mut())?;
+                        (rhs.clone(), rhs)
+                    }
+                    _ => todo!("report missing type information"),
+                };
+
 
                 if lhs != rhs {
                     todo!("report type mismatch {:?} {:?}", lhs, rhs);
@@ -459,13 +487,13 @@ impl TypeChecker {
         use crate::ast::{Expression, Literal, Constant};
         match expr {
             Expression::Literal(Literal::Constant(Constant::Bool(_, _))) => Ok(Type::U8),
-            Expression::Literal(Literal::Constant(Constant::Float(_, annotation, _))) => match annotation {
+            Expression::Literal(Literal::Constant(Constant::Float(_, annotation, span))) => match annotation {
                 Some(ty) => Ok(ty.clone()),
-                None => todo!("report literal missing annotation"),
+                None => Err(TypeCheckerError::UnableToDeduceType { start: span.start, end: span.end }),
             },
-            Expression::Literal(Literal::Constant(Constant::Integer(_, annotation, _))) => match annotation {
+            Expression::Literal(Literal::Constant(Constant::Integer(_, annotation, span))) => match annotation {
                 Some(ty) => Ok(ty.clone()),
-                None => todo!("report literal missing annotation"),
+                None => Err(TypeCheckerError::UnableToDeduceType { start: span.start, end: span.end }),
             },
             Expression::Literal(Literal::Constant(Constant::Character(_, _))) => Ok(Type::Char),
             Expression::Variable(name, annotation, _) => {

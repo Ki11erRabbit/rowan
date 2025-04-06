@@ -764,8 +764,8 @@ Pattern: Pattern<'a> = {
 
 // TODO: remove default literal typing
 Constant: Constant<'a> = {
-    <start: @L> <int:Int_lit> <end: @R> => Constant::Integer(int, Some(Type::I32), Span::new(start, end)),
-    <start: @L> <float:Float_lit> <end: @R> => Constant::Float(float, Some(Type::F64), Span::new(start, end)),
+    <start: @L> <int:Int_lit> <end: @R> => Constant::Integer(int, None, Span::new(start, end)),
+    <start: @L> <float:Float_lit> <end: @R> => Constant::Float(float, None, Span::new(start, end)),
     <start: @L> <char:Char_lit> <end: @R> => Constant::Character(char, Span::new(start, end)),
     <start: @L> <string:String_lit> <end: @R> => Constant::String(string, Span::new(start, end)),
     <start: @L> "True" <end: @R> => Constant::Bool(true, Span::new(start, end)),

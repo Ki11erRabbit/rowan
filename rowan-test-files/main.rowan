@@ -6,10 +6,9 @@ class Main {
         let x: u64 = 4 + 4;
         let printer: Printer = new Printer();
         printer.println-int(x);
-        if False {
+        while x < 50 {
             printer.println-int(x);
-        } else {
-            printer.println-int(x + x);
+            x = x + x;
         }
     }
 }

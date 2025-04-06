@@ -265,8 +265,12 @@ impl JITCompiler {
 
 pub struct FunctionTranslator<'a> {
     builder: FunctionBuilder<'a>,
-    var_store_and_stack: Vec<Option<(Value, ir::Type)>>,
-    blocks: Vec<(Block, usize, usize)>,
+    call_args: [Option<(Variable, ir::Type)>; 256],
+    current_call_arg: usize,
+    variables: [Option<(Variable, ir::Type)>; 256],
+    current_variable: usize,
+    stack: Vec<Option<(Value, ir::Type)>>,
+    blocks: Vec<Block>,
     current_block: usize,
     block_arg_types: HashMap<usize, Vec<ir::Type>>,
     jit_utility_func: &'a HashMap<String, (FuncId, ir::function::Function)>,
@@ -289,9 +293,12 @@ impl FunctionTranslator<'_> {
 
         let mut block_arg_types = HashMap::new();
 
-        let mut var_store_and_stack = vec![None; 512];
+        let mut stack = vec![];
+        let mut variables = [None; 256];
+        let mut current_variable = 0;
         let mut start_block_args = Vec::new();
-        for (i, (value, ty)) in builder.block_params(entry_block).iter().zip(arg_types.iter()).enumerate() {
+        let block_params = builder.block_params(entry_block).iter().cloned().collect::<Vec<_>>();
+        for (i, (value, ty)) in block_params.iter().zip(arg_types.iter()).enumerate() {
             let ty = match ty {
                 runtime::class::TypeTag::U8 | runtime::class::TypeTag::I8 => ir::types::I8,
                 runtime::class::TypeTag::U16 | runtime::class::TypeTag::I16 => ir::types::I16,
@@ -304,7 +311,11 @@ impl FunctionTranslator<'_> {
                 runtime::class::TypeTag::Object => ir::types::I64,
             };
             start_block_args.push(ty.clone());
-            var_store_and_stack[i + 256] = Some((value.clone(), ty));
+            let var = Variable::new(i);
+            builder.declare_var(var, ty);
+            builder.def_var(var, *value);
+            variables[i] = Some((var, ty));
+            current_variable += 1;
         }
 
         block_arg_types.insert(0, start_block_args);
@@ -312,155 +323,140 @@ impl FunctionTranslator<'_> {
         let store_end = builder.block_params(entry_block).len();
         FunctionTranslator {
             builder,
-            var_store_and_stack,
-            blocks: vec![(entry_block, 0, store_end)],
+            call_args: [None; 256],
+            current_call_arg: 0,
+            variables,
+            current_variable,
+            stack,
+            blocks: vec![entry_block],
             current_block: 0,
             block_arg_types,
             jit_utility_func
         }
     }
     pub fn set_argument(&mut self, pos: u8, value: Value, ty: ir::Type) {
-        self.var_store_and_stack[pos as usize] = Some((value, ty));
+        println!("setting argument");
+        if let Some((arg, arg_ty)) = &mut self.call_args[pos as usize] {
+            if arg_ty != &ty {
+                self.current_call_arg += 1;
+                let new_arg = Variable::new(self.current_call_arg);
+                self.builder.declare_var(new_arg, ty);
+                self.builder.def_var(new_arg, value);
+                *arg = new_arg;
+                *arg_ty = ty;
+            } else {
+                self.builder.def_var(*arg, value);
+            }
+        } else {
+            self.current_call_arg += 1;
+            let new_arg = Variable::new(self.current_call_arg);
+            self.builder.declare_var(new_arg, ty);
+            self.builder.def_var(new_arg, value);
+            self.call_args[pos as usize] = Some((new_arg, ty));
+        }
     }
 
     pub fn set_var(&mut self, pos: u8, value: Value, ty: ir::Type) {
-        let pos = (pos as usize) + 256;
-        self.var_store_and_stack[pos] = Some((value, ty));
+        println!("setting var");
+        if let Some((var, var_ty)) = &mut self.variables[pos as usize] {
+            if var_ty != &ty {
+                self.current_call_arg += 1;
+                let new_arg = Variable::new(self.current_call_arg);
+                self.builder.declare_var(new_arg, ty);
+                self.builder.def_var(new_arg, value);
+                *var = new_arg;
+                *var_ty = ty;
+            } else {
+                self.builder.def_var(*var, value);
+            }
+        } else {
+            self.current_call_arg += 1;
+            let new_arg = Variable::new(self.current_call_arg);
+            self.builder.declare_var(new_arg, ty);
+            self.builder.def_var(new_arg, value);
+            self.variables[pos as usize] = Some((new_arg, ty));
+        }
     }
 
     pub fn get_var(&mut self, pos: u8) -> (Value, ir::Type) {
-        let pos = (pos as usize) + 256;
-        match self.var_store_and_stack[pos] {
-            Some(v) => v,
+        match self.variables[pos as usize] {
+            Some((var, ty)) => {
+                (self.builder.use_var(var), ty)
+            },
             _ => panic!("code was compiled wrong, empty value was not expected"),
         }
     }
 
     pub fn push(&mut self, value: Value, ty: ir::Type) {
-        self.var_store_and_stack.push(Some((value, ty)));
+        println!("pushing");
+        self.stack.push(Some((value, ty)));
     }
 
     pub fn pop(&mut self) -> (Value, ir::Type) {
-        if self.var_store_and_stack.len() <= 512 {
-            panic!("Code was compiled wrong, stack underflow");
-        }
-        self.var_store_and_stack.pop().flatten().unwrap()
+        println!("\tpopping");
+        let out = self.stack.pop().flatten().unwrap();
+        out
     }
 
     pub fn dup(&mut self) {
-        if self.var_store_and_stack.len() <= 512 {
-            panic!("Code was compiled wrong, no variables on the stack");
-        }
-        let last = self.var_store_and_stack.last().cloned().flatten();
-        self.var_store_and_stack.push(last);
+        let last = self.stack.last().cloned().flatten();
+        self.stack.push(last);
     }
 
     pub fn swap(&mut self) {
-        if self.var_store_and_stack.len() <= 512 {
-            panic!("Code was compiled wrong, no variables on the stack");
-        }
-        if self.var_store_and_stack.len() < 514 {
-            panic!("Code was compiled wrong, missing two values on stack");
-        }
-        let top = self.var_store_and_stack.pop().flatten();
-        let bottom = self.var_store_and_stack.pop().flatten();
-        self.var_store_and_stack.push(bottom);
-        self.var_store_and_stack.push(top);
+        let top = self.stack.pop().flatten();
+        let bottom = self.stack.pop().flatten();
+        self.stack.push(bottom);
+        self.stack.push(top);
     }
 
-    pub fn get_call_arguments_as_vec(&self) -> Vec<Value> {
+    pub fn get_call_arguments_as_vec(&mut self) -> Vec<Value> {
         let mut output = Vec::new();
-        for (i, value) in self.var_store_and_stack.iter().enumerate() {
+        for (i, value) in self.call_args.iter().enumerate() {
             if i >= 256 {
                 break;
             }
             match value {
-                Some((v, _)) => output.push(*v),
+                Some((v, _)) => {
+                    let value = self.builder.use_var(*v);
+                    output.push(value)
+                },
                 None => break,
             }
         }
         output
     }
 
-    pub fn get_args_as_vec(&self) -> (Vec<Value>, usize, usize) {
+    pub fn get_args_as_vec(&self) -> Vec<Value> {
         let mut output = Vec::new();
-        let mut found_call_arg_end = false;
-        let mut found_store_end = false;
-        let mut in_none_area = false;
-        let mut call_arg_end = 0;
-        let mut store_end = 0;
-        for (i, value) in self.var_store_and_stack.iter().enumerate() {
-            match value {
-                Some((v, _)) => {
-                    output.push(*v);
-                    in_none_area = false;
-                },
-                None => {
-                    if found_call_arg_end && !in_none_area {
-                        found_call_arg_end = true;
-                        call_arg_end = i;
-                        in_none_area = true;
-                    } else if found_store_end && !in_none_area {
-                        found_store_end = true;
-                        in_none_area = true;
-                        store_end = i;
-                    }
-                }
-            }
+        let mut iterator = self.stack.iter().flatten();
+        while let Some((value, _)) = iterator.next() {
+            output.push(*value);
         }
-        (output, call_arg_end, store_end)
+        output
     }
 
-    pub fn get_args_as_vec_type(&self) -> (Vec<Type>, usize, usize) {
+    pub fn get_args_as_vec_type(&self) -> Vec<Type> {
         let mut output = Vec::new();
-        let mut found_call_arg_end = false;
-        let mut found_store_end = false;
-        let mut in_none_area = false;
-        let mut call_arg_end = 0;
-        let mut store_end = 0;
-        for (i, value) in self.var_store_and_stack.iter().enumerate() {
-            match value {
-                Some((_, ty)) => {
-                    output.push(*ty);
-                    in_none_area = false;
-                },
-                None => {
-                    if found_call_arg_end && !in_none_area {
-                        found_call_arg_end = true;
-                        call_arg_end = i;
-                        in_none_area = true;
-                    } else if found_store_end && !in_none_area {
-                        found_store_end = true;
-                        in_none_area = true;
-                        store_end = i;
-                    }
-                }
-            }
+        let mut iterator = self.stack.iter().flatten();
+        while let Some((_, ty)) = iterator.next() {
+            output.push(*ty);
         }
-        (output, call_arg_end, store_end)
+        output
     }
 
-    fn restore_store_and_stack(&mut self, block_index: usize, store_and_stack: &[Value], call_arg_end: usize, store_end: usize) {
-        let args = store_and_stack[..call_arg_end].iter();
-        for ((value, arg_value), ty) in self.var_store_and_stack[..256].iter_mut().zip(args).zip(self.block_arg_types.get(&block_index).unwrap()[..call_arg_end].iter()) {
+    fn restore_stack(&mut self, block_index: usize, stack: &[Value]) {
+        println!("restoring");
+        for ((value, arg_value), ty) in self.stack.iter_mut().zip(stack.iter()).zip(self.block_arg_types.get(&block_index).unwrap()) {
             *value = Some((*arg_value, *ty));
         }
-        let store = store_and_stack[call_arg_end..store_end].iter();
-        for ((value, store_value), ty) in self.var_store_and_stack[256..512].iter_mut().zip(store).zip(self.block_arg_types.get(&block_index).unwrap()[call_arg_end..store_end].iter()) {
-            *value = Some((*store_value, *ty));
-        }
-        let mut stack = store_and_stack[store_end..].iter();
-        let mut types = self.block_arg_types.get(&block_index).unwrap()[store_end..].iter();
-        for ((value, stack_value), ty) in self.var_store_and_stack[512..].iter_mut().zip(&mut stack).zip(&mut types) {
-            *value = Some((*stack_value, *ty));
-        }
-        self.var_store_and_stack.extend(stack.zip(types).map(|(value, ty)| Some((*value, *ty))));
+
     }
 
 
     pub fn translate(&mut self, bytecode: &[Bytecode], module: &mut JITModule) -> Result<(), String> {
 
-        //println!("Bytecode: {:#?}", bytecode);
+        println!("Bytecode: {:#?}", bytecode);
 
         for bytecode in bytecode.iter() {
             match bytecode {
@@ -808,13 +804,15 @@ impl FunctionTranslator<'_> {
                     let call_args = self.get_call_arguments_as_vec();
                     let sig = self.builder.import_signature(sig);
                     
-                    self.builder.ins().call_indirect(sig, method_value, &call_args);
+                    let result = self.builder.ins().call_indirect(sig, method_value, &call_args);
+                    let _return_value = self.builder.inst_results(result);
                 }
                 // TODO: implement signal ops
                 Bytecode::StartBlock(index) => {
-                    let (block, arg_end, store_end)  = self.blocks[*index as usize];
+                    println!("{}", index);
+                    let block= self.blocks[*index as usize];
                     let params = self.builder.block_params(block).to_vec();
-                    self.restore_store_and_stack(*index as usize, &params, arg_end, store_end);
+                    self.restore_stack(*index as usize, &params);
                     self.builder.switch_to_block(block);
                     self.current_block = *index as usize;
                 }
@@ -822,24 +820,25 @@ impl FunctionTranslator<'_> {
                     let block = (self.current_block as i64 + *offset) as usize;
 
                     while self.blocks.len() <= block + 1 {
-                        self.blocks.push((self.builder.create_block(), 0, 0));
+                        self.blocks.push(self.builder.create_block());
                     }
 
-                    let (block_args, _, _) = self.get_args_as_vec_type();
+                    let block_args = self.get_args_as_vec_type();
                     self.block_arg_types.insert(block, block_args);
 
-                    let (stack, arg_end_pos, store_end_pos) = self.get_args_as_vec();
+                    let stack = self.get_args_as_vec();
 
                     let block_index = block;
-                    let (block, arg_end, store_end) = &mut self.blocks[block];
+                    let block = &mut self.blocks[block];
                     if self.builder.block_params(*block).len() == 0 {
                         for ty in self.block_arg_types.get(&block_index).unwrap().iter() {
                             self.builder.append_block_param(*block, *ty);
                         }
                     }
 
-                    *arg_end = arg_end_pos;
-                    *store_end = store_end_pos;
+                    if *offset == -1 {
+                        //println!("{:#?}", self.var_store_and_stack);
+                    }
                     self.builder.ins().jump(*block, &stack);
                 }
                 Bytecode::If(then_offset, else_offset) => {
@@ -848,30 +847,20 @@ impl FunctionTranslator<'_> {
                     let else_block = (self.current_block as i64 + *else_offset) as usize;
 
                     while self.blocks.len() <= then_block + 1 || self.blocks.len() <= else_block + 1 {
-                        self.blocks.push((self.builder.create_block(), 0, 0));
+                        self.blocks.push(self.builder.create_block());
                     }
 
-                    let (current_stack, arg_end_pos, store_end_pos) = self.get_args_as_vec();
+                    let current_stack = self.get_args_as_vec();
 
-                    let (block_args, _, _) = self.get_args_as_vec_type();
+                    let block_args = self.get_args_as_vec_type();
                     self.block_arg_types.insert(then_block, block_args);
 
-                    let (block_args, _, _) = self.get_args_as_vec_type();
+                    let block_args= self.get_args_as_vec_type();
                     self.block_arg_types.insert(else_block, block_args);
 
-                    {
-                        let (_, then_arg_end, then_store_end) = &mut self.blocks[then_block];
-                        *then_arg_end = arg_end_pos;
-                        *then_store_end = store_end_pos;
-                    }
-                    {
-                        let (_, else_arg_end, else_store_end) = &mut self.blocks[else_block];
-                        *else_arg_end = arg_end_pos;
-                        *else_store_end = store_end_pos;
-                    }
 
                     let then_index = then_block;
-                    let (then_block, _, _) = self.blocks[then_block];
+                    let then_block = self.blocks[then_block];
                     if self.builder.block_params(then_block).len() == 0 {
                         for ty in self.block_arg_types.get(&then_index).unwrap().iter() {
                             self.builder.append_block_param(then_block, *ty);
@@ -879,7 +868,7 @@ impl FunctionTranslator<'_> {
                     }
 
                     let else_index = else_block;
-                    let (else_block, _, _) = self.blocks[else_block];
+                    let else_block = self.blocks[else_block];
                     if self.builder.block_params(else_block).len() == 0 {
                         for ty in self.block_arg_types.get(&else_index).unwrap().iter() {
                             self.builder.append_block_param(else_block, *ty);

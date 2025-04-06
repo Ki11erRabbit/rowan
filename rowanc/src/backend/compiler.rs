@@ -641,7 +641,9 @@ impl Compiler {
 
     fn compile_method_body(&mut self, class_name: &str, partial_class: &mut PartialClass, body: Vec<Statement>) -> Result<Vec<Bytecode>, CompilerError> {
         let mut output = Vec::new();
-
+        let block = self.current_block;
+        output.push(Bytecode::StartBlock(block));
+        output.push(Bytecode::Goto(1));
         self.compile_block(class_name, partial_class, &body, &mut output)?;
 
         Ok(output)
@@ -656,8 +658,8 @@ impl Compiler {
     ) -> Result<(), CompilerError> {
 
         self.push_scope();
-        let block = self.current_block;
         self.increment_block();
+        let block = self.current_block;
         output.push(Bytecode::StartBlock(block));
         
         for statement in body {
@@ -676,7 +678,31 @@ impl Compiler {
                         _ => todo!("let bindings"),
                     }
                 }
-                _ => unimplemented!(),
+                Statement::While { test, body, .. } => {
+                    output.push(Bytecode::Goto(1));
+                    self.increment_block();
+                    let while_test_block = self.current_block;
+                    output.push(Bytecode::StartBlock(while_test_block));
+                    self.compile_expression(class_name, partial_class, test, output)?;
+                    output.push(Bytecode::If(1, 2));
+                    self.compile_block(class_name, partial_class, body, output)?;
+                    let while_loop_block = while_test_block as i64 - self.current_block as i64;
+                    output.push(Bytecode::Goto(while_loop_block));
+                    self.increment_block();
+                    let exit_block = self.current_block;
+                    output.push(Bytecode::StartBlock(exit_block));
+                }
+                Statement::Assignment { target, value, .. } => {
+                    match target {
+                        Expression::Variable(name, _,  _) => {
+                            let var_index = self.get_variable(name).expect("report unbound variable");
+                            self.compile_expression(class_name, partial_class, value, output)?;
+                            output.push(Bytecode::StoreLocal(var_index));
+                        }
+                        _ => todo!("lhs assignment")
+                    }
+                }
+                _ => unimplemented!("compile_block statement: {:?}", statement),
             }
         }
 
@@ -887,7 +913,7 @@ impl Compiler {
                     (_, BinaryOperator::Or, _) => {
                         output.push(Bytecode::Or)
                     }
-                    _ => todo!("binary operator")
+                    (l, x, r) => todo!("binary operator {:?} {:?} {:?}", l, x, r),
                 }
                 
             }
