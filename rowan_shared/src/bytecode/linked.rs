@@ -54,9 +54,13 @@ pub enum Bytecode {
     /// Wrapping Multiplication
     MulInt,
     /// Wrapping Division
-    DivInt,
+    DivSigned,
+    /// Wrapping Division
+    DivUnsigned,
     /// Wrapping Modulus
-    ModInt,
+    ModSigned,
+    /// Wrapping Modulus
+    ModUnsigned,
     /// Wrapping Addition
     AddFloat,
     /// Wrapping Subtraction
@@ -67,10 +71,6 @@ pub enum Bytecode {
     DivFloat,
     /// Wrapping Modulus
     ModFloat,
-    /// Saturating Addition
-    SatAddIntSigned,
-    /// Saturating Subtraction
-    SatSubIntSigned,
     /// Saturating Addition
     SatAddIntUnsigned,
     /// Saturating Subtraction
@@ -94,9 +94,13 @@ pub enum Bytecode {
     Neg,
     // Comparison operations
     /// Equal comparison
-    Equal,
+    EqualSigned,
     /// Not equal comparison
-    NotEqual,
+    NotEqualSigned,
+    /// Equal comparison
+    EqualUnsigned,
+    /// Not equal comparison
+    NotEqualUnsigned,
     /// Greater than comparison
     GreaterSigned,
     /// Less than comparison
@@ -113,6 +117,18 @@ pub enum Bytecode {
     GreaterOrEqualUnsigned,
     /// Less than or equal comparison
     LessOrEqualUnsigned,
+    /// Equal comparison
+    EqualFloat,
+    /// Not equal comparison
+    NotEqualFloat,
+    /// Greater than comparison
+    GreaterFloat,
+    /// Less than comparison
+    LessFloat,
+    /// Greater than or equal comparison
+    GreaterOrEqualFloat,
+    /// Less than or equal comparison
+    LessOrEqualFloat,
     // Type conversions
     /// Convert the top value on the stack to the specified type
     Convert(TypeTag),
@@ -149,6 +165,21 @@ pub enum Bytecode {
     /// The third Symbol is the method name
     /// This is for tail recursion
     InvokeVirtTail(Symbol, Option<Symbol>, Symbol),
+    /// Invoke a static method from a class
+    /// The first Symbol is the class name
+    /// The second Symbol is the Method Name
+    InvokeStatic(Symbol, Symbol),
+    /// Invoke a static method from a class
+    /// The first Symbol is the class name
+    /// The second Symbol is the Method Name
+    /// This is for tail recursion
+    InvokeStaticTail(Symbol, Symbol),
+    /// Get a static method from a class and construct an object with the method `call`
+    /// The first Symbol is the class name
+    /// The second Symbol is the Method Name
+    GetStaticMethod(Symbol, Symbol),
+    /// Emit a signal from an object of the specified class
+    /// The first StringIndex is the class name and the second StringIndex is the signal name
     /// Emit a signal from an object of the specified class
     /// The first Symbol is the class name and the second Symbol is the signal name
     EmitSignal(Symbol, Symbol),
@@ -179,8 +210,12 @@ pub enum Bytecode {
     /// Return from a function
     /// This pops nothing off the stack and returns void
     ReturnVoid,
+    /// Try a segment of code and if there is an exception, goto the catch handler
+    /// This is also a way to start a block
+    Try(u64, Symbol),
     /// Catch an exception with the specified class symbol
-    Catch(StringIndex),
+    /// This is also a way to start a block
+    Catch(u64, Symbol),
     /// Throw an exception, pops an object off of the stack and throws it
     Throw,
     /// Start a new block of code

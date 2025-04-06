@@ -548,13 +548,25 @@ impl FunctionTranslator<'_> {
                     let value_out = self.builder.ins().imul(value_lhs, value_rhs);
                     self.push(value_out, ty);
                 }
-                Bytecode::DivInt => {
+                Bytecode::DivSigned => {
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().sdiv(value_lhs, value_rhs);
+                    self.push(value_out, ty);
+                }
+                Bytecode::DivUnsigned => {
                     let (value_rhs, ty) = self.pop();
                     let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().udiv(value_lhs, value_rhs);
                     self.push(value_out, ty);
                 }
-                Bytecode::ModInt => {
+                Bytecode::ModSigned => {
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().srem(value_lhs, value_rhs);
+                    self.push(value_out, ty);
+                }
+                Bytecode::ModUnsigned => {
                     let (value_rhs, ty) = self.pop();
                     let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().urem(value_lhs, value_rhs);
@@ -618,13 +630,25 @@ impl FunctionTranslator<'_> {
                     let value = self.builder.ins().ineg(value);
                     self.push(value, ty);
                 }
-                Bytecode::Equal => {
+                Bytecode::EqualSigned => {
                     let (value_rhs,_) = self.pop();
                     let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::Equal, value_lhs, value_rhs);
                     self.push(value_out, ir::types::I8);
                 }
-                Bytecode::NotEqual => {
+                Bytecode::NotEqualSigned => {
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().icmp(IntCC::NotEqual, value_lhs, value_rhs);
+                    self.push(value_out, ir::types::I8);
+                }
+                Bytecode::EqualUnsigned => {
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().icmp(IntCC::Equal, value_lhs, value_rhs);
+                    self.push(value_out, ir::types::I8);
+                }
+                Bytecode::NotEqualUnsigned => {
                     let (value_rhs,_) = self.pop();
                     let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::NotEqual, value_lhs, value_rhs);
@@ -676,6 +700,42 @@ impl FunctionTranslator<'_> {
                     let (value_rhs,_) = self.pop();
                     let (value_lhs, _) = self.pop();
                     let value_out = self.builder.ins().icmp(IntCC::SignedLessThanOrEqual, value_lhs, value_rhs);
+                    self.push(value_out, ir::types::I8);
+                }
+                Bytecode::EqualFloat => {
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().fcmp(FloatCC::Equal, value_lhs, value_rhs);
+                    self.push(value_out, ir::types::I8);
+                }
+                Bytecode::NotEqualFloat => {
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().fcmp(FloatCC::NotEqual, value_lhs, value_rhs);
+                    self.push(value_out, ir::types::I8);
+                }
+                Bytecode::GreaterFloat => {
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().fcmp(FloatCC::GreaterThan, value_lhs, value_rhs);
+                    self.push(value_out, ir::types::I8);
+                }
+                Bytecode::LessFloat => {
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().fcmp(FloatCC::LessThan, value_lhs, value_rhs);
+                    self.push(value_out, ir::types::I8);
+                }
+                Bytecode::GreaterOrEqualFloat => {
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().fcmp(FloatCC::GreaterThanOrEqual, value_lhs, value_rhs);
+                    self.push(value_out, ir::types::I8);
+                }
+                Bytecode::LessOrEqualFloat => {
+                    let (value_rhs,_) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().fcmp(FloatCC::UnorderedOrLessThanOrEqual, value_lhs, value_rhs);
                     self.push(value_out, ir::types::I8);
                 }
                 // TODO: implement conversions

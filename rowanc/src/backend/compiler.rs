@@ -818,11 +818,17 @@ impl Compiler {
                     (Some(lhs), BinaryOperator::Mul, Some(rhs)) if lhs.is_integer() && rhs.is_integer() => {
                         output.push(Bytecode::MulInt)
                     }
-                    (Some(lhs), BinaryOperator::Div, Some(rhs)) if lhs.is_integer() && rhs.is_integer() => {
-                        output.push(Bytecode::DivInt)
+                    (Some(lhs), BinaryOperator::Div, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                        output.push(Bytecode::DivUnsigned)
                     }
-                    (Some(lhs), BinaryOperator::Mod, Some(rhs)) if lhs.is_integer() && rhs.is_integer() => {
-                        output.push(Bytecode::ModInt)
+                    (Some(lhs), BinaryOperator::Div, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                        output.push(Bytecode::DivSigned)
+                    }
+                    (Some(lhs), BinaryOperator::Mod, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                        output.push(Bytecode::ModUnsigned)
+                    }
+                    (Some(lhs), BinaryOperator::Mod, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                        output.push(Bytecode::ModSigned)
                     }
                     (Some(lhs), BinaryOperator::Add, Some(rhs)) if lhs.is_float() || rhs.is_float() => {
                         output.push(Bytecode::AddFloat)
@@ -840,16 +846,16 @@ impl Compiler {
                         output.push(Bytecode::ModFloat)
                     }
                     (Some(lhs), BinaryOperator::Eq, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
-                        output.push(Bytecode::Equal)
+                        output.push(Bytecode::EqualUnsigned)
                     }
                     (Some(lhs), BinaryOperator::Eq, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
-                        output.push(Bytecode::Equal)
+                        output.push(Bytecode::EqualSigned)
                     }
                     (Some(lhs), BinaryOperator::Ne, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
-                        output.push(Bytecode::NotEqual)
+                        output.push(Bytecode::NotEqualUnsigned)
                     }
                     (Some(lhs), BinaryOperator::Ne, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
-                        output.push(Bytecode::NotEqual)
+                        output.push(Bytecode::NotEqualSigned)
                     }
                     (Some(lhs), BinaryOperator::Lt, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::LessUnsigned)

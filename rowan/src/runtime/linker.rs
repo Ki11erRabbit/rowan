@@ -565,11 +565,17 @@ fn link_bytecode(
             compiled::Bytecode::MulInt => {
                 output.push(linked::Bytecode::MulInt);
             }
-            compiled::Bytecode::DivInt => {
-                output.push(linked::Bytecode::DivInt);
+            compiled::Bytecode::DivSigned => {
+                output.push(linked::Bytecode::DivSigned);
             }
-            compiled::Bytecode::ModInt => {
-                output.push(linked::Bytecode::ModInt);
+            compiled::Bytecode::DivUnsigned => {
+                output.push(linked::Bytecode::DivUnsigned);
+            }
+            compiled::Bytecode::ModSigned => {
+                output.push(linked::Bytecode::ModSigned);
+            }
+            compiled::Bytecode::ModUnsigned => {
+                output.push(linked::Bytecode::ModUnsigned);
             }
             compiled::Bytecode::AddFloat => {
                 output.push(linked::Bytecode::AddFloat);
@@ -591,12 +597,6 @@ fn link_bytecode(
             }
             compiled::Bytecode::SatSubIntUnsigned => {
                 output.push(linked::Bytecode::SatSubIntUnsigned);
-            }
-            compiled::Bytecode::SatAddIntSigned => {
-                panic!("remove SatAddIntSigned");
-            }
-            compiled::Bytecode::SatSubIntSigned => {
-                panic!("remove SatSubIntSigned");
             }
             compiled::Bytecode::And => {
                 output.push(linked::Bytecode::And);
@@ -622,11 +622,17 @@ fn link_bytecode(
             compiled::Bytecode::Neg => {
                 output.push(linked::Bytecode::Neg);
             }
-            compiled::Bytecode::Equal => {
-                output.push(linked::Bytecode::Equal);
+            compiled::Bytecode::EqualSigned => {
+                output.push(linked::Bytecode::EqualSigned);
             }
-            compiled::Bytecode::NotEqual => {
-                output.push(linked::Bytecode::NotEqual);
+            compiled::Bytecode::NotEqualSigned => {
+                output.push(linked::Bytecode::NotEqualSigned);
+            }
+            compiled::Bytecode::EqualUnsigned => {
+                output.push(linked::Bytecode::EqualUnsigned);
+            }
+            compiled::Bytecode::NotEqualUnsigned => {
+                output.push(linked::Bytecode::NotEqualUnsigned);
             }
             compiled::Bytecode::GreaterUnsigned => {
                 output.push(linked::Bytecode::GreaterUnsigned);
@@ -651,6 +657,24 @@ fn link_bytecode(
             }
             compiled::Bytecode::LessOrEqualSigned => {
                 output.push(linked::Bytecode::LessOrEqualSigned);
+            }
+            compiled::Bytecode::EqualFloat => {
+                output.push(linked::Bytecode::EqualFloat);
+            }
+            compiled::Bytecode::NotEqualFloat => {
+                output.push(linked::Bytecode::NotEqualFloat);
+            }
+            compiled::Bytecode::GreaterFloat => {
+                output.push(linked::Bytecode::GreaterFloat);
+            }
+            compiled::Bytecode::GreaterOrEqualFloat => {
+                output.push(linked::Bytecode::GreaterOrEqualFloat);
+            }
+            compiled::Bytecode::LessFloat => {
+                output.push(linked::Bytecode::LessFloat);
+            }
+            compiled::Bytecode::LessOrEqualFloat => {
+                output.push(linked::Bytecode::LessOrEqualFloat);
             }
             compiled::Bytecode::Convert(ty) => {
                 output.push(linked::Bytecode::Convert(ty));
@@ -736,6 +760,51 @@ fn link_bytecode(
                 }; 
 
                 output.push(linked::Bytecode::InvokeVirtTail(class_symbol as u64, source_class, method_symbol as u64));
+            }
+            compiled::Bytecode::InvokeStatic(class_index, method_index) => {
+                let class_str = class_file.index_string_table(class_index);
+                let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
+
+                let method_str = class_file.index_string_table(method_index);
+                let method_symbol: Symbol = if let Some(index) = string_map.get(method_str) {
+                    *index
+                } else {
+                    let index = string_table.add_string(method_str);
+                    let symbol = symbol_table.add_string(index);
+                    symbol
+                };
+
+                output.push(linked::Bytecode::InvokeStatic(class_symbol as u64, method_symbol as u64));
+            }
+            compiled::Bytecode::InvokeStaticTail(class_index, method_index) => {
+                let class_str = class_file.index_string_table(class_index);
+                let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
+
+                let method_str = class_file.index_string_table(method_index);
+                let method_symbol: Symbol = if let Some(index) = string_map.get(method_str) {
+                    *index
+                } else {
+                    let index = string_table.add_string(method_str);
+                    let symbol = symbol_table.add_string(index);
+                    symbol
+                };
+
+                output.push(linked::Bytecode::InvokeStaticTail(class_symbol as u64, method_symbol as u64));
+            }
+            compiled::Bytecode::GetStaticMethod(class_index, method_index) => {
+                let class_str = class_file.index_string_table(class_index);
+                let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
+
+                let method_str = class_file.index_string_table(method_index);
+                let method_symbol: Symbol = if let Some(index) = string_map.get(method_str) {
+                    *index
+                } else {
+                    let index = string_table.add_string(method_str);
+                    let symbol = symbol_table.add_string(index);
+                    symbol
+                };
+
+                output.push(linked::Bytecode::GetStaticMethod(class_symbol as u64, method_symbol as u64));
             }
             compiled::Bytecode::EmitSignal(class_index, name_index) => {
                 let class_str = class_file.index_string_table(class_index);
@@ -843,11 +912,17 @@ fn link_bytecode(
             compiled::Bytecode::ReturnVoid => {
                 output.push(linked::Bytecode::ReturnVoid);
             }
-            compiled::Bytecode::Catch(index) => {
+            compiled::Bytecode::Try(block_id, index) => {
                 let class_name = class_file.index_string_table(index);
                 let symbol = class_map.get(class_name).expect("class not loaded yet");
 
-                output.push(linked::Bytecode::Catch(*symbol as u64));
+                output.push(linked::Bytecode::Try(block_id, *symbol as u64));
+            }
+            compiled::Bytecode::Catch(block_id, index) => {
+                let class_name = class_file.index_string_table(index);
+                let symbol = class_map.get(class_name).expect("class not loaded yet");
+
+                output.push(linked::Bytecode::Catch(block_id, *symbol as u64));
             }
             compiled::Bytecode::Throw => {
                 output.push(linked::Bytecode::Throw);
