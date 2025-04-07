@@ -912,17 +912,17 @@ fn link_bytecode(
             compiled::Bytecode::ReturnVoid => {
                 output.push(linked::Bytecode::ReturnVoid);
             }
-            compiled::Bytecode::Try(block_id, index) => {
+            compiled::Bytecode::RegisterException(index, offset) => {
                 let class_name = class_file.index_string_table(index);
                 let symbol = class_map.get(class_name).expect("class not loaded yet");
 
-                output.push(linked::Bytecode::Try(block_id, *symbol as u64));
+                output.push(linked::Bytecode::RegisterException(*symbol as u64, offset));
             }
-            compiled::Bytecode::Catch(block_id, index) => {
+            compiled::Bytecode::UnregisterException(index) => {
                 let class_name = class_file.index_string_table(index);
                 let symbol = class_map.get(class_name).expect("class not loaded yet");
 
-                output.push(linked::Bytecode::Catch(block_id, *symbol as u64));
+                output.push(linked::Bytecode::UnregisterException(*symbol as u64));
             }
             compiled::Bytecode::Throw => {
                 output.push(linked::Bytecode::Throw);

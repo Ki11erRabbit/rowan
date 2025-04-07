@@ -209,12 +209,12 @@ pub enum Bytecode {
     /// Return from a function
     /// This pops nothing off the stack and returns void
     ReturnVoid,
-    /// Try a segment of code and if there is an exception, goto the catch handler
-    /// This is also a way to start a block
-    Try(u64, StringIndex),
-    /// Catch an exception with the specified class symbol
-    /// This is also a way to start a block
-    Catch(u64, StringIndex),
+    /// Register a classname as a catchable exception
+    /// StringIndex is the classname
+    /// BlockIdOffset is the offset to the handler block
+    RegisterException(StringIndex, BlockIdOffset),
+    /// Unregister a classname as a catchable exception
+    UnregisterException(StringIndex),
     /// Throw an exception, pops an object off of the stack and throws it
     Throw,
     /// Start a new block of code
@@ -618,34 +618,28 @@ impl Bytecode {
                 78 => result.push(Bytecode::Return),
                 79 => result.push(Bytecode::ReturnVoid),
                 80 => {
-                    let block_id = u64::from_le_bytes([
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                    ]);
                     let index = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                     ]);
-                    result.push(Bytecode::Try(block_id, index))
+                    let offset = i64::from_le_bytes([
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::RegisterException(index, offset))
                 }
                 81 => {
-                    let block_id = u64::from_le_bytes([
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                    ]);
                     let index = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                     ]);
-                    result.push(Bytecode::Catch(block_id, index))
+                    result.push(Bytecode::UnregisterException(index))
                 }
                 82 => result.push(Bytecode::Throw),
                 83 => {

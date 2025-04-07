@@ -210,12 +210,12 @@ pub enum Bytecode {
     /// Return from a function
     /// This pops nothing off the stack and returns void
     ReturnVoid,
-    /// Try a segment of code and if there is an exception, goto the catch handler
-    /// This is also a way to start a block
-    Try(u64, Symbol),
-    /// Catch an exception with the specified class symbol
-    /// This is also a way to start a block
-    Catch(u64, Symbol),
+    /// Register a classname as a catchable exception
+    /// Symbol is the classname
+    /// BlockIdOffset is the offset to the handler block
+    RegisterException(Symbol, BlockIdOffset),
+    /// Unregister a classname as a catchable exception
+    UnregisterException(Symbol),
     /// Throw an exception, pops an object off of the stack and throws it
     Throw,
     /// Start a new block of code
