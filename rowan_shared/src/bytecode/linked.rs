@@ -140,7 +140,7 @@ pub enum Bytecode {
     /// The top value on the stack is the index and the second value is the array
     ArrayGet(TypeTag),
     /// Set an element in an array of the specified type
-    /// The top value on the stack is the index, the second value is the array and the third value is the value to set
+    /// The top value on the stack is the value, the second value is the index and the third value is the array
     ArraySet(TypeTag),
     /// Create a new object of the specified class
     NewObject(Symbol),

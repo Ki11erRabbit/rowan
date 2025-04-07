@@ -375,6 +375,57 @@ impl TypeChecker {
                     todo!("report type mismatch");
                 }
             }
+            Expression::BinaryOperation { operator: BinaryOperator::And, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Or, left, right, .. }=> {
+                // TODO: add conversion when traits are added
+                // TODO: make it so that types get upgraded if they are compatable
+
+                let lhs = match self.get_type(left) {
+                    Ok(ty) => Some(ty),
+                    Err(TypeCheckerError::UnableToDeduceType {..}) => None,
+                };
+                let rhs = match self.get_type(right) {
+                    Ok(ty) => Some(ty),
+                    Err(TypeCheckerError::UnableToDeduceType {..}) => None,
+                };
+
+                let (lhs, rhs) = match (lhs, rhs) {
+                    (Some(lhs), Some(rhs)) => (lhs, rhs),
+                    (Some(lhs), None) => {
+                        self.annotate_expr(&lhs, right.as_mut())?;
+                        (lhs.clone(), lhs)
+                    }
+                    (None, Some(rhs)) => {
+                        self.annotate_expr(&rhs, left.as_mut())?;
+                        (rhs.clone(), rhs)
+                    }
+                    _ => todo!("report missing type information"),
+                };
+
+                if lhs != rhs && (lhs != Type::U8 || rhs != Type::U8) {
+                    todo!("report type mismatch for logical and or logical or {:?} {:?}", lhs, rhs);
+                }
+            }
+            Expression::BinaryOperation { operator: BinaryOperator::Index, left, right, .. } => {
+                // TODO: add conversion when traits are added
+
+                let lhs = self.get_type(left)?;
+                match lhs {
+                    Type::TypeArg(obj, _,_) => {
+                        match obj.as_ref() {
+                            Type::Object(arr,_) if arr.as_str() == "Array" => {}
+                            _ => todo!("add support for non-array objects with indexing"),
+                        }
+                    }
+                    _ => todo!("add support for non-array objects with indexing"),
+                }
+                self.annotate_expr(&Type::U64, right.as_mut())?;
+                let rhs = self.get_type(right)?;
+                match rhs {
+                    Type::U64 => {}
+                    _ => todo!("add support for non-array objects with indexing anything other than u64")
+                }
+            }
             Expression::BinaryOperation { operator, left, right, .. } => {
                 // TODO: add conversion when traits are added
                 // TODO: make it so that types get upgraded if they are compatable
@@ -548,7 +599,11 @@ impl TypeChecker {
                     _ => todo!("report member access on non-variable expression"),
                 }
             }
-            Expression::BinaryOperation { operator: BinaryOperator::Add, left, right, .. } => {
+            Expression::BinaryOperation { operator: BinaryOperator::Add, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Sub, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Mul, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Div, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Mod, left, right, .. } => {
                 let lhs = self.get_type(left.as_mut())?;
                 let rhs = self.get_type(right.as_mut())?;
 
@@ -567,6 +622,18 @@ impl TypeChecker {
                     }
                 }
 
+            }
+            Expression::BinaryOperation { operator: BinaryOperator::Eq, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Ne, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Lt, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Le, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Gt, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Ge, .. } => {
+                Ok(Type::U8)
+            }
+            Expression::BinaryOperation { operator: BinaryOperator::And, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Or, .. }=> {
+                Ok(Type::U8)
             }
             x => todo!("finish get_type: {:?}", x),
         }

@@ -665,10 +665,10 @@ impl Compiler {
         for statement in body {
             match statement {
                 Statement::Expression(expr, span) => {
-                    self.compile_expression(class_name, partial_class, &expr, output)?;
+                    self.compile_expression(class_name, partial_class, &expr, output, false)?;
                 }
                 Statement::Let { bindings, value, .. } => {
-                    self.compile_expression(class_name, partial_class, &value, output)?;
+                    self.compile_expression(class_name, partial_class, &value, output, false)?;
                     match bindings {
                         Pattern::Variable(var, _, _) => {
                             let index = self.bind_variable(var);
@@ -683,7 +683,7 @@ impl Compiler {
                     self.increment_block();
                     let while_test_block = self.current_block;
                     output.push(Bytecode::StartBlock(while_test_block));
-                    self.compile_expression(class_name, partial_class, test, output)?;
+                    self.compile_expression(class_name, partial_class, test, output, false)?;
                     output.push(Bytecode::If(1, 2));
                     self.compile_block(class_name, partial_class, body, output)?;
                     let while_loop_block = while_test_block as i64 - self.current_block as i64;
@@ -696,8 +696,18 @@ impl Compiler {
                     match target {
                         Expression::Variable(name, _,  _) => {
                             let var_index = self.get_variable(name).expect("report unbound variable");
-                            self.compile_expression(class_name, partial_class, value, output)?;
+                            self.compile_expression(class_name, partial_class, value, output, false)?;
                             output.push(Bytecode::StoreLocal(var_index));
+                        }
+                        Expression::BinaryOperation { operator: BinaryOperator::Index, .. } => {
+                            let defer = match self.compile_expression(class_name, partial_class, target, output, true) {
+                                Ok(defer) => defer,
+                                Err(err) => return Err(err),
+                            };
+                            self.compile_expression(class_name, partial_class, value, output, false)?;
+                            if let Some(defer) = defer {
+                                defer(output);
+                            }
                         }
                         _ => todo!("lhs assignment")
                     }
@@ -711,13 +721,14 @@ impl Compiler {
         Ok(())
     }
 
-    fn compile_expression(
+    fn compile_expression<'a>(
         &mut self,
         class_name: &str,
         partial_class: &mut PartialClass, 
-        expr: &Expression,
-        output: &mut Vec<Bytecode>
-    ) -> Result<(), CompilerError> {
+        expr: &'a Expression,
+        output: &mut Vec<Bytecode>,
+        lhs : bool,
+    ) -> Result<Option<Box<dyn Fn(&mut Vec<Bytecode>) + 'a>>, CompilerError> {
         match expr {
             Expression::Variable(var, _, span) => {
                 let index = self.get_variable(var)
@@ -831,8 +842,8 @@ impl Compiler {
                 output.push(Bytecode::LoadLocal(0));
             }
             Expression::BinaryOperation { operator, left, right, span } => {
-                self.compile_expression(class_name, partial_class, left.as_ref(), output)?;
-                self.compile_expression(class_name, partial_class, right.as_ref(), output)?;
+                self.compile_expression(class_name, partial_class, left.as_ref(), output, lhs)?;
+                self.compile_expression(class_name, partial_class, right.as_ref(), output, lhs)?;
 
                 match (left.get_type(), operator, right.get_type()) {
                     (Some(lhs), BinaryOperator::Add, Some(rhs)) if lhs.is_integer() && rhs.is_integer() => {
@@ -907,18 +918,50 @@ impl Compiler {
                     (Some(lhs), BinaryOperator::Ge, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::GreaterOrEqualSigned)
                     }
-                    (_, BinaryOperator::And, _) => {
+                    (Some(Type::U8), BinaryOperator::And, Some(Type::U8)) => {
                         output.push(Bytecode::And)
                     }
-                    (_, BinaryOperator::Or, _) => {
+                    (Some(Type::U8), BinaryOperator::Or, Some(Type::U8)) => {
                         output.push(Bytecode::Or)
+                    }
+                    (Some(Type::TypeArg(_, generic, _)), BinaryOperator::Index, _) => {
+                        return Ok(Some(
+                            Box::new(move |output: &mut Vec<Bytecode>| {
+                                let type_tag = match &generic[0] {
+                                    Type::U8 => TypeTag::U8,
+                                    Type::I8 => TypeTag::I8,
+                                    Type::U16 => TypeTag::U16,
+                                    Type::I16 => TypeTag::I16,
+                                    Type::U32 => TypeTag::U32,
+                                    Type::I32 => TypeTag::I32,
+                                    Type::U64 => TypeTag::U64,
+                                    Type::I64 => TypeTag::I64,
+                                    Type::F32 => TypeTag::F32,
+                                    Type::F64 => TypeTag::F64,
+                                    Type::Object(_, _) => TypeTag::Object,
+                                    Type::TypeArg(_, _, _) => TypeTag::Object,
+                                    Type::Void => TypeTag::Void,
+                                    Type::Str => TypeTag::Str,
+                                    Type::Tuple(_, _) => TypeTag::Object,
+                                    Type::Array(_, _) => TypeTag::Object,
+                                    Type::Char => TypeTag::U32,
+                                    Type::Function(_, _, _) => TypeTag::Object,
+                                };
+                                if lhs {
+                                    output.push(Bytecode::ArraySet(type_tag));
+                                } else {
+                                    output.push(Bytecode::ArrayGet(type_tag));
+                                }
+                            })
+                        ));
+
                     }
                     (l, x, r) => todo!("binary operator {:?} {:?} {:?}", l, x, r),
                 }
                 
             }
             Expression::UnaryOperation { operator, operand, span } => {
-                self.compile_expression(class_name, partial_class, operand.as_ref(), output)?;
+                self.compile_expression(class_name, partial_class, operand.as_ref(), output, lhs)?;
 
                 match operator {
                     UnaryOperator::Neg => {
@@ -931,7 +974,7 @@ impl Compiler {
                 }
             }
             Expression::Parenthesized(expr, _) => {
-                self.compile_expression(class_name, partial_class, expr.as_ref(), output)?;
+                self.compile_expression(class_name, partial_class, expr.as_ref(), output, lhs)?;
             }
             Expression::Call { name, type_args, args, span } => {
                 let (name, ty, var) = match name.as_ref() {
@@ -957,7 +1000,7 @@ impl Compiler {
                 argument_pos += 1;
 
                 for arg in args {
-                    self.compile_expression(class_name, partial_class, arg, output)?;
+                    self.compile_expression(class_name, partial_class, arg, output, lhs)?;
                     output.push(Bytecode::StoreArgument(argument_pos));
                     argument_pos += 1;
                 }
@@ -1000,11 +1043,11 @@ impl Compiler {
             }
             Expression::IfExpression(if_expr, _) => {
 
-                self.compile_if_expression(class_name, partial_class, if_expr, output)?;
+                self.compile_if_expression(class_name, partial_class, if_expr, output, lhs)?;
             }
             _ => todo!("add remaining expressions")
         }
-        Ok(())
+        Ok(None)
     }
 
     fn compile_if_expression(
@@ -1012,11 +1055,12 @@ impl Compiler {
         class_name: &str,
         partial_class: &mut PartialClass,
         expr: &IfExpression,
-        output: &mut Vec<Bytecode>
+        output: &mut Vec<Bytecode>,
+        lhs: bool,
     ) -> Result<(), CompilerError> {
         match expr {
             IfExpression { condition, then_branch, else_branch: None, ..} => {
-                self.compile_expression(class_name, partial_class, condition.as_ref(), output)?;
+                self.compile_expression(class_name, partial_class, condition.as_ref(), output, lhs)?;
                 output.push(Bytecode::If(1, 2));
                 self.compile_block(class_name, partial_class, then_branch, output)?;
                 output.push(Bytecode::Goto(1));
@@ -1025,7 +1069,7 @@ impl Compiler {
                 output.push(Bytecode::StartBlock(block));
             }
             IfExpression { condition, then_branch, else_branch: Some(Either::Right(else_branch)), ..} => {
-                self.compile_expression(class_name, partial_class, condition.as_ref(), output)?;
+                self.compile_expression(class_name, partial_class, condition.as_ref(), output, lhs)?;
                 output.push(Bytecode::If(1, 2));
                 self.compile_block(class_name, partial_class, then_branch, output)?;
                 output.push(Bytecode::Goto(2));
@@ -1035,12 +1079,12 @@ impl Compiler {
                 output.push(Bytecode::StartBlock(block));
             }
             IfExpression { condition, then_branch, else_branch: Some(Either::Left(else_branch)), ..} => {
-                self.compile_expression(class_name, partial_class, condition.as_ref(), output)?;
+                self.compile_expression(class_name, partial_class, condition.as_ref(), output, lhs)?;
                 output.push(Bytecode::If(1, 2));
                 self.compile_block(class_name, partial_class, then_branch, output)?;
                 let mut temp_output = Vec::new();
                 let then_block = self.current_block;
-                self.compile_if_expression(class_name, partial_class, else_branch.as_ref(), &mut temp_output)?;
+                self.compile_if_expression(class_name, partial_class, else_branch.as_ref(), &mut temp_output, lhs)?;
                 let escape_block = self.current_block;
                 output.push(Bytecode::Goto((escape_block - then_block) as i64));
                 output.extend(temp_output);
