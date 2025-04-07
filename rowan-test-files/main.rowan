@@ -10,5 +10,6 @@ class Main {
             printer.println-int(x);
             x = x + x;
         }
+        printer.println-int(x);
     }
 }
