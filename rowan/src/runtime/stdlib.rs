@@ -226,7 +226,7 @@ pub fn generate_array_8_class() -> VMClass {
     VMClass::new("Array8", vec!["Object"], vec![vtable], elements, Vec::new())
 }
 
-extern "C" fn array8_init(this: Reference, length: u64) {
+pub(crate) extern "C" fn array8_init(this: Reference, length: u64) {
     use std::alloc::*;
     let context = Context::new();
     let object = context.get_object(this);
@@ -299,7 +299,7 @@ pub fn generate_array_16_class() -> VMClass {
     VMClass::new("Array16", vec!["Object"], vec![vtable], elements, Vec::new())
 }
 
-extern "C" fn array16_init(this: Reference, length: u64) {
+pub(crate) extern "C" fn array16_init(this: Reference, length: u64) {
     use std::alloc::*;
     let context = Context::new();
     let object = context.get_object(this);
@@ -372,7 +372,7 @@ pub fn generate_array_32_class() -> VMClass {
     VMClass::new("Array32", vec!["Object"], vec![vtable], elements, Vec::new())
 }
 
-extern "C" fn array32_init(this: Reference, length: u64) {
+pub(crate) extern "C" fn array32_init(this: Reference, length: u64) {
     use std::alloc::*;
     let context = Context::new();
     let object = context.get_object(this);
@@ -476,7 +476,9 @@ pub extern "C" fn array64_get(this: Reference, index: u64) -> u64 {
     if index >= length {
         todo!("provide way to handle out of bounds")
     }
-    unsafe { *pointer.add(index as usize) }
+    unsafe {
+        *pointer.add(index as usize)
+    }
 }
 
 pub extern "C" fn array64_set(this: Reference, index: u64, value: u64) {
@@ -489,7 +491,9 @@ pub extern "C" fn array64_set(this: Reference, index: u64, value: u64) {
     if index >= length {
         todo!("provide way to handle out of bounds")
     }
-    unsafe { *pointer.add(index as usize) = value }
+    unsafe {
+        *pointer.add(index as usize) = value;
+    }
 }
 
 pub fn generate_array_object_class() -> VMClass {

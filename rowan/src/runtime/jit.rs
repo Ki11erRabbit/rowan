@@ -16,7 +16,6 @@ pub struct JITController {
     builder_context: FunctionBuilderContext,
     context: codegen::Context,
     pub module: JITModule,
-    jit_utility_func: Arc<HashMap<String, (FuncId, ir::function::Function)>>,
 }
 
 
@@ -34,57 +33,31 @@ impl Default for JITController {
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
         builder.symbol("get_virtual_function", super::get_virtual_function as *const u8);
         builder.symbol("new_object", super::new_object as *const u8);
+        builder.symbol("array8_init", super::stdlib::array8_init as *const u8);
+        builder.symbol("array8_set", super::stdlib::array8_set as *const u8);
+        builder.symbol("array8_get", super::stdlib::array8_get as *const u8);
+        builder.symbol("array16_init", super::stdlib::array16_init as *const u8);
+        builder.symbol("array16_set", super::stdlib::array16_set as *const u8);
+        builder.symbol("array16_get", super::stdlib::array16_get as *const u8);
+        builder.symbol("array32_init", super::stdlib::array32_init as *const u8);
+        builder.symbol("array32_set", super::stdlib::array32_set as *const u8);
+        builder.symbol("array32_get", super::stdlib::array32_get as *const u8);
         builder.symbol("array64_init", super::stdlib::array64_init as *const u8);
         builder.symbol("array64_set", super::stdlib::array64_set as *const u8);
-        builder.symbol("array64_get", super::stdlib::array64_set as *const u8);
+        builder.symbol("array64_get", super::stdlib::array64_get as *const u8);
+        builder.symbol("arrayobject_set", super::stdlib::array_object_set as *const u8);
+        builder.symbol("arrayobject_get", super::stdlib::array_object_get as *const u8);
+        builder.symbol("arrayf32_init", super::stdlib::arrayf32_init as *const u8);
+        builder.symbol("arrayf32_set", super::stdlib::arrayf32_set as *const u8);
+        builder.symbol("arrayf32_get", super::stdlib::arrayf32_get as *const u8);
+        builder.symbol("arrayf64_init", super::stdlib::arrayf64_init as *const u8);
+        builder.symbol("arrayf64_set", super::stdlib::arrayf64_set as *const u8);
+        builder.symbol("arrayf64_get", super::stdlib::arrayf64_get as *const u8);
         let mut module = JITModule::new(builder);
 
         let mut context = module.make_context();
         let mut builder_context = FunctionBuilderContext::new();
 
-        let mut get_virt_func = module.make_signature();
-        get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-        get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-        get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-        get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-        get_virt_func.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-
-        let fn_id_get_virt_func = module.declare_function("get_virtual_function", Linkage::Import, &get_virt_func).unwrap();
-        let mut get_virt_func_func = context.func.clone();
-        get_virt_func_func.signature = get_virt_func;
-        
-        //let func_builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
-        //let get_virt_func_func = module.declare_func_in_func(fn_id, func_builder.func);
-
-        //module.clear_context(&mut context);
-
-        let mut new_object = module.make_signature();
-        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-        new_object.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-
-        let fn_id_new_object = module.declare_function("new_object", Linkage::Import, &new_object).unwrap();
-        let mut new_object_func = context.func.clone();
-        new_object_func.signature = new_object;
-
-
-        let mut array64_init = module.make_signature();
-        array64_init.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-        array64_init.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-
-        let fn_id_array64_init = module.declare_function("array64_init", Linkage::Import, &array64_init).unwrap();
-        let mut array64_init_func = context.func.clone();
-        array64_init_func.signature = array64_init;
-
-        //let func_builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
-        //let new_object_func = module.declare_func_in_func(fn_id, func_builder.func);
-
-        //module.clear_context(&mut context);
-
-        let mut jit_utility_func = HashMap::new();
-        jit_utility_func.insert(String::from("get_virtual_function"), (fn_id_get_virt_func, get_virt_func_func));
-        jit_utility_func.insert(String::from("new_object"), (fn_id_new_object, new_object_func));
-        jit_utility_func.insert(String::from("array64_init"), (fn_id_array64_init, array64_init_func));
-        //module.finalize_definitions().unwrap();
 
 
         /*let func_id = module.declare_function("main", Linkage::Export, &new_object).unwrap();
@@ -108,7 +81,6 @@ impl Default for JITController {
             builder_context,
             context,
             module,
-            jit_utility_func: Arc::new(jit_utility_func),
         }
     }
 }
@@ -179,9 +151,6 @@ impl JITController {
         self.module.make_context()
     }
 
-    pub fn get_utility_functions(&self) -> Arc<HashMap<String, (FuncId, ir::function::Function)>> {
-        self.jit_utility_func.clone()
-    }
 }
 
 unsafe impl Send for JITController {}
@@ -191,16 +160,13 @@ unsafe impl Sync for JITController {}
 pub struct JITCompiler {
     builder_context: FunctionBuilderContext,
     context: codegen::Context,
-    jit_utility_func: Arc<HashMap<String, (FuncId, ir::function::Function)>>,
 }
 
 impl JITCompiler {
-    pub fn new(context: codegen::Context, jit_utility_func: Arc<HashMap<String, (FuncId, ir::function::Function)>>) -> JITCompiler {
+    pub fn new(context: codegen::Context) -> JITCompiler {
         JITCompiler {
             builder_context: FunctionBuilderContext::new(),
             context,
-            jit_utility_func
-
         }
     }
 
@@ -266,7 +232,6 @@ impl JITCompiler {
             arg_types,
             &mut self.context,
             &mut self.builder_context,
-            &self.jit_utility_func
         );
 
         //println!("[JIT] Translating function");
@@ -290,7 +255,6 @@ pub struct FunctionTranslator<'a> {
     blocks: Vec<Block>,
     current_block: usize,
     block_arg_types: HashMap<usize, Vec<ir::Type>>,
-    jit_utility_func: &'a HashMap<String, (FuncId, ir::function::Function)>,
 }
 
 impl FunctionTranslator<'_> {
@@ -298,7 +262,6 @@ impl FunctionTranslator<'_> {
         arg_types: &[runtime::class::TypeTag],
         context: &'a mut codegen::Context,
         builder_context: &'a mut FunctionBuilderContext,
-        jit_utility_func: &'a HashMap<String, (FuncId, ir::function::Function)>,
     ) -> FunctionTranslator<'a> {
         let mut builder = FunctionBuilder::new(&mut context.func, builder_context);
 
@@ -346,7 +309,6 @@ impl FunctionTranslator<'_> {
             blocks: vec![entry_block],
             current_block: 0,
             block_arg_types,
-            jit_utility_func
         }
     }
 
@@ -355,7 +317,7 @@ impl FunctionTranslator<'_> {
     }
 
     pub fn set_argument(&mut self, pos: u8, value: Value, ty: ir::Type) {
-        println!("setting argument");
+        // println!("setting argument");
         if let Some((arg, arg_ty)) = &mut self.call_args[pos as usize] {
             if arg_ty != &ty {
                 self.current_variable += 1;
@@ -368,7 +330,7 @@ impl FunctionTranslator<'_> {
                 self.builder.def_var(*arg, value);
             }
         } else {
-            println!("creating new call argument");
+            // println!("creating new call argument");
             self.current_variable += 1;
             let new_arg = Variable::new(self.current_variable);
             self.builder.declare_var(new_arg, ty);
@@ -435,10 +397,10 @@ impl FunctionTranslator<'_> {
     }
 
     pub fn get_call_arguments_as_vec(&mut self) -> Vec<Value> {
-        println!("getting call arguments");
+        // println!("getting call arguments");
         let mut output = Vec::new();
         for value in self.call_args.iter_mut() {
-            println!("\t{:?}", value);
+            // println!("\t{:?}", value);
             match value {
                 Some((v, _)) => {
                     let value = self.builder.use_var(*v);
@@ -448,7 +410,7 @@ impl FunctionTranslator<'_> {
             }
             *value = None;
         }
-        println!("\toutput: {:?}", output);
+        // println!("\toutput: {:?}", output);
         output
     }
 
@@ -487,7 +449,7 @@ impl FunctionTranslator<'_> {
 
     pub fn translate(&mut self, bytecode: &[Bytecode], module: &mut JITModule) -> Result<(), String> {
 
-        println!("Bytecode: {:#?}", bytecode);
+        // println!("Bytecode: {:#?}", bytecode);
 
         for bytecode in bytecode.iter() {
             match bytecode {
@@ -767,7 +729,7 @@ impl FunctionTranslator<'_> {
                 }
                 // TODO: implement conversions
                 Bytecode::CreateArray(tag) => {
-                    println!("create array");
+                    // println!("create array");
                     let new_object_id = if let Some(id) = module.get_name("new_object") {
                         match id {
                             FuncOrDataId::Func(id) => id,
@@ -822,7 +784,7 @@ impl FunctionTranslator<'_> {
                     };
 
                     let initialize_array_id = if let Some(id) = module.get_name(fun_name) {
-                        println!("initialize array {}", fun_name);
+                        // println!("initialize array {}", fun_name);
                         match id {
                             FuncOrDataId::Func(id) => id,
                             _ => unreachable!("cannot initialize array object from data id"),
@@ -836,8 +798,6 @@ impl FunctionTranslator<'_> {
                         fn_id
                     };
 
-
-
                     let (array_size, _) = self.pop();
 
                     let initialize_array = module.declare_func_in_func(initialize_array_id, self.builder.func);
@@ -848,7 +808,7 @@ impl FunctionTranslator<'_> {
 
                 }
                 Bytecode::ArraySet(type_tag) => {
-                    println!("array set");
+                    // println!("array set");
                     let fun_name = match type_tag {
                         TypeTag::U8 | TypeTag::I8 => "array8_set",
                         TypeTag::U16 | TypeTag::I16 => "array16_set",
@@ -894,7 +854,7 @@ impl FunctionTranslator<'_> {
                     // TODO: add code for handling an index out of bounds exception
                 }
                 Bytecode::ArrayGet(type_tag) => {
-                    println!("array get");
+                    // println!("array get");
                     let fun_name = match type_tag {
                         TypeTag::U8 | TypeTag::I8 => "array8_get",
                         TypeTag::U16 | TypeTag::I16 => "array16_get",
@@ -1028,7 +988,6 @@ impl FunctionTranslator<'_> {
                     let result = self.builder.ins().call_indirect(sig, method_value, &method_args);
                     let return_value = self.builder.inst_results(result);
                     if return_value.len() != 0 {
-                        println!("\t\tpushing return value");
                         self.push(return_value[0], return_type.unwrap().value_type)
                     }
                 }

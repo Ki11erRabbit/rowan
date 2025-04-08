@@ -229,9 +229,8 @@ impl Context {
             panic!("Lock poisoned");
         };
         let context = jit_controller.new_context();
-        let utility_funcs = jit_controller.get_utility_functions();
 
-        JITCompiler::new(context, utility_funcs)
+        JITCompiler::new(context)
     }
 
     pub fn get_method_signature(&self, class_symbol: Symbol, method_name: Symbol) -> Signature {

@@ -729,6 +729,8 @@ impl Compiler {
         output: &mut Vec<Bytecode>,
         lhs : bool,
     ) -> Result<Option<Box<dyn Fn(&mut Vec<Bytecode>) + 'a>>, CompilerError> {
+        // println!("lhs {}", lhs);
+        // println!("Expression: {:#?}", expr);
         match expr {
             Expression::Variable(var, _, span) => {
                 let index = self.get_variable(var)
@@ -956,35 +958,37 @@ impl Compiler {
                         output.push(Bytecode::Or)
                     }
                     (Some(Type::Array(generic, _)), BinaryOperator::Index, _) => {
-                        return Ok(Some(
-                            Box::new(move |output: &mut Vec<Bytecode>| {
-                                let type_tag = match generic.as_ref() {
-                                    Type::U8 => TypeTag::U8,
-                                    Type::I8 => TypeTag::I8,
-                                    Type::U16 => TypeTag::U16,
-                                    Type::I16 => TypeTag::I16,
-                                    Type::U32 => TypeTag::U32,
-                                    Type::I32 => TypeTag::I32,
-                                    Type::U64 => TypeTag::U64,
-                                    Type::I64 => TypeTag::I64,
-                                    Type::F32 => TypeTag::F32,
-                                    Type::F64 => TypeTag::F64,
-                                    Type::Object(_, _) => TypeTag::Object,
-                                    Type::TypeArg(_, _, _) => TypeTag::Object,
-                                    Type::Void => TypeTag::Void,
-                                    Type::Str => TypeTag::Str,
-                                    Type::Tuple(_, _) => TypeTag::Object,
-                                    Type::Array(_, _) => TypeTag::Object,
-                                    Type::Char => TypeTag::U32,
-                                    Type::Function(_, _, _) => TypeTag::Object,
-                                };
-                                if lhs {
+                        let type_tag = match generic.as_ref() {
+                            Type::U8 => TypeTag::U8,
+                            Type::I8 => TypeTag::I8,
+                            Type::U16 => TypeTag::U16,
+                            Type::I16 => TypeTag::I16,
+                            Type::U32 => TypeTag::U32,
+                            Type::I32 => TypeTag::I32,
+                            Type::U64 => TypeTag::U64,
+                            Type::I64 => TypeTag::I64,
+                            Type::F32 => TypeTag::F32,
+                            Type::F64 => TypeTag::F64,
+                            Type::Object(_, _) => TypeTag::Object,
+                            Type::TypeArg(_, _, _) => TypeTag::Object,
+                            Type::Void => TypeTag::Void,
+                            Type::Str => TypeTag::Str,
+                            Type::Tuple(_, _) => TypeTag::Object,
+                            Type::Array(_, _) => TypeTag::Object,
+                            Type::Char => TypeTag::U32,
+                            Type::Function(_, _, _) => TypeTag::Object,
+                        };
+
+                        if lhs {
+                            return Ok(Some(
+                                Box::new(move |output: &mut Vec<Bytecode>| {
                                     output.push(Bytecode::ArraySet(type_tag));
-                                } else {
-                                    output.push(Bytecode::ArrayGet(type_tag));
-                                }
-                            })
-                        ));
+                                })
+                            ));
+                        } else {
+                            println!("array get");
+                            output.push(Bytecode::ArrayGet(type_tag));
+                        }
 
                     }
                     (l, x, r) => todo!("binary operator {:?} {:?} {:?}", l, x, r),
