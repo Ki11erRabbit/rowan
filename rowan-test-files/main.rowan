@@ -11,5 +11,11 @@ class Main {
             x = x + x;
         }
         printer.println-int(x);
+        let arr: [u64] = [1, 2 ,3, 4];
+        let counter: u64 = 0;
+        while counter < arr.len() {
+            printer.println-int(arr[counter]);
+            counter = counter + 1;
+        }
     }
 }

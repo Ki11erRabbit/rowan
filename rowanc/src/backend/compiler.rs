@@ -955,10 +955,10 @@ impl Compiler {
                     (Some(Type::U8), BinaryOperator::Or, Some(Type::U8)) => {
                         output.push(Bytecode::Or)
                     }
-                    (Some(Type::TypeArg(_, generic, _)), BinaryOperator::Index, _) => {
+                    (Some(Type::Array(generic, _)), BinaryOperator::Index, _) => {
                         return Ok(Some(
                             Box::new(move |output: &mut Vec<Bytecode>| {
-                                let type_tag = match &generic[0] {
+                                let type_tag = match generic.as_ref() {
                                     Type::U8 => TypeTag::U8,
                                     Type::I8 => TypeTag::I8,
                                     Type::U16 => TypeTag::U16,
@@ -1007,12 +1007,24 @@ impl Compiler {
             Expression::Parenthesized(expr, _) => {
                 self.compile_expression(class_name, partial_class, expr.as_ref(), output, lhs)?;
             }
-            Expression::Call { name, type_args, args, span } => {
+            Expression::Call { name, args, .. } => {
                 let (name, ty, var) = match name.as_ref() {
                     Expression::MemberAccess { object, field, span } => {
                         match object.as_ref() {
                             Expression::Variable(var, Some(Type::Object(ty, _)), _) => {
                                 (field, ty.clone(), var.clone())
+                            }
+                            Expression::Variable(var, Some(Type::Array(ty, _)), _) => {
+                                let ty = match ty.as_ref() {
+                                    Type::U8 | Type::I8 => Text::Borrowed("Array8"),
+                                    Type::U16 | Type::I16 => Text::Borrowed("Array16"),
+                                    Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
+                                    Type::U64 | Type::I64 => Text::Borrowed("Array64"),
+                                    Type::Object(_, _) | Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                                    Type::F32 => Text::Borrowed("Arrayf32"),
+                                    Type::F64 => Text::Borrowed("Arrayf64"),
+                                };
+                                (field, ty, var.clone())
                             }
                             Expression::This(_) => {
                                 (field, Text::Borrowed(class_name), Text::Borrowed("self"))

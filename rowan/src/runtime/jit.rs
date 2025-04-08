@@ -284,7 +284,6 @@ impl JITCompiler {
 pub struct FunctionTranslator<'a> {
     builder: FunctionBuilder<'a>,
     call_args: [Option<(Variable, ir::Type)>; 256],
-    current_call_arg: usize,
     variables: [Option<(Variable, ir::Type)>; 256],
     current_variable: usize,
     stack: Vec<Option<(Value, ir::Type)>>,
@@ -341,7 +340,6 @@ impl FunctionTranslator<'_> {
         FunctionTranslator {
             builder,
             call_args: [None; 256],
-            current_call_arg: 0,
             variables,
             current_variable,
             stack,
@@ -357,11 +355,11 @@ impl FunctionTranslator<'_> {
     }
 
     pub fn set_argument(&mut self, pos: u8, value: Value, ty: ir::Type) {
-        //println!("setting argument");
+        println!("setting argument");
         if let Some((arg, arg_ty)) = &mut self.call_args[pos as usize] {
             if arg_ty != &ty {
-                self.current_call_arg += 1;
-                let new_arg = Variable::new(self.current_call_arg);
+                self.current_variable += 1;
+                let new_arg = Variable::new(self.current_variable);
                 self.builder.declare_var(new_arg, ty);
                 self.builder.def_var(new_arg, value);
                 *arg = new_arg;
@@ -370,8 +368,9 @@ impl FunctionTranslator<'_> {
                 self.builder.def_var(*arg, value);
             }
         } else {
-            self.current_call_arg += 1;
-            let new_arg = Variable::new(self.current_call_arg);
+            println!("creating new call argument");
+            self.current_variable += 1;
+            let new_arg = Variable::new(self.current_variable);
             self.builder.declare_var(new_arg, ty);
             self.builder.def_var(new_arg, value);
             self.call_args[pos as usize] = Some((new_arg, ty));
@@ -383,8 +382,8 @@ impl FunctionTranslator<'_> {
         if let Some((var, var_ty)) = &mut self.variables[pos as usize] {
             if var_ty != &ty {
                 //println!("duplicate variable slot");
-                self.current_call_arg += 1;
-                let new_arg = Variable::new(self.current_call_arg);
+                self.current_variable += 1;
+                let new_arg = Variable::new(self.current_variable);
                 self.builder.declare_var(new_arg, ty);
                 self.builder.def_var(new_arg, value);
                 *var = new_arg;
@@ -395,8 +394,8 @@ impl FunctionTranslator<'_> {
             }
         } else {
             //println!("creating new variable");
-            self.current_call_arg += 1;
-            let var = Variable::new(self.current_call_arg);
+            self.current_variable += 1;
+            let var = Variable::new(self.current_variable);
             self.builder.declare_var(var, ty);
             self.builder.def_var(var, value);
             self.variables[pos as usize] = Some((var, ty));
@@ -436,11 +435,10 @@ impl FunctionTranslator<'_> {
     }
 
     pub fn get_call_arguments_as_vec(&mut self) -> Vec<Value> {
+        println!("getting call arguments");
         let mut output = Vec::new();
-        for (i, value) in self.call_args.iter().enumerate() {
-            if i >= 256 {
-                break;
-            }
+        for value in self.call_args.iter_mut() {
+            println!("\t{:?}", value);
             match value {
                 Some((v, _)) => {
                     let value = self.builder.use_var(*v);
@@ -448,7 +446,9 @@ impl FunctionTranslator<'_> {
                 },
                 None => break,
             }
+            *value = None;
         }
+        println!("\toutput: {:?}", output);
         output
     }
 
@@ -487,7 +487,7 @@ impl FunctionTranslator<'_> {
 
     pub fn translate(&mut self, bytecode: &[Bytecode], module: &mut JITModule) -> Result<(), String> {
 
-        //println!("Bytecode: {:#?}", bytecode);
+        println!("Bytecode: {:#?}", bytecode);
 
         for bytecode in bytecode.iter() {
             match bytecode {
@@ -1022,11 +1022,14 @@ impl FunctionTranslator<'_> {
                             method_name_value,
                         ]);
                     let method_value = self.builder.inst_results(method_instructions)[0];
-                    let call_args = self.get_call_arguments_as_vec();
+                    let return_type = sig.returns.first().cloned();
                     let sig = self.builder.import_signature(sig);
                     
-                    let result = self.builder.ins().call_indirect(sig, method_value, &call_args);
-                    let _return_value = self.builder.inst_results(result);
+                    let result = self.builder.ins().call_indirect(sig, method_value, &method_args);
+                    let return_value = self.builder.inst_results(result);
+                    if return_value.len() != 0 {
+                        self.push(return_value[0], return_type.unwrap().value_type)
+                    }
                 }
                 // TODO: implement signal ops
                 Bytecode::StartBlock(index) => {

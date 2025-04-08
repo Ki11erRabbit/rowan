@@ -11,12 +11,15 @@ fn create_stdlib<'a>() -> HashMap<String, HashMap<String, ClassAttribute>> {
 
     info.insert("Object".to_string(), object_attributes);
 
-    let mut info = HashMap::new();
     let mut printer_attributes = HashMap::new();
     printer_attributes.insert("println-int".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64], Box::new(TypeCheckerType::Void))));
 
     info.insert("Printer".to_string(), printer_attributes);
 
+    let mut array_attributes = HashMap::new();
+    array_attributes.insert("len".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::U64))));
+
+    info.insert("Array".to_string(), array_attributes);
     
     info
 }
@@ -417,6 +420,7 @@ impl TypeChecker {
                             _ => todo!("add support for non-array objects with indexing"),
                         }
                     }
+                    Type::Array(_, _) => {}
                     _ => todo!("add support for non-array objects with indexing"),
                 }
                 self.annotate_expr(&Type::U64, right.as_mut())?;
@@ -430,6 +434,7 @@ impl TypeChecker {
                 // TODO: add conversion when traits are added
                 // TODO: make it so that types get upgraded if they are compatable
 
+
                 let lhs = match self.get_type(left) {
                     Ok(ty) => Some(ty),
                     Err(TypeCheckerError::UnableToDeduceType {..}) => None,
@@ -442,6 +447,7 @@ impl TypeChecker {
                 let (lhs, rhs) = match (lhs, rhs) {
                     (Some(lhs), Some(rhs)) => (lhs, rhs),
                     (Some(lhs), None) => {
+                        println!("annotating right side");
                         self.annotate_expr(&lhs, right.as_mut())?;
                         (lhs.clone(), lhs)
                     }
@@ -546,6 +552,7 @@ impl TypeChecker {
 
     fn get_type<'a>(&self, expr: &mut crate::ast::Expression<'a>) -> Result<Type<'a>, TypeCheckerError> {
         use crate::ast::{Expression, Literal, Constant};
+        //println!("Expression: {:#?}", expr);
         match expr {
             Expression::Literal(Literal::Constant(Constant::Bool(_, _))) => Ok(Type::U8),
             Expression::Literal(Literal::Constant(Constant::Float(_, annotation, span))) => match annotation {
@@ -580,6 +587,21 @@ impl TypeChecker {
             Expression::New(object, _, _) => {
                 Ok(object.clone())
             }
+            Expression::Call { name, annotation, .. } => {
+                if let Some(ty)= annotation {
+                    Ok(ty.clone())
+                } else {
+                    let ty = self.get_type(name.as_mut())?;
+                    let ty = match ty {
+                        Type::Function(_, ret_type, _) => {
+                            *ret_type.clone()
+                        }
+                        _ => unreachable!("something other than function")
+                    };
+                    *annotation = Some(ty.clone());
+                    Ok(ty)
+                }
+            }
             Expression::MemberAccess { object, field, .. } => {
                 match object.as_mut() {
                     Expression::Variable(name,ty, _) => {
@@ -599,6 +621,39 @@ impl TypeChecker {
                                     }
                                     _ => {
                                         eprintln!("Failed to find attribute {} in class {}", field.to_string(), name);
+                                        todo!("report unknown member access")
+                                    }
+                                }
+                            }
+                            TypeCheckerType::TypeArg(obj, args) => {
+                                match obj.as_ref() {
+                                    TypeCheckerType::Object(name) => {
+                                        match self.get_attribute(name.to_string(), field.to_string()) {
+                                            Some(ClassAttribute::Member(ty)) => {
+                                                Ok(ty.clone().into())
+                                            }
+                                            Some(ClassAttribute::Method(ty)) => {
+                                                Ok(ty.clone().into())
+                                            }
+                                            _ => {
+                                                eprintln!("Failed to find attribute {} in class {}", field.to_string(), name);
+                                                todo!("report unknown member access")
+                                            }
+                                        }
+                                    }
+                                    _ => unreachable!("Only object types can have type parameters")
+                                }
+                            }
+                            TypeCheckerType::Array(ty) => {
+                                match self.get_attribute(String::from("Array"), field.to_string()) {
+                                    Some(ClassAttribute::Member(ty)) => {
+                                        Ok(ty.clone().into())
+                                    }
+                                    Some(ClassAttribute::Method(ty)) => {
+                                        Ok(ty.clone().into())
+                                    }
+                                    _ => {
+                                        eprintln!("Failed to find attribute {} in class Array", field.to_string());
                                         todo!("report unknown member access")
                                     }
                                 }
@@ -649,6 +704,16 @@ impl TypeChecker {
                     Ok(Type::Array(Box::new(ty.clone()), Span::new(0, 0)))
                 } else {
                     todo!("report lack of array type")
+                }
+            }
+            Expression::BinaryOperation { operator: BinaryOperator::Index, left, .. } => {
+                match self.get_type(left.as_mut())? {
+                    Type::Array(ty, _) => {
+                        Ok(*ty.clone())
+                    }
+                    _ => {
+                        todo!("add in trait support so we can index other things than just arrays")
+                    }
                 }
             }
             x => todo!("finish get_type: {:?}", x),
@@ -725,6 +790,19 @@ impl TypeChecker {
             }
             (ty, Expression::Parenthesized(expr, _)) => {
                 self.annotate_expr(ty, expr.as_mut())?;
+            }
+            (ty, Expression::Call { name, annotation, ..}) => {
+                let access_ty = self.get_type(name.as_mut())?;
+
+                match access_ty {
+                    Type::Function(_, ret_ty, _) => {
+                        if *ty != *ret_ty {
+                            todo!("report type mismatch")
+                        }
+                    }
+                    _ => todo!("report not a function")
+                }
+                *annotation = Some(ty.clone());
             }
             _ => {}
         }

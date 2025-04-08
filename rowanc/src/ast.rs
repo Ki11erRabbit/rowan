@@ -520,6 +520,7 @@ pub enum Expression<'a> {
         type_args: Vec<Type<'a>>,
         args: Vec<Expression<'a>>,
         span: Span,
+        annotation: Option<Type<'a>>,
     },
     MemberAccess {
         object: Box<Expression<'a>>,
@@ -591,7 +592,8 @@ impl Expression<'_> {
             name,
             type_args,
             args,
-            span
+            span,
+            annotation: None,
         }
     }
 
@@ -740,6 +742,9 @@ impl Expression<'_> {
             }
             Expression::BinaryOperation { operator: BinaryOperator::Add, left,  .. } => {
                 left.get_type()
+            }
+            Expression::Call {annotation, ..} => {
+                annotation.clone()
             }
             x => todo!("Expression::get_type {:?}", x),
         }

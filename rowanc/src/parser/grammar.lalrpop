@@ -550,6 +550,7 @@ IndexExpr: Expression<'a> = {
         let array_size = Box::new(array_size);
         Expression::New(id, Some(array_size), Span::new(start, end))
     },
+    <call:Call> => call,
 };
 
 FactorExpr: Expression<'a> = {
@@ -662,7 +663,6 @@ DisjExpr: Expression<'a> = {
 
 CallExpr: Expression<'a> = {
     <dis:DisjExpr> => dis,
-    <call:Call> => call,
 };
 
 ConditionalExpr: Expression<'a> = {
@@ -830,7 +830,7 @@ pub ClosureParam: ClosureParameter<'a> = {
 
 
 Call: Expression<'a> = {
-    <start: @L> <callee:CallExpr> <args:ArgList> <end: @R> => {
+    <start: @L> <callee:IndexExpr> <args:ArgList> <end: @R> => {
         Expression::new_call(Box::new(callee), Vec::new(), args, Span::new(start, end))
     },
     //<start: @L> <callee:CallExpr> <typeargs:TypeArgList> <args:ArgList> <end: @R> => Expression::new_call(Box::new(callee), typeargs, args, Span::new(start, end)),
