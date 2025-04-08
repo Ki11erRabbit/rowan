@@ -419,6 +419,7 @@ ArrayType: Type<'a> = {
 Type: Type<'a> = {
     <ty:BaseType> => ty,
     <ty:ObjectType> => ty,
+    <ty:ArrayType> => ty,
     <start: @L> <ty:ObjectType> AngleOpen <arg:Type> <args:("," <Type>)*> AngleClose <end: @R> => {
         let mut types = vec![arg];
         for t in args.into_iter() {

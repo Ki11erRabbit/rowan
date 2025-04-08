@@ -1,10 +1,10 @@
-use std::any::Any;
+
 use std::collections::HashMap;
 
 use codegen::{ir::{self, FuncRef}, CodegenError};
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{FuncId, Linkage, Module, ModuleError, ModuleResult};
+use cranelift_module::{FuncId, FuncOrDataId, Linkage, Module, ModuleError, ModuleResult};
 use rowan_shared::bytecode::linked::Bytecode;
 
 use rowan_shared::TypeTag;
@@ -34,6 +34,9 @@ impl Default for JITController {
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
         builder.symbol("get_virtual_function", super::get_virtual_function as *const u8);
         builder.symbol("new_object", super::new_object as *const u8);
+        builder.symbol("array64_init", super::stdlib::array64_init as *const u8);
+        builder.symbol("array64_set", super::stdlib::array64_set as *const u8);
+        builder.symbol("array64_get", super::stdlib::array64_set as *const u8);
         let mut module = JITModule::new(builder);
 
         let mut context = module.make_context();
@@ -62,7 +65,16 @@ impl Default for JITController {
         let fn_id_new_object = module.declare_function("new_object", Linkage::Import, &new_object).unwrap();
         let mut new_object_func = context.func.clone();
         new_object_func.signature = new_object;
-        
+
+
+        let mut array64_init = module.make_signature();
+        array64_init.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+        array64_init.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+        let fn_id_array64_init = module.declare_function("array64_init", Linkage::Import, &array64_init).unwrap();
+        let mut array64_init_func = context.func.clone();
+        array64_init_func.signature = array64_init;
+
         //let func_builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
         //let new_object_func = module.declare_func_in_func(fn_id, func_builder.func);
 
@@ -71,6 +83,7 @@ impl Default for JITController {
         let mut jit_utility_func = HashMap::new();
         jit_utility_func.insert(String::from("get_virtual_function"), (fn_id_get_virt_func, get_virt_func_func));
         jit_utility_func.insert(String::from("new_object"), (fn_id_new_object, new_object_func));
+        jit_utility_func.insert(String::from("array64_init"), (fn_id_array64_init, array64_init_func));
         //module.finalize_definitions().unwrap();
 
 
@@ -325,7 +338,6 @@ impl FunctionTranslator<'_> {
 
         block_arg_types.insert(0, start_block_args);
 
-        let store_end = builder.block_params(entry_block).len();
         FunctionTranslator {
             builder,
             call_args: [None; 256],
@@ -754,16 +766,206 @@ impl FunctionTranslator<'_> {
                     self.push(value_out, ir::types::I8);
                 }
                 // TODO: implement conversions
-                // TODO: implement array ops
+                Bytecode::CreateArray(tag) => {
+                    println!("create array");
+                    let new_object_id = if let Some(id) = module.get_name("new_object") {
+                        match id {
+                            FuncOrDataId::Func(id) => id,
+                            _ => unreachable!("cannot create array object from data id"),
+                        }
+                    } else {
+                        let mut new_object = module.make_signature();
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                        new_object.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+                        let fn_id = module.declare_function("new_object", Linkage::Import, &new_object).unwrap();
+                        fn_id
+                    };
+
+                    let new_object_func = module.declare_func_in_func(new_object_id, self.builder.func);
+
+                    let array_symbol = match tag {
+                        TypeTag::U8 | TypeTag::I8 => {
+                            self.builder.ins().iconst(ir::types::I64, 8)
+                        }
+                        TypeTag::U16 | TypeTag::I16 => {
+                            self.builder.ins().iconst(ir::types::I64, 14)
+                        }
+                        TypeTag::U32 | TypeTag::I32 => {
+                            self.builder.ins().iconst(ir::types::I64, 18)
+                        }
+                        TypeTag::U64 | TypeTag::I64 => {
+                            self.builder.ins().iconst(ir::types::I64, 22)
+                        }
+                        TypeTag::Object | TypeTag::Str | TypeTag::Void => {
+                            self.builder.ins().iconst(ir::types::I64, 22)
+                        }
+                        TypeTag::F32 => {
+                            self.builder.ins().iconst(ir::types::I64, 30)
+                        }
+                        TypeTag::F64 => {
+                            self.builder.ins().iconst(ir::types::I64, 34)
+                        }
+                    };
+
+                    let new_object = self.builder.ins().call(new_object_func, &[array_symbol]);
+                    let value = self.builder.inst_results(new_object)[0];
+
+                    let fun_name = match tag {
+                        TypeTag::U8 | TypeTag::I8 => "array8_init",
+                        TypeTag::U16 | TypeTag::I16 => "array16_init",
+                        TypeTag::U32 | TypeTag::I32 => "array32_init",
+                        TypeTag::U64 | TypeTag::I64 => "array64_init",
+                        TypeTag::Object | TypeTag::Str | TypeTag::Void => "array64_init",
+                        TypeTag::F32 => "arrayf32_init",
+                        TypeTag::F64 => "arrayf64_init",
+                    };
+
+                    let initialize_array_id = if let Some(id) = module.get_name(fun_name) {
+                        println!("initialize array {}", fun_name);
+                        match id {
+                            FuncOrDataId::Func(id) => id,
+                            _ => unreachable!("cannot initialize array object from data id"),
+                        }
+                    } else {
+                        let mut new_object = module.make_signature();
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+                        let fn_id = module.declare_function(fun_name, Linkage::Import, &new_object).unwrap();
+                        fn_id
+                    };
+
+
+
+                    let (array_size, _) = self.pop();
+
+                    let initialize_array = module.declare_func_in_func(initialize_array_id, self.builder.func);
+                    let init_array = self.builder.ins().call(initialize_array, &[value, array_size]);
+                    self.builder.inst_results(init_array);
+
+                    self.push(value, ir::types::I64);
+
+                }
+                Bytecode::ArraySet(type_tag) => {
+                    println!("array set");
+                    let fun_name = match type_tag {
+                        TypeTag::U8 | TypeTag::I8 => "array8_set",
+                        TypeTag::U16 | TypeTag::I16 => "array16_set",
+                        TypeTag::U32 | TypeTag::I32 => "array32_set",
+                        TypeTag::U64 | TypeTag::I64 => "array64_set",
+                        TypeTag::Object | TypeTag::Str | TypeTag::Void => "arrayobject_set",
+                        TypeTag::F32 => "arrayf32_set",
+                        TypeTag::F64 => "arrayf64_set",
+                    };
+
+                    let array_set = if let Some(id) = module.get_name(fun_name) {
+                        match id {
+                            FuncOrDataId::Func(id) => id,
+                            _ => unreachable!("cannot initialize array object from data id"),
+                        }
+                    } else {
+                        let mut new_object = module.make_signature();
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+                        let ty = match type_tag {
+                            TypeTag::U8 | TypeTag::I8 => types::I8,
+                            TypeTag::U16 | TypeTag::I16 => types::I16,
+                            TypeTag::U32 | TypeTag::I32 => types::I32,
+                            TypeTag::U64 | TypeTag::I64 => types::I64,
+                            TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
+                            TypeTag::F32 => types::F32,
+                            TypeTag::F64 => types::F64,
+                        };
+                        new_object.params.push(AbiParam::new(ty));
+
+                        let fn_id = module.declare_function(fun_name, Linkage::Import, &new_object).unwrap();
+                        fn_id
+                    };
+
+                    let (value, _) = self.pop();
+                    let (index, _) = self.pop();
+                    let (array, _) = self.pop();
+
+                    let array_set = module.declare_func_in_func(array_set, self.builder.func);
+                    let array_set = self.builder.ins().call(array_set, &[array, index, value]);
+                    self.builder.inst_results(array_set);
+                    // TODO: add code for handling an index out of bounds exception
+                }
+                Bytecode::ArrayGet(type_tag) => {
+                    println!("array get");
+                    let fun_name = match type_tag {
+                        TypeTag::U8 | TypeTag::I8 => "array8_get",
+                        TypeTag::U16 | TypeTag::I16 => "array16_get",
+                        TypeTag::U32 | TypeTag::I32 => "array32_get",
+                        TypeTag::U64 | TypeTag::I64 => "array64_get",
+                        TypeTag::Object | TypeTag::Str | TypeTag::Void => "arrayobject_get",
+                        TypeTag::F32 => "arrayf32_get",
+                        TypeTag::F64 => "arrayf64_get",
+                    };
+
+                    let array_get = if let Some(id) = module.get_name(fun_name) {
+                        match id {
+                            FuncOrDataId::Func(id) => id,
+                            _ => unreachable!("cannot initialize array object from data id"),
+                        }
+                    } else {
+                        let mut new_object = module.make_signature();
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+                        let ty = match type_tag {
+                            TypeTag::U8 | TypeTag::I8 => types::I8,
+                            TypeTag::U16 | TypeTag::I16 => types::I16,
+                            TypeTag::U32 | TypeTag::I32 => types::I32,
+                            TypeTag::U64 | TypeTag::I64 => types::I64,
+                            TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
+                            TypeTag::F32 => types::F32,
+                            TypeTag::F64 => types::F64,
+                        };
+                        new_object.returns.push(AbiParam::new(ty));
+
+                        let fn_id = module.declare_function(fun_name, Linkage::Import, &new_object).unwrap();
+                        fn_id
+                    };
+
+                    let (index, _) = self.pop();
+                    let (array, _) = self.pop();
+
+                    let array_get = module.declare_func_in_func(array_get, self.builder.func);
+                    let array_get = self.builder.ins().call(array_get, &[array, index]);
+                    let value = self.builder.inst_results(array_get)[0];
+                    // TODO: add code for handling an index out of bounds exception
+
+                    let ty = match type_tag {
+                        TypeTag::U8 | TypeTag::I8 => types::I8,
+                        TypeTag::U16 | TypeTag::I16 => types::I16,
+                        TypeTag::U32 | TypeTag::I32 => types::I32,
+                        TypeTag::U64 | TypeTag::I64 => types::I64,
+                        TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
+                        TypeTag::F32 => types::F32,
+                        TypeTag::F64 => types::F64,
+                    };
+                    self.push(value, ty);
+                }
                 // TODO: implement object ops
                 Bytecode::NewObject(symbol) => {
-                    let mut new_object = module.make_signature();
-                    new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-                    new_object.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    let new_object_id = if let Some(id) = module.get_name("new_object") {
+                        match id {
+                            FuncOrDataId::Func(id) => id,
+                            _ => unreachable!("cannot create array object from data id"),
+                        }
+                    } else {
+                        let mut new_object = module.make_signature();
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                        new_object.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
 
-                    let fn_id = module.declare_function("new_object", Linkage::Import, &new_object).unwrap();
+                        let fn_id = module.declare_function("new_object", Linkage::Import, &new_object).unwrap();
+                        fn_id
+                    };
 
-                    let new_object_func = module.declare_func_in_func(fn_id, self.builder.func);
+                    let new_object_func = module.declare_func_in_func(new_object_id, self.builder.func);
 
                     
                     

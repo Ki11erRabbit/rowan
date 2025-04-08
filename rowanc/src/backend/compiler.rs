@@ -835,6 +835,37 @@ impl Compiler {
                             }
                         }
                     }
+                    Literal::Array(exprs, ty, _) => {
+                        let type_tag = match ty {
+                            Some(Type::U8) => TypeTag::U8,
+                            Some(Type::I8) => TypeTag::I8,
+                            Some(Type::U16) => TypeTag::U16,
+                            Some(Type::I16) => TypeTag::I16,
+                            Some(Type::U32) => TypeTag::U32,
+                            Some(Type::I32) => TypeTag::I32,
+                            Some(Type::U64) => TypeTag::U64,
+                            Some(Type::F32) => TypeTag::F32,
+                            Some(Type::F64) => TypeTag::F64,
+                            Some(Type::I64) => TypeTag::I64,
+                            Some(Type::Array(_, _)) => TypeTag::Object,
+                            Some(Type::Tuple(_, _)) => TypeTag::Object,
+                            Some(Type::Char) => TypeTag::U32,
+                            Some(Type::Str) => TypeTag::Str,
+                            Some(Type::Object(_, _)) => TypeTag::Object,
+                            Some(Type::Void) => TypeTag::Void,
+                            Some(Type::TypeArg(_ ,_, _)) => TypeTag::Object,
+                            Some(Type::Function(_, _, _)) => TypeTag::Object,
+                            None => todo!("handle case where we don't know what the type is for the array")
+                        };
+                        output.push(Bytecode::LoadU64(exprs.len() as u64));
+                        output.push(Bytecode::CreateArray(type_tag));
+                        for (i, expr) in exprs.into_iter().enumerate() {
+                            output.push(Bytecode::Dup);
+                            output.push(Bytecode::LoadU64(i as u64));
+                            self.compile_expression(class_name, partial_class, expr, output, lhs)?;
+                            output.push(Bytecode::ArraySet(type_tag));
+                        }
+                    }
                     _ => todo!("all other literals")
                 }
             }

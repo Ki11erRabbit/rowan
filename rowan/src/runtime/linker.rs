@@ -1128,7 +1128,6 @@ pub fn link_vm_classes(
 
             vtables_to_link.push((vtable_class_name_symbol, source_class_name));
         }
-        
         class_parts.push((class_symbol, parent_symbols, class_members, class_signals, vtables_to_link));
     }
 
@@ -1279,7 +1278,7 @@ pub fn link_vm_classes(
         }
         class_parts = class_parts_to_try_again;
     }
-    
+    println!("class_map: {:#?}", class_map);
 }
 
 fn add_parent_vtables(

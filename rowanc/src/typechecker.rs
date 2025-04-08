@@ -2,7 +2,7 @@ use std::{borrow::BorrowMut, collections::HashMap};
 
 use either::Either;
 
-use crate::ast::{BinaryOperator, Span, Type};
+use crate::ast::{BinaryOperator, Literal, Span, Type};
 
 fn create_stdlib<'a>() -> HashMap<String, HashMap<String, ClassAttribute>> {
     let mut info = HashMap::new();
@@ -504,6 +504,16 @@ impl TypeChecker {
             Expression::MemberAccess { object, field, .. } => {
                 self.check_expr(return_type, object)?;
             }
+            Expression::Literal(Literal::Array(body, typ, _)) => {
+                for body in body {
+                    self.check_expr(return_type, body)?;
+                    if let Some(typ) = typ {
+                        if self.get_type(body)? != *typ {
+                            todo!("report type mismatch in array body")
+                        }
+                    }
+                }
+            }
             _ => {}
         }
 
@@ -621,7 +631,6 @@ impl TypeChecker {
                         Ok(lhs)
                     }
                 }
-
             }
             Expression::BinaryOperation { operator: BinaryOperator::Eq, .. }
             | Expression::BinaryOperation { operator: BinaryOperator::Ne, .. }
@@ -634,6 +643,13 @@ impl TypeChecker {
             Expression::BinaryOperation { operator: BinaryOperator::And, .. }
             | Expression::BinaryOperation { operator: BinaryOperator::Or, .. }=> {
                 Ok(Type::U8)
+            }
+            Expression::Literal(Literal::Array(_, ty, _)) => {
+                if let Some(ty) = ty {
+                    Ok(Type::Array(Box::new(ty.clone()), Span::new(0, 0)))
+                } else {
+                    todo!("report lack of array type")
+                }
             }
             x => todo!("finish get_type: {:?}", x),
         }
@@ -695,6 +711,12 @@ impl TypeChecker {
                     type_vec.push(ty.clone());
                 }
                 *annotation = Some(Type::Tuple(type_vec, Span::new(0, 0)));
+            }
+            (Type::Array(ty, _), Expression::Literal(Literal::Array(exprs, annotation, _))) => {
+                for expr in exprs.iter_mut() {
+                    self.annotate_expr(ty, expr)?;
+                }
+                *annotation = Some(*ty.clone());
             }
             (ty, Expression::BinaryOperation {
                 operator: BinaryOperator::Add, left, right, .. }) => {

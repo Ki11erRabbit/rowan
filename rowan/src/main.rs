@@ -17,7 +17,16 @@ fn main() {
     file.read_to_end(&mut output).unwrap();
 
     let context = Context::new();
-    let vm_classes = vec![stdlib::generate_object_class(), stdlib::generate_printer_class()];
+    let vm_classes = vec![
+        stdlib::generate_object_class(),
+        stdlib::generate_array_8_class(),
+        stdlib::generate_array_16_class(),
+        stdlib::generate_array_32_class(),
+        stdlib::generate_array_64_class(),
+        stdlib::generate_array_object_class(),
+        stdlib::generate_array_f32_class(),
+        stdlib::generate_array_f64_class(),
+        stdlib::generate_printer_class()];
 
     let mut class_map = HashMap::new();
     let mut string_map = HashMap::new();

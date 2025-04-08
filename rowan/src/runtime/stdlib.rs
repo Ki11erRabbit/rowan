@@ -445,7 +445,7 @@ pub fn generate_array_64_class() -> VMClass {
     VMClass::new("Array64", vec!["Object"], vec![vtable], elements, Vec::new())
 }
 
-extern "C" fn array64_init(this: Reference, length: u64) {
+pub extern "C" fn array64_init(this: Reference, length: u64) {
     use std::alloc::*;
     let context = Context::new();
     let object = context.get_object(this);
@@ -572,7 +572,7 @@ pub fn generate_array_f32_class() -> VMClass {
     VMClass::new("Arrayf32", vec!["Object"], vec![vtable], elements, Vec::new())
 }
 
-extern "C" fn arrayf32_init(this: Reference, length: u64) {
+pub extern "C" fn arrayf32_init(this: Reference, length: u64) {
     use std::alloc::*;
     let context = Context::new();
     let object = context.get_object(this);
@@ -645,7 +645,7 @@ pub fn generate_array_f64_class() -> VMClass {
     VMClass::new("Arrayf64", vec!["Object"], vec![vtable], elements, Vec::new())
 }
 
-extern "C" fn arrayf64_init(this: Reference, length: u64) {
+pub extern "C" fn arrayf64_init(this: Reference, length: u64) {
     use std::alloc::*;
     let context = Context::new();
     let object = context.get_object(this);
