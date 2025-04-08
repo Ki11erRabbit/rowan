@@ -573,6 +573,36 @@ impl FunctionTranslator<'_> {
                     let value_out = self.builder.ins().usub_sat(value_lhs, value_rhs);
                     self.push(value_out, ty);
                 }
+                Bytecode::AddFloat => {
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().fadd(value_lhs, value_rhs);
+                    self.push(value_out, ty);
+                }
+                Bytecode::SubFloat => {
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().fsub(value_lhs, value_rhs);
+                    self.push(value_out, ty);
+                }
+                Bytecode::MulFloat => {
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().fmul(value_lhs, value_rhs);
+                    self.push(value_out, ty);
+                }
+                Bytecode::DivFloat => {
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().fdiv(value_lhs, value_rhs);
+                    self.push(value_out, ty);
+                }
+                Bytecode::ModFloat => {
+                    let (value_rhs, ty) = self.pop();
+                    let (value_lhs, _) = self.pop();
+                    let value_out = self.builder.ins().fdiv(value_lhs, value_rhs);
+                    self.push(value_out, ty);
+                }
                 Bytecode::And => {
                     let (value_rhs, ty) = self.pop();
                     let (value_lhs, _) = self.pop();

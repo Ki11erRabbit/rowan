@@ -2,7 +2,7 @@ module Main;
 
 class Main {
     @Override
-    fn ready() {
+    fn ready(self) {
         let x: u64 = 4 + 4;
         let printer: Printer = new Printer();
         printer.println-int(x);
@@ -17,5 +17,12 @@ class Main {
             printer.println-int(arr[counter]);
             counter = counter + 1;
         }
+        self.do-thing();
+    }
+
+    fn do-thing(self) {
+        let y: u64 = 10;
+        let printer: Printer = new Printer();
+        printer.println-int(y);
     }
 }
