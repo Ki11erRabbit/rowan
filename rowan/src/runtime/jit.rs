@@ -1028,6 +1028,7 @@ impl FunctionTranslator<'_> {
                     let result = self.builder.ins().call_indirect(sig, method_value, &method_args);
                     let return_value = self.builder.inst_results(result);
                     if return_value.len() != 0 {
+                        println!("\t\tpushing return value");
                         self.push(return_value[0], return_type.unwrap().value_type)
                     }
                 }
@@ -1059,7 +1060,7 @@ impl FunctionTranslator<'_> {
                         }
                     }
 
-                    self.builder.ins().jump(*block, &stack);
+                    self.builder.ins().jump(*block, &[]);
                 }
                 Bytecode::If(then_offset, else_offset) => {
                     let (value, _) = self.pop();
@@ -1099,9 +1100,9 @@ impl FunctionTranslator<'_> {
                     self.builder.ins().brif(
                         value,
                         then_block,
-                        &current_stack,
+                        &[],
                         else_block,
-                        &current_stack,
+                        &[],
                     );
                 }
                 x => todo!("remaining ops {:?}", x),
