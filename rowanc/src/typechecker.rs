@@ -162,6 +162,7 @@ impl Frame {
 pub struct TypeChecker {
     class_information: HashMap<String, HashMap<String, ClassAttribute>>,
     scopes: Vec<Frame>,
+    current_class: String,
 }
 
 
@@ -170,6 +171,7 @@ impl TypeChecker {
         TypeChecker {
             class_information: create_stdlib(),
             scopes: Vec::new(),
+            current_class: String::new(),
         }
     }
 
@@ -258,6 +260,7 @@ impl TypeChecker {
 
         self.class_information.insert(class_name.to_string(), class_attributes);
 
+        self.current_class = class_name.to_string();
         for method in methods.iter_mut() {
             self.check_method(method)?
         }
@@ -572,6 +575,9 @@ impl TypeChecker {
                     todo!("report unbound variable {}", name);
                 }
             }
+            Expression::This(_) => {
+                Ok(TypeCheckerType::Object(self.current_class.clone()).into())
+            }
             Expression::As { source, typ, .. } => {
                 let _source_ty = self.get_type(source.as_mut())?;
                 let target_ty = typ.clone(); // convert to Type
@@ -610,6 +616,59 @@ impl TypeChecker {
                                 todo!("report unbound variable in member access")
                             })?;
                         *ty = Some(var_ty.into()); // annotate the type of the variable
+                        match var_ty {
+                            TypeCheckerType::Object(name) => {
+                                match self.get_attribute(name.to_string(), field.to_string()) {
+                                    Some(ClassAttribute::Member(ty)) => {
+                                        Ok(ty.clone().into())
+                                    }
+                                    Some(ClassAttribute::Method(ty)) => {
+                                        Ok(ty.clone().into())
+                                    }
+                                    _ => {
+                                        eprintln!("Failed to find attribute {} in class {}", field.to_string(), name);
+                                        todo!("report unknown member access")
+                                    }
+                                }
+                            }
+                            TypeCheckerType::TypeArg(obj, args) => {
+                                match obj.as_ref() {
+                                    TypeCheckerType::Object(name) => {
+                                        match self.get_attribute(name.to_string(), field.to_string()) {
+                                            Some(ClassAttribute::Member(ty)) => {
+                                                Ok(ty.clone().into())
+                                            }
+                                            Some(ClassAttribute::Method(ty)) => {
+                                                Ok(ty.clone().into())
+                                            }
+                                            _ => {
+                                                eprintln!("Failed to find attribute {} in class {}", field.to_string(), name);
+                                                todo!("report unknown member access")
+                                            }
+                                        }
+                                    }
+                                    _ => unreachable!("Only object types can have type parameters")
+                                }
+                            }
+                            TypeCheckerType::Array(ty) => {
+                                match self.get_attribute(String::from("Array"), field.to_string()) {
+                                    Some(ClassAttribute::Member(ty)) => {
+                                        Ok(ty.clone().into())
+                                    }
+                                    Some(ClassAttribute::Method(ty)) => {
+                                        Ok(ty.clone().into())
+                                    }
+                                    _ => {
+                                        eprintln!("Failed to find attribute {} in class Array", field.to_string());
+                                        todo!("report unknown member access")
+                                    }
+                                }
+                            }
+                            _ => todo!("report member access on non-object type"),
+                        }
+                    }
+                    Expression::This(_) => {
+                        let var_ty = TypeCheckerType::Object(self.current_class.clone());
                         match var_ty {
                             TypeCheckerType::Object(name) => {
                                 match self.get_attribute(name.to_string(), field.to_string()) {

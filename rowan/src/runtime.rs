@@ -257,6 +257,7 @@ impl Context {
         match &*value {
             FunctionValue::Builtin(_, signature) => signature.clone(),
             FunctionValue::Compiled(_, signature) => signature.clone(),
+            FunctionValue::Bytecode(_, _, signature) => signature.clone(),
             _ => panic!("Method not compiled yet"),
         }
     }

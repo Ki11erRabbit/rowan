@@ -202,7 +202,7 @@ impl PartialClass {
         vtable.class_name = self.add_string(class_name.as_ref());
         for (i, function) in vtable.functions.iter_mut().enumerate() {
             function.name = self.add_string(names[i].as_ref());
-            if responds_to[i].as_ref() != "" {
+            if responds_to.len() > 0 && responds_to[i].as_ref() != "" {
                 function.responds_to = self.add_string(responds_to[i].as_ref());
             }
             function.signature = self.signature_table.len() as u64;

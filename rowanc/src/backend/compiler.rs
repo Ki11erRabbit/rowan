@@ -35,11 +35,11 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         "",
     ];
     let signatures = vec![
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::F64]),
-        SignatureEntry::new(vec![TypeTag::Void]),
-        SignatureEntry::new(vec![TypeTag::Object]),
-        SignatureEntry::new(vec![TypeTag::Object, TypeTag::U64]),
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::F64]),
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object]),
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object, TypeTag::U64]),
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::Object]),
     ];
     let vtable = VTable::new(functions);
     object.add_vtable("Object", vtable, &names, &responds_to, &signatures);
@@ -641,9 +641,9 @@ impl Compiler {
 
     fn compile_method_body(&mut self, class_name: &str, partial_class: &mut PartialClass, body: Vec<Statement>) -> Result<Vec<Bytecode>, CompilerError> {
         let mut output = Vec::new();
-        let block = self.current_block;
-        output.push(Bytecode::StartBlock(block));
-        output.push(Bytecode::Goto(1));
+        //output.push(Bytecode::StartBlock(block));
+        //output.push(Bytecode::Goto(1));
+        self.current_block = 0;
         self.compile_block(class_name, partial_class, &body, &mut output)?;
 
         Ok(output)
@@ -658,7 +658,6 @@ impl Compiler {
     ) -> Result<(), CompilerError> {
 
         self.push_scope();
-        self.increment_block();
         let block = self.current_block;
         output.push(Bytecode::StartBlock(block));
         
@@ -685,6 +684,7 @@ impl Compiler {
                     output.push(Bytecode::StartBlock(while_test_block));
                     self.compile_expression(class_name, partial_class, test, output, false)?;
                     output.push(Bytecode::If(1, 2));
+                    self.increment_block();
                     self.compile_block(class_name, partial_class, body, output)?;
                     let while_loop_block = while_test_block as i64 - self.current_block as i64;
                     output.push(Bytecode::Goto(while_loop_block));
@@ -986,7 +986,6 @@ impl Compiler {
                                 })
                             ));
                         } else {
-                            println!("array get");
                             output.push(Bytecode::ArrayGet(type_tag));
                         }
 
@@ -1054,29 +1053,55 @@ impl Compiler {
 
 
                 let name = name.segments.last().unwrap();
-                let class = self.classes.get(&ty.to_string()).expect("Classes are in a bad order of compiling");
-                //println!("{:#?}", class);
-                let vtable = class.get_vtable(name).expect("add proper handling of missing vtable");
-                let method_entry = class.get_method_entry(name).expect("add proper handling of missing method");
+                if let Some(class) = self.classes.get(&ty.to_string()) {
+                    //println!("{:#?}", class);
+                    let vtable = class.get_vtable(name).expect("add proper handling of missing vtable");
+                    let method_entry = class.get_method_entry(name).expect("add proper handling of missing method");
 
-                println!("{}", class.index_string_table(vtable.class_name));
+                    //println!("{}", class.index_string_table(vtable.class_name));
 
-                let class_name = class.index_string_table(vtable.class_name);
-                let vtable_class_name = partial_class.add_string(class_name);
+                    let class_name = class.index_string_table(vtable.class_name);
+                    let vtable_class_name = partial_class.add_string(class_name);
 
-                let source_class = if vtable.sub_class_name == 0 {
-                    0
+                    let source_class = if vtable.sub_class_name == 0 {
+                        0
+                    } else {
+                        let class_name = class.index_string_table(vtable.sub_class_name);
+                        partial_class.add_string(class_name)
+                    };
+
+                    let method_name = class.index_string_table(method_entry.name);
+                    let method_name = partial_class.add_string(method_name);
+
+
+                    output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
+                } else if ty.as_str() == class_name {
+                    let vtable = partial_class.get_vtable(name).expect("add proper handling of missing vtable").clone();
+                    let method_entry = partial_class.get_method_entry(name).expect("add proper handling of missing method");
+
+                    //println!("{}", partial_class.index_string_table(vtable.class_name));
+
+                    let class_name = partial_class.index_string_table(vtable.class_name);
+                    let class_name = class_name.to_string();
+                    let vtable_class_name = partial_class.add_string(class_name);
+
+                    let source_class = if vtable.sub_class_name == 0 {
+                        0
+                    } else {
+                        let class_name = partial_class.index_string_table(vtable.sub_class_name);
+                        let class_name = class_name.to_string();
+                        partial_class.add_string(class_name)
+                    };
+
+                    let method_name = partial_class.index_string_table(method_entry.name);
+                    let method_name = method_name.to_string();
+                    let method_name = partial_class.add_string(method_name);
+
+
+                    output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
                 } else {
-                    let class_name = class.index_string_table(vtable.sub_class_name);
-                    partial_class.add_string(class_name)
-                };
-
-                let method_name = class.index_string_table(method_entry.name);
-                let method_name = partial_class.add_string(method_name);
-                
-                
-                output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
-                
+                    panic!("Classes are in a bad order of compiling")
+                }
             }
             Expression::New(ty, arr_size, _) => {
                 let name = match ty {
@@ -1109,17 +1134,20 @@ impl Compiler {
             IfExpression { condition, then_branch, else_branch: None, ..} => {
                 self.compile_expression(class_name, partial_class, condition.as_ref(), output, lhs)?;
                 output.push(Bytecode::If(1, 2));
-                self.compile_block(class_name, partial_class, then_branch, output)?;
-                output.push(Bytecode::Goto(1));
                 self.increment_block();
+                self.compile_block(class_name, partial_class, then_branch, output)?;
+                self.increment_block();
+                output.push(Bytecode::Goto(1));
                 let block = self.current_block;
                 output.push(Bytecode::StartBlock(block));
             }
             IfExpression { condition, then_branch, else_branch: Some(Either::Right(else_branch)), ..} => {
                 self.compile_expression(class_name, partial_class, condition.as_ref(), output, lhs)?;
                 output.push(Bytecode::If(1, 2));
+                self.increment_block();
                 self.compile_block(class_name, partial_class, then_branch, output)?;
                 output.push(Bytecode::Goto(2));
+                self.increment_block();
                 self.compile_block(class_name, partial_class, else_branch, output)?;
                 output.push(Bytecode::Goto(1));
                 let block = self.current_block;
@@ -1128,6 +1156,7 @@ impl Compiler {
             IfExpression { condition, then_branch, else_branch: Some(Either::Left(else_branch)), ..} => {
                 self.compile_expression(class_name, partial_class, condition.as_ref(), output, lhs)?;
                 output.push(Bytecode::If(1, 2));
+                self.increment_block();
                 self.compile_block(class_name, partial_class, then_branch, output)?;
                 let mut temp_output = Vec::new();
                 let then_block = self.current_block;

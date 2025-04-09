@@ -185,7 +185,7 @@ impl JITCompiler {
         };
 
         //println!("[Translating]");
-        self.translate(&function.arguments, &bytecode, module)?;
+        self.translate(&function.arguments, &function.return_type, &bytecode, module)?;
 
 
 
@@ -224,9 +224,38 @@ impl JITCompiler {
     pub fn translate(
         &mut self,
         arg_types: &[runtime::class::TypeTag],
+        return_type: &runtime::class::TypeTag,
         bytecode: &[Bytecode],
         module: &mut JITModule
     ) -> Result<(), String> {
+
+        for ty in arg_types {
+            let ty = match ty {
+                runtime::class::TypeTag::U8 | runtime::class::TypeTag::I8 => ir::types::I8,
+                runtime::class::TypeTag::U16 | runtime::class::TypeTag::I16 => ir::types::I16,
+                runtime::class::TypeTag::U32 | runtime::class::TypeTag::I32 => ir::types::I32,
+                runtime::class::TypeTag::U64 | runtime::class::TypeTag::I64 => ir::types::I64,
+                runtime::class::TypeTag::F32 => ir::types::F32,
+                runtime::class::TypeTag::F64 => ir::types::F64,
+                runtime::class::TypeTag::Str => ir::types::I64,
+                runtime::class::TypeTag::Void => ir::types::I64,
+                runtime::class::TypeTag::Object => ir::types::I64,
+            };
+
+            self.context.func.signature.params.push(AbiParam::new(ty));
+
+        }
+        match return_type {
+            runtime::class::TypeTag::U8 | runtime::class::TypeTag::I8 => self.context.func.signature.returns.push(AbiParam::new(ir::types::I8)),
+            runtime::class::TypeTag::U16 | runtime::class::TypeTag::I16 => self.context.func.signature.returns.push(AbiParam::new(ir::types::I16)),
+            runtime::class::TypeTag::U32 | runtime::class::TypeTag::I32 => self.context.func.signature.returns.push(AbiParam::new(ir::types::I32)),
+            runtime::class::TypeTag::U64 | runtime::class::TypeTag::I64 => self.context.func.signature.returns.push(AbiParam::new(ir::types::I64)),
+            runtime::class::TypeTag::F32 => self.context.func.signature.returns.push(AbiParam::new(ir::types::F32)),
+            runtime::class::TypeTag::F64 => self.context.func.signature.returns.push(AbiParam::new(ir::types::F64)),
+            runtime::class::TypeTag::Str => self.context.func.signature.returns.push(AbiParam::new(ir::types::I64)),
+            runtime::class::TypeTag::Void => (),
+            runtime::class::TypeTag::Object => self.context.func.signature.returns.push(AbiParam::new(ir::types::I64)),
+        }
 
         let mut function_translator = FunctionTranslator::new(
             arg_types,
@@ -265,15 +294,17 @@ impl FunctionTranslator<'_> {
     ) -> FunctionTranslator<'a> {
         let mut builder = FunctionBuilder::new(&mut context.func, builder_context);
 
+
         let entry_block = builder.create_block();
 
         builder.append_block_params_for_function_params(entry_block);
         builder.switch_to_block(entry_block);
-        //builder.seal_block(entry_block);
+        builder.seal_block(entry_block);
+        let start_block = builder.create_block();
+        builder.ins().jump(start_block, &[]);
 
         let mut block_arg_types = HashMap::new();
 
-        let mut stack = vec![];
         let mut variables = [None; 256];
         let mut current_variable = 0;
         let mut start_block_args = Vec::new();
@@ -305,8 +336,8 @@ impl FunctionTranslator<'_> {
             call_args: [None; 256],
             variables,
             current_variable,
-            stack,
-            blocks: vec![entry_block],
+            stack: Vec::new(),
+            blocks: vec![start_block],
             current_block: 0,
             block_arg_types,
         }
@@ -434,6 +465,7 @@ impl FunctionTranslator<'_> {
     }
 
     fn restore_stack(&mut self, block_index: usize, stack: &[Value]) {
+        return;
         //println!("restoring");
         let stack_iter = stack.iter();
         for ((value, arg_value), ty) in self.stack.iter_mut().zip(stack_iter).zip(self.block_arg_types.get(&block_index).unwrap()) {
@@ -449,7 +481,7 @@ impl FunctionTranslator<'_> {
 
     pub fn translate(&mut self, bytecode: &[Bytecode], module: &mut JITModule) -> Result<(), String> {
 
-        // println!("Bytecode: {:#?}", bytecode);
+        //println!("Bytecode: {:#?}", bytecode);
 
         for bytecode in bytecode.iter() {
             match bytecode {
@@ -1048,7 +1080,6 @@ impl FunctionTranslator<'_> {
                             self.builder.append_block_param(*block, *ty);
                         }
                     }
-
                     self.builder.ins().jump(*block, &[]);
                 }
                 Bytecode::If(then_offset, else_offset) => {
@@ -1084,6 +1115,7 @@ impl FunctionTranslator<'_> {
                             self.builder.append_block_param(else_block, *ty);
                         }
                     }
+
 
 
                     self.builder.ins().brif(
