@@ -450,7 +450,6 @@ impl TypeChecker {
                 let (lhs, rhs) = match (lhs, rhs) {
                     (Some(lhs), Some(rhs)) => (lhs, rhs),
                     (Some(lhs), None) => {
-                        println!("annotating right side");
                         self.annotate_expr(&lhs, right.as_mut())?;
                         (lhs.clone(), lhs)
                     }
@@ -533,6 +532,7 @@ impl TypeChecker {
         use crate::ast::IfExpression;
         let IfExpression { condition, then_branch, else_branch, .. } = expr;
 
+        self.annotate_expr(&Type::U8, condition.as_mut())?;
         let condition_type = self.get_type(condition.as_mut())?;
         if condition_type != Type::U8 {
             todo!("report type mismatch if condition");
@@ -862,6 +862,10 @@ impl TypeChecker {
                     _ => todo!("report not a function")
                 }
                 *annotation = Some(ty.clone());
+            }
+            (_, Expression::BinaryOperation { operator: BinaryOperator::Lt, left, right, .. }) => {
+                let lhs = self.get_type(left.as_mut())?;
+                self.annotate_expr(&lhs, right.as_mut())?;
             }
             _ => {}
         }
