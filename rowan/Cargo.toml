@@ -10,3 +10,5 @@ cranelift-module = "0.118.0"
 cranelift-jit = { version = "0.118.0", features = ["selinux-fix"] }
 cranelift-native = "0.118.0"
 crossbeam-deque = "0.8.6"
+quote = "1.0.40"
+paste = "1.0.15"
