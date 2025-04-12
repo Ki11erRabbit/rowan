@@ -16,7 +16,7 @@ fn main() {
     let mut output = Vec::new();
     file.read_to_end(&mut output).unwrap();
 
-    let context = Context::new();
+    let mut context = Context::new();
     let vm_classes = vec![
         stdlib::generate_object_class(),
         stdlib::generate_array8_class(),
@@ -26,7 +26,11 @@ fn main() {
         stdlib::generate_arrayobject_class(),
         stdlib::generate_arrayf32_class(),
         stdlib::generate_arrayf64_class(),
-        stdlib::generate_printer_class()];
+        stdlib::generate_printer_class(),
+        stdlib::generate_exception_class(),
+        stdlib::generate_backtrace_class(),
+        stdlib::generate_string_class(),
+    ];
 
     let mut class_map = HashMap::new();
     let mut string_map = HashMap::new();
@@ -34,18 +38,18 @@ fn main() {
     let mut pre_class_table = Vec::new();
     let mut vtables_map = HashMap::new(); 
 
-    context.link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map, &mut string_map, &mut class_map);
+    Context::link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map, &mut string_map, &mut class_map);
 
     let class = ClassFile::new(&output);
 
     let classes = vec![class];
 
-    let (main_symbol, ready_symbol) = context.link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map, &mut class_map);
+    let (main_symbol, ready_symbol) = Context::link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map, &mut class_map);
 
-    context.finish_linking_classes(pre_class_table);
+    Context::finish_linking_classes(pre_class_table);
 
-    let main_object_ref = context.new_object(main_symbol);
-    let main_object = context.get_object(main_object_ref);
+    let main_object_ref = Context::new_object(main_symbol);
+    let main_object = Context::get_object(main_object_ref);
     let main_object = unsafe { main_object.as_ref().unwrap() };
 
     /*println!("[Main] {}", context.get_class_name(12));
@@ -55,6 +59,6 @@ fn main() {
 
     let method = context.get_method(main_object.class, 1, None, ready_symbol);
     let method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64)>(method) };
-    method(&mut Context::new(), main_object_ref);
+    method(&mut context, main_object_ref);
 
 }

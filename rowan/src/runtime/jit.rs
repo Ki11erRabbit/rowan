@@ -87,30 +87,6 @@ impl Default for JITController {
 
 impl JITController {
 
-    pub fn create_test_function(&mut self) {
-
-        /*let mut new_object = self.module.make_signature();
-        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-        new_object.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-        let mut context = self.module.make_context();
-        let mut builder_context = FunctionBuilderContext::new();
-        
-        let mut func_builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
-        let block = func_builder.create_block();
-        func_builder.append_block_params_for_function_params(block);
-        func_builder.switch_to_block(block);
-        func_builder.seal_block(block);
-        let value = func_builder.ins().iconst(cranelift::codegen::ir::types::I64, 0);
-        let result = func_builder.ins().call(*self.jit_utility_func.get("new_object").unwrap(), &[value]);
-        let value = func_builder.inst_results(result)[0];
-        func_builder.ins().return_(&[]);
-        func_builder.seal_all_blocks();
-        let func_id = self.module.declare_function("main2", Linkage::Export, &new_object).unwrap();
-        self.module.define_function(func_id, &mut context).unwrap();
-        self.module.clear_context(&mut context);*/
-
-    }
-
     pub fn create_signature(&self, args: &[TypeTag], return_type: &TypeTag) -> Signature {
         let mut signature = self.module.make_signature();
         signature.params.push(AbiParam::new(types::I64));
@@ -1021,6 +997,7 @@ impl FunctionTranslator<'_> {
                     get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
                     get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
                     get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
                     get_virt_func.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
 
                     let fn_id = module.declare_function("get_virtual_function", Linkage::Import, &get_virt_func).unwrap();
@@ -1028,10 +1005,9 @@ impl FunctionTranslator<'_> {
                     let get_virt_func_func = module.declare_func_in_func(fn_id, self.builder.func);
 
 
-                    
-                    let ctx = Context::new();
+
                     //println!("[translate] class_name from invoke virt: {}", class_name);
-                    let sig = ctx.get_method_signature(*class_name as Symbol, *method_name as Symbol);
+                    let sig = Context::get_method_signature(*class_name as Symbol, *method_name as Symbol);
                     
                     let class_name_value = self.builder
                         .ins()
@@ -1056,6 +1032,7 @@ impl FunctionTranslator<'_> {
                     let method_instructions = self.builder
                         .ins()
                         .call(get_virt_func_func, &[
+                            method_args[0],
                             method_args[1],
                             class_name_value,
                             source_class_value,

@@ -61,15 +61,52 @@ static JIT_CONTROLLER: LazyLock<RwLock<JITController>> = LazyLock::new(|| {
 
 
 
-pub struct Context {}
+pub struct Context {
+    /// The reference to the current exception
+    /// If the reference is non-zero then we should unwind until we hit a registered exception
+    current_exception: Reference,
+    /// The backtrace of function names.
+    /// This gets appended as functions get called, popped as functions return
+    function_backtrace: Vec<String>,
+    /// A map between function_backtraces and all currently registered exceptions
+    registered_exceptions: HashMap<String, Vec<Symbol>>
+}
 
 impl Context {
-    pub const fn new() -> Self {
-        Context {}
+    pub fn new() -> Self {
+        Context {
+            current_exception: 0,
+            function_backtrace: Vec::new(),
+            registered_exceptions: HashMap::new()
+        }
     }
 
+    pub fn set_exception(&mut self, exception: Reference) {
+        self.current_exception = exception;
+    }
+
+    pub fn get_exception(&self) -> Reference {
+        self.current_exception
+    }
+
+    pub fn push_backtrace(&mut self, method_name: String) {
+        self.function_backtrace.push(method_name);
+    }
+
+    pub fn pop_backtrace(&mut self) -> String {
+        self.function_backtrace.pop().unwrap()
+    }
+
+    pub fn get_current_method(&mut self) -> Reference {
+        let string_ref = new_object(59); // String Class Symbol
+
+        stdlib::string_from_str(self, string_ref, self.function_backtrace[self.function_backtrace.len() - 1].as_str());
+
+        string_ref
+    }
+
+
     pub fn link_classes(
-        &self,
         classes: Vec<ClassFile>,
         pre_class_table: &mut Vec<TableEntry<Class>>,
         // The first hashmap is the class symbol which the vtable comes from.
@@ -102,12 +139,11 @@ impl Context {
             vtables_map,
             string_map,
             class_map,
-            ).unwrap()
+        ).unwrap()
     }
 
 
     pub fn link_vm_classes(
-        &self,
         classes: Vec<VMClass>,
         pre_class_table: &mut Vec<TableEntry<Class>>,
         // The first hashmap is the class symbol which the vtable comes from.
@@ -140,11 +176,10 @@ impl Context {
             vtables_map,
             string_map,
             class_map,
-            );
+        );
     }
 
     pub fn finish_linking_classes(
-        &self,
         pre_class_table: Vec<TableEntry<Class>>
     ) {
         let Ok(mut class_table) = CLASS_TABLE.write() else {
@@ -164,7 +199,7 @@ impl Context {
         }
     }
 
-    pub fn get_object(&self, reference: Reference) -> *mut Object {
+    pub fn get_object(reference: Reference) -> *mut Object {
         let Ok(object_table) = OBJECT_TABLE.read() else {
             panic!("Lock poisoned");
         };
@@ -172,7 +207,7 @@ impl Context {
     }
 
     pub fn get_method(
-        &self,
+        &mut self,
         object_class_symbol: Symbol,
         class_symbol: Symbol,
         source_class: Option<Symbol>,
@@ -184,10 +219,19 @@ impl Context {
         let Ok(class_table) = CLASS_TABLE.read() else {
             panic!("Lock poisoned");
         };
+        let Ok(string_table) = STRING_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
 
         let SymbolEntry::ClassRef(object_class_index) = symbol_table[object_class_symbol] else {
             panic!("class wasn't a class");
         };
+
+        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
+            panic!("method wasn't a string");
+        };
+
+        self.push_backtrace(string_table.get_string(method_name_index).to_string());
 
         let class = &class_table[object_class_index];
         let key = (class_symbol, source_class);
@@ -206,11 +250,10 @@ impl Context {
             FunctionValue::Compiled(ptr, _) => *ptr,
             _ => {
                 drop(value);
-                let mut compiler = self.create_jit_compiler();
+                let mut compiler = Context::create_jit_compiler();
                 let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
                     panic!("Lock poisoned");
                 };
-                jit_controller.create_test_function();
                 
                 compiler.compile(&function, &mut jit_controller.module).unwrap();
 
@@ -224,7 +267,7 @@ impl Context {
 
     }
 
-    pub fn create_jit_compiler(&self) -> JITCompiler {
+    pub fn create_jit_compiler() -> JITCompiler {
         let Ok(jit_controller) = JIT_CONTROLLER.write() else {
             panic!("Lock poisoned");
         };
@@ -233,7 +276,7 @@ impl Context {
         JITCompiler::new(context)
     }
 
-    pub fn get_method_signature(&self, class_symbol: Symbol, method_name: Symbol) -> Signature {
+    pub fn get_method_signature(class_symbol: Symbol, method_name: Symbol) -> Signature {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
@@ -262,15 +305,12 @@ impl Context {
         }
     }
 
-    pub fn new_object(&self, class_symbol: Symbol) -> Reference {
+    pub fn new_object(class_symbol: Symbol) -> Reference {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
 
         let SymbolEntry::ClassRef(class_ref) = symbol_table[class_symbol] else {
-            println!("{}", class_symbol);
-            println!("{:?}", symbol_table[class_symbol]);
-            println!("{:#?}", symbol_table);
             panic!("class wasn't a class");
         };
         let Ok(class_table) = CLASS_TABLE.read() else {
@@ -282,7 +322,7 @@ impl Context {
         let mut parents = Vec::new();
         
         for parent in parent_objects.iter() {
-            parents.push(self.new_object(*parent));
+            parents.push(Context::new_object(*parent));
         }
 
         let data_size = class.get_member_size();
@@ -298,7 +338,7 @@ impl Context {
         reference
     }
 
-    pub fn get_class_name(&self, class_symbol: Symbol) -> String {
+    pub fn get_class_name(class_symbol: Symbol) -> String {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
@@ -319,7 +359,7 @@ impl Context {
         String::from(&string_table[class_name])
     }
 
-    pub fn get_class(&self, class_symbol: Symbol) -> *const Class {
+    pub fn get_class(class_symbol: Symbol) -> *const Class {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
@@ -332,7 +372,7 @@ impl Context {
         &class_table[class_index]
     }
 
-    pub fn get_string(&self, string_symbol: Symbol) -> &'static str {
+    pub fn get_string(string_symbol: Symbol) -> &'static str {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
@@ -349,10 +389,10 @@ impl Context {
 
 
 
-pub extern "C" fn get_virtual_function(object: Reference, class_symbol: u64, source_class: i64, method_name: u64) -> u64 {
-    let context = Context::new();
-    let object = context.get_object(object);
+pub extern "C" fn get_virtual_function(context: *mut Context, object: Reference, class_symbol: u64, source_class: i64, method_name: u64) -> u64 {
+    let object = Context::get_object(object);
     let object = unsafe {object.as_mut().unwrap()};
+    let context = unsafe { context.as_mut().unwrap() };
 
     let object_class_symbol = object.class;
     let class_symbol = class_symbol as Symbol;
@@ -368,8 +408,7 @@ pub extern "C" fn get_virtual_function(object: Reference, class_symbol: u64, sou
 }
 
 pub extern "C" fn new_object(class_symbol: u64) -> u64 {
-    let context = Context::new();
     let class_symbol = class_symbol as Symbol;
-    let object = context.new_object(class_symbol);
+    let object = Context::new_object(class_symbol);
     object as usize as u64
 }
