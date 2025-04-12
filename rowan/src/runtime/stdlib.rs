@@ -256,6 +256,32 @@ pub fn generate_array_8_class() -> VMClass {
 
 macro_rules! create_array_class {
     ($variant:ident, $ty:ty, ) => {
+        pub fn std::concat_idents!(generate_array_, $variant, _class)generate_array_8_class() -> VMClass {
+            let vtable = VMVTable::new(
+                std::stringify!(std::concat_idents!(Array, $variant)),
+                None,
+                vec![
+                    VMMethod::new(
+                        "init",
+                        std::concat_idents!(array, $variant, _init) as *const (),
+                        vec![TypeTag::Void, TypeTag::Object, TypeTag::U64]
+                        ),
+                    VMMethod::new(
+                        "len",
+                        array_len as *const (),
+                        vec![TypeTag::U64, TypeTag::Object]
+                        ),
+                ]
+            );
+
+            let elements = vec![
+                VMMember::new("length", TypeTag::U64),
+                VMMember::new("pointer", TypeTag::U64)
+            ];
+
+            VMClass::new("Array8", vec!["Object"], vec![vtable], elements, Vec::new())
+        }
+
         pub extern "C" fn std::concat_idents!(array, $variant, _init)(context: &mut Context, this: Reference, length: u64) {
             use std::alloc::*;
             let object = context.get_object(this);
@@ -273,6 +299,8 @@ macro_rules! create_array_class {
                 }
             }
             unsafe { object.set::<u64>(8, pointer as u64) };
+
+            object.custom_drop = Some(std::concat_idents!(array, $variant, _drop));
         }
         pub extern "C" fn std::concat_idents!(array, $variant, _get)(context: &mut Context, this: Reference, index: u64) -> $ty {
             let object = context.get_object(this);
@@ -297,6 +325,16 @@ macro_rules! create_array_class {
             }
             unsafe { *pointer.add(index as usize) = value }
         }
+        pub fn std::concat_idents!(array, $variant, _drop)(object: &mut Object) {
+            use std::alloc::*;
+            let length = unsafe { object.get::<u64>(0) };
+            let pointer = unsafe { object.get::<u64>(8) };
+            let pointer = pointer as *mut u8;
+            unsafe {
+                let layout = Layout::array::<$ty>(length as usize).expect("Wrong layout or too big");
+                dealloc(pointer, layout);
+            }
+        }
     };
 }
 
@@ -318,6 +356,7 @@ pub(crate) extern "C" fn array8_init(this: Reference, length: u64) {
         }
     }
     unsafe { object.set::<u64>(8, pointer as u64) };
+    object.custom_drop = Some(array_8_drop);
     
 }
 
