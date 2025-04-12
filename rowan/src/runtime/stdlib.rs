@@ -1,3 +1,5 @@
+use std::cell::Ref;
+use std::ops::Add;
 use super::{object::Object, Context, Reference, Symbol};
 use rowan_shared::TypeTag;
 
@@ -112,7 +114,7 @@ pub fn generate_object_class() -> VMClass {
             VMMethod::new(
                 "upcast",
                 object_upcast as *const (),
-                vec![TypeTag::Object, TypeTag::Object]
+                vec![TypeTag::Object, TypeTag::Object, TypeTag::U64]
                 ),
             VMMethod::new(
                 "get-child",
@@ -124,6 +126,21 @@ pub fn generate_object_class() -> VMClass {
                 object_remove_child as *const (),
                 vec![TypeTag::Object, TypeTag::Object, TypeTag::Object]
                 ),
+            VMMethod::new(
+                "add-child",
+                object_add_child as *const (),
+                vec![TypeTag::U64, TypeTag::Object, TypeTag::Object]
+            ),
+            VMMethod::new(
+                "add-child-at",
+                object_add_child_at as *const (),
+                vec![TypeTag::Void, TypeTag::Object, TypeTag::Object, TypeTag::U64]
+            ),
+            VMMethod::new(
+                "child-died",
+                object_child_died as *const (),
+                vec![TypeTag::Void, TypeTag::Object, TypeTag::U64, TypeTag::Object]
+            ),
         ]
     );
 
@@ -140,7 +157,7 @@ extern "C" fn object_ready(_: Reference) {
 }
 
 // Possibly change this to take an additional parameter which is a class index
-extern "C" fn object_upcast(this: Reference) -> Reference {
+extern "C" fn object_upcast(this: Reference, class_index: u64) -> Reference {
     this 
 }
 
@@ -151,6 +168,17 @@ extern "C" fn object_get_child(this: Reference, nth: u64) -> Reference {
 
 extern "C" fn object_remove_child(this: Reference, reference: Reference) -> Reference {
     todo!("get a context and find the child of that object that matches reference")
+}
+
+extern "C" fn object_add_child(this: Reference, child: Reference) -> u64 {
+    todo!("get a context and call ready on the object, then attach it to this object, returning the index of the child")
+}
+extern "C" fn object_add_child_at(this: Reference, child: Reference, nth: u64) {
+    todo!("get a context and call ready on the object, then attach it to the this object")
+}
+
+extern "C" fn object_child_died(this: Reference, child_index: Reference, exception: Reference) -> Reference {
+    todo!("take in a context parameter and propagate exception")
 }
 
 pub fn generate_printer_class() -> VMClass {
@@ -224,6 +252,52 @@ pub fn generate_array_8_class() -> VMClass {
     ];
 
     VMClass::new("Array8", vec!["Object"], vec![vtable], elements, Vec::new())
+}
+
+macro_rules! create_array_class {
+    ($variant:ident, $ty:ty, ) => {
+        pub extern "C" fn std::concat_idents!(array, $variant, _init)(context: &mut Context, this: Reference, length: u64) {
+            use std::alloc::*;
+            let object = context.get_object(this);
+            let object = unsafe { object.as_mut().unwrap() };
+            unsafe { object.set::<u64>(0, length) };
+            let layout = Layout::array::<$ty>(length as usize).expect("Wrong layout or too big");
+            let pointer = unsafe { alloc(layout) };
+            if pointer.is_null() {
+                eprintln!("Out of memory");
+                handle_alloc_error(layout);
+            }
+            unsafe {
+                for i in 0..length {
+                    std::ptr::write(pointer.add(i as usize), 0);
+                }
+            }
+            unsafe { object.set::<u64>(8, pointer as u64) };
+        }
+        pub extern "C" fn std::concat_idents!(array, $variant, _get)(context: &mut Context, this: Reference, index: u64) -> $ty {
+            let object = context.get_object(this);
+            let object = unsafe { object.as_ref().unwrap() };
+            let pointer = unsafe { object.get::<u64>(8) };
+            let length = unsafe { object.get::<u64>(0) };
+            let pointer = pointer as *mut $ty;
+            if index >= length {
+                todo!("provide way to handle out of bounds")
+            }
+            unsafe { *pointer.add(index as usize) }
+        }
+        pub extern "C" fn std::concat_idents!(array, $variant, _set)(context: &mut Context, this: Reference, index: u64, value: u8) {
+            let context = Context::new();
+            let object = context.get_object(this);
+            let object = unsafe { object.as_mut().unwrap() };
+            let pointer = unsafe { object.get::<u64>(8) };
+            let length = unsafe { object.get::<u64>(0) };
+            let pointer = pointer as *mut $ty;
+            if index >= length {
+                todo!("provide way to handle out of bounds")
+            }
+            unsafe { *pointer.add(index as usize) = value }
+        }
+    };
 }
 
 pub(crate) extern "C" fn array8_init(this: Reference, length: u64) {
@@ -511,6 +585,11 @@ pub fn generate_array_object_class() -> VMClass {
                 array_len as *const (),
                 vec![TypeTag::U64, TypeTag::Object]
                 ),
+            VMMethod::new(
+                "upcast-contents",
+                array_object_upcast_contents as *const (),
+                vec![TypeTag::Object, TypeTag::Object, TypeTag::U64]
+            ),
         ]
     );
 
@@ -547,6 +626,24 @@ pub extern "C" fn array_object_set(this: Reference, index: u64, value: Reference
         todo!("provide way to handle out of bounds")
     }
     unsafe { *pointer.add(index as usize) = value }
+}
+
+pub extern "C" fn array_object_upcast_contents(this: Reference, class_symbol: u64) -> Reference {
+    let context = Context::new();
+    let object = context.get_object(this);
+    let object = unsafe { object.as_mut().unwrap() };
+    let pointer = unsafe { object.get::<u64>(8) };
+    let length = unsafe { object.get::<u64>(0) };
+    let pointer = pointer as *mut u64;
+    unsafe {
+        for i in 0..length as usize {
+            if object_upcast(*pointer.add(i), class_symbol) == 0 {
+                return 0;
+            }
+        }
+    }
+
+    this
 }
 
 
@@ -749,6 +846,49 @@ pub fn array_64_drop(object: &mut Object) {
     }
 }
 
+pub fn generate_exception_class() -> VMClass {
+    let vtable = VMVTable::new(
+        "Exception",
+        None,
+        vec![
+            VMMethod::new(
+                "init",
+                exception_init as *const (),
+                vec![TypeTag::Void, TypeTag::Object, TypeTag::Object]
+            ),
+            VMMethod::new(
+                "fill-in-stack-trace",
+                exception_fill_in_stack_trace as *const (),
+                vec![TypeTag::Void, TypeTag::Object]
+            ),
+            VMMethod::new(
+                "fill-in-stack-trace",
+                exception_fill_in_stack_trace as *const (),
+                vec![TypeTag::Void, TypeTag::Object]
+            ),
+            VMMethod::new(
+                "print-stack-trace",
+                exception_print_stack_trace as *const (),
+                vec![TypeTag::Void, TypeTag::Object]
+            ),
+        ]
+    );
+
+    let elements = vec![
+        VMMember::new("message", TypeTag::Object),
+        VMMember::new("stack-trace", TypeTag::Object),
+    ];
+
+    VMClass::new("Exception", vec!["Object"], vec![vtable], elements, Vec::new())
+}
+
+extern "C" fn exception_init(context: &mut Context, this: Reference, message: Reference) {
+
+}
+
+extern "C" fn exception_fill_in_stack_trace(context: &mut Context, this: Reference) {
+    
+}
 
 pub fn generate_string_class() -> VMClass {
     let vtable = VMVTable::new(
@@ -770,6 +910,16 @@ pub fn generate_string_class() -> VMClass {
                 string_len as *const (),
                 vec![TypeTag::U64, TypeTag::Object]
                 ),
+            VMMethod::new(
+                "is-char-boundary",
+                string_is_char_boundary as *const (),
+                vec![TypeTag::U8, TypeTag::Object, TypeTag::U64]
+            ),
+            VMMethod::new(
+                "as-bytes",
+                string_is_char_boundary as *const (),
+                vec![TypeTag::Object, TypeTag::Object]
+            ),
         ]
     );
 
@@ -839,4 +989,52 @@ pub fn string_drop(object: &mut Object) {
         let layout = Layout::array::<u8>(capacity as usize).expect("Wrong layout or too big");
         dealloc(pointer, layout);
     }
+}
+
+extern "C" fn string_is_char_boundary(this: Reference, index: u64) -> u8 {
+    let context = Context::new();
+    let object = context.get_object(this);
+    let object = unsafe { object.as_ref().unwrap() };
+    let length = unsafe { object.get::<u64>(4) };
+    let pointer = unsafe { object.get::<*mut u8>(16) };
+
+    if index > length {
+        return 0;
+    }
+
+    unsafe {
+        if *pointer.add(index as usize) ^ 0b10000000 == 0b10000000 {
+            1
+        } else if (*pointer.add(index as usize) ^ 0b11100000) & 0b100000 == 0b100000 {
+            1
+        } else if (*pointer.add(index as usize) ^ 0b11110000) & 0b10000 == 0b10000 {
+            1
+        } else if (*pointer.add(index as usize) ^ 0b11111000) & 0b1000 == 0b1000 {
+            1
+        } else {
+            0
+        }
+    }
+}
+
+extern "C" fn string_as_bytes(this: Reference) -> Reference {
+    let context = Context::new();
+    let object = context.get_object(this);
+    let object = unsafe { object.as_ref().unwrap() };
+    let length = unsafe { object.get::<u64>(4) };
+    let pointer = unsafe { object.get::<*mut u8>(16) };
+
+    let byte_array = crate::runtime::new_object(8); // Array8 Class Symbol
+
+    array8_init(byte_array, length);
+    let array = context.get_object(byte_array);
+    let array = unsafe { array.as_ref().unwrap() };
+    let array_pointer = unsafe { array.get::<*mut u8>(8) };
+
+    unsafe {
+        for i in 0..length {
+            array_pointer.add(i as usize).write(*pointer.add(i as usize))
+        }
+    }
+    byte_array
 }

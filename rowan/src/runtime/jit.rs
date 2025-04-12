@@ -810,25 +810,25 @@ impl FunctionTranslator<'_> {
 
                     let array_symbol = match tag {
                         TypeTag::U8 | TypeTag::I8 => {
-                            self.builder.ins().iconst(ir::types::I64, 8)
+                            self.builder.ins().iconst(ir::types::I64, 11)
                         }
                         TypeTag::U16 | TypeTag::I16 => {
-                            self.builder.ins().iconst(ir::types::I64, 14)
+                            self.builder.ins().iconst(ir::types::I64, 17)
                         }
                         TypeTag::U32 | TypeTag::I32 => {
-                            self.builder.ins().iconst(ir::types::I64, 18)
+                            self.builder.ins().iconst(ir::types::I64, 21)
                         }
                         TypeTag::U64 | TypeTag::I64 => {
-                            self.builder.ins().iconst(ir::types::I64, 22)
+                            self.builder.ins().iconst(ir::types::I64, 25)
                         }
                         TypeTag::Object | TypeTag::Str | TypeTag::Void => {
-                            self.builder.ins().iconst(ir::types::I64, 22)
+                            self.builder.ins().iconst(ir::types::I64, 29)
                         }
                         TypeTag::F32 => {
-                            self.builder.ins().iconst(ir::types::I64, 30)
+                            self.builder.ins().iconst(ir::types::I64, 34)
                         }
                         TypeTag::F64 => {
-                            self.builder.ins().iconst(ir::types::I64, 34)
+                            self.builder.ins().iconst(ir::types::I64, 38)
                         }
                     };
 
