@@ -322,7 +322,7 @@ macro_rules! array_create_get {
         paste! {
             pub extern "C" fn $fn_name(context: &mut Context, this: Reference, index: u64) -> $ty {
                 let object = context.get_object(this);
-                let object = unsafe { object.as_ref().unwrap() };
+                let object = unsafe { object.as_ref().expect("array get") };
                 let pointer = unsafe { object.get::<u64>(8) };
                 let length = unsafe { object.get::<u64>(0) };
                 let pointer = pointer as *mut $ty;
@@ -340,7 +340,7 @@ macro_rules! array_create_set {
         paste! {
             pub extern "C" fn $fn_name(context: &mut Context, this: Reference, index: u64, value: $ty) {
                 let object = context.get_object(this);
-                let object = unsafe { object.as_mut().unwrap() };
+                let object = unsafe { object.as_mut().expect("array set") };
                 let pointer = unsafe { object.get::<u64>(8) };
                 let length = unsafe { object.get::<u64>(0) };
                 let pointer = pointer as *mut $ty;

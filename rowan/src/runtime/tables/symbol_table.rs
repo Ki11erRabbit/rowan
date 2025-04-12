@@ -7,6 +7,7 @@ pub enum SymbolEntry {
 }
 
 
+#[derive(Debug)]
 pub struct SymbolTable {
     table: Vec<SymbolEntry>,
 }

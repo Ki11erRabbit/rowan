@@ -825,16 +825,16 @@ impl FunctionTranslator<'_> {
                             self.builder.ins().iconst(ir::types::I64, 11)
                         }
                         TypeTag::U16 | TypeTag::I16 => {
-                            self.builder.ins().iconst(ir::types::I64, 17)
+                            self.builder.ins().iconst(ir::types::I64, 18)
                         }
                         TypeTag::U32 | TypeTag::I32 => {
-                            self.builder.ins().iconst(ir::types::I64, 21)
+                            self.builder.ins().iconst(ir::types::I64, 22)
                         }
                         TypeTag::U64 | TypeTag::I64 => {
-                            self.builder.ins().iconst(ir::types::I64, 25)
+                            self.builder.ins().iconst(ir::types::I64, 26)
                         }
                         TypeTag::Object | TypeTag::Str | TypeTag::Void => {
-                            self.builder.ins().iconst(ir::types::I64, 29)
+                            self.builder.ins().iconst(ir::types::I64, 30)
                         }
                         TypeTag::F32 => {
                             self.builder.ins().iconst(ir::types::I64, 34)
@@ -867,15 +867,17 @@ impl FunctionTranslator<'_> {
                         let mut new_object = module.make_signature();
                         new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
                         new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
 
                         let fn_id = module.declare_function(fun_name, Linkage::Import, &new_object).unwrap();
                         fn_id
                     };
+                    let context_value = self.builder.use_var(self.context_var);
 
                     let (array_size, _) = self.pop();
 
                     let initialize_array = module.declare_func_in_func(initialize_array_id, self.builder.func);
-                    let init_array = self.builder.ins().call(initialize_array, &[value, array_size]);
+                    let init_array = self.builder.ins().call(initialize_array, &[context_value, value, array_size]);
                     self.builder.inst_results(init_array);
 
                     self.push(value, ir::types::I64);
@@ -902,6 +904,7 @@ impl FunctionTranslator<'_> {
                         let mut new_object = module.make_signature();
                         new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
                         new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
 
                         let ty = match type_tag {
                             TypeTag::U8 | TypeTag::I8 => types::I8,
@@ -918,12 +921,14 @@ impl FunctionTranslator<'_> {
                         fn_id
                     };
 
+                    let context_value = self.builder.use_var(self.context_var);
+
                     let (value, _) = self.pop();
                     let (index, _) = self.pop();
                     let (array, _) = self.pop();
 
                     let array_set = module.declare_func_in_func(array_set, self.builder.func);
-                    let array_set = self.builder.ins().call(array_set, &[array, index, value]);
+                    let array_set = self.builder.ins().call(array_set, &[context_value, array, index, value]);
                     self.builder.inst_results(array_set);
                     // TODO: add code for handling an index out of bounds exception
                 }
@@ -948,6 +953,7 @@ impl FunctionTranslator<'_> {
                         let mut new_object = module.make_signature();
                         new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
                         new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
 
                         let ty = match type_tag {
                             TypeTag::U8 | TypeTag::I8 => types::I8,
@@ -963,12 +969,13 @@ impl FunctionTranslator<'_> {
                         let fn_id = module.declare_function(fun_name, Linkage::Import, &new_object).unwrap();
                         fn_id
                     };
+                    let context_value = self.builder.use_var(self.context_var);
 
                     let (index, _) = self.pop();
                     let (array, _) = self.pop();
 
                     let array_get = module.declare_func_in_func(array_get, self.builder.func);
-                    let array_get = self.builder.ins().call(array_get, &[array, index]);
+                    let array_get = self.builder.ins().call(array_get, &[context_value, array, index]);
                     let value = self.builder.inst_results(array_get)[0];
                     // TODO: add code for handling an index out of bounds exception
 
