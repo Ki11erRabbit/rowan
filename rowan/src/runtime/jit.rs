@@ -45,8 +45,8 @@ impl Default for JITController {
         builder.symbol("array64_init", super::stdlib::array64_init as *const u8);
         builder.symbol("array64_set", super::stdlib::array64_set as *const u8);
         builder.symbol("array64_get", super::stdlib::array64_get as *const u8);
-        builder.symbol("arrayobject_set", super::stdlib::array_object_set as *const u8);
-        builder.symbol("arrayobject_get", super::stdlib::array_object_get as *const u8);
+        builder.symbol("arrayobject_set", super::stdlib::arrayobject_set as *const u8);
+        builder.symbol("arrayobject_get", super::stdlib::arrayobject_get as *const u8);
         builder.symbol("arrayf32_init", super::stdlib::arrayf32_init as *const u8);
         builder.symbol("arrayf32_set", super::stdlib::arrayf32_set as *const u8);
         builder.symbol("arrayf32_get", super::stdlib::arrayf32_get as *const u8);
@@ -113,6 +113,7 @@ impl JITController {
 
     pub fn create_signature(&self, args: &[TypeTag], return_type: &TypeTag) -> Signature {
         let mut signature = self.module.make_signature();
+        signature.params.push(AbiParam::new(types::I64));
         for ty in args {
             let ty = match ty {
                 TypeTag::U8 | TypeTag::I8 => cranelift::codegen::ir::types::I8,
@@ -229,6 +230,8 @@ impl JITCompiler {
         module: &mut JITModule
     ) -> Result<(), String> {
 
+        self.context.func.signature.params.push(AbiParam::new(types::I64));
+
         for ty in arg_types {
             let ty = match ty {
                 runtime::class::TypeTag::U8 | runtime::class::TypeTag::I8 => ir::types::I8,
@@ -277,6 +280,7 @@ impl JITCompiler {
 
 pub struct FunctionTranslator<'a> {
     builder: FunctionBuilder<'a>,
+    context_var: Variable,
     call_args: [Option<(Variable, ir::Type)>; 256],
     variables: [Option<(Variable, ir::Type)>; 256],
     current_variable: usize,
@@ -306,10 +310,15 @@ impl FunctionTranslator<'_> {
         let mut block_arg_types = HashMap::new();
 
         let mut variables = [None; 256];
-        let mut current_variable = 0;
+        let mut current_variable = 1;
         let mut start_block_args = Vec::new();
+
+        let context_var = Variable::new(0);
+        builder.declare_var(context_var, types::I64);
+        builder.def_var(context_var, builder.block_params(entry_block)[0]);
+
         let block_params = builder.block_params(entry_block).iter().cloned().collect::<Vec<_>>();
-        for (i, (value, ty)) in block_params.iter().zip(arg_types.iter()).enumerate() {
+        for (i, (value, ty)) in block_params.iter().skip(1).zip(arg_types.iter()).enumerate() {
             let ty = match ty {
                 runtime::class::TypeTag::U8 | runtime::class::TypeTag::I8 => ir::types::I8,
                 runtime::class::TypeTag::U16 | runtime::class::TypeTag::I16 => ir::types::I16,
@@ -322,7 +331,7 @@ impl FunctionTranslator<'_> {
                 runtime::class::TypeTag::Object => ir::types::I64,
             };
             start_block_args.push(ty.clone());
-            let var = Variable::new(i);
+            let var = Variable::new(i + 1);
             builder.declare_var(var, ty);
             builder.def_var(var, *value);
             variables[i] = Some((var, ty));
@@ -333,6 +342,7 @@ impl FunctionTranslator<'_> {
 
         FunctionTranslator {
             builder,
+            context_var,
             call_args: [None; 256],
             variables,
             current_variable,
@@ -430,6 +440,8 @@ impl FunctionTranslator<'_> {
     pub fn get_call_arguments_as_vec(&mut self) -> Vec<Value> {
         // println!("getting call arguments");
         let mut output = Vec::new();
+        let value = self.builder.use_var(self.context_var);
+        output.push(value);
         for value in self.call_args.iter_mut() {
             // println!("\t{:?}", value);
             match value {
@@ -990,7 +1002,6 @@ impl FunctionTranslator<'_> {
                     let new_object_func = module.declare_func_in_func(new_object_id, self.builder.func);
 
                     
-                    
                     let object_symbol = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(symbol.to_le_bytes()));
                     let new_object = self.builder.ins().call(new_object_func, &[object_symbol]);
                     let value = self.builder.inst_results(new_object)[0];
@@ -1038,7 +1049,7 @@ impl FunctionTranslator<'_> {
                     let method_instructions = self.builder
                         .ins()
                         .call(get_virt_func_func, &[
-                            method_args[0],
+                            method_args[1],
                             class_name_value,
                             source_class_value,
                             method_name_value,

@@ -19,13 +19,13 @@ fn main() {
     let context = Context::new();
     let vm_classes = vec![
         stdlib::generate_object_class(),
-        stdlib::generate_array_8_class(),
-        stdlib::generate_array_16_class(),
-        stdlib::generate_array_32_class(),
-        stdlib::generate_array_64_class(),
-        stdlib::generate_array_object_class(),
-        stdlib::generate_array_f32_class(),
-        stdlib::generate_array_f64_class(),
+        stdlib::generate_array8_class(),
+        stdlib::generate_array16_class(),
+        stdlib::generate_array32_class(),
+        stdlib::generate_array64_class(),
+        stdlib::generate_arrayobject_class(),
+        stdlib::generate_arrayf32_class(),
+        stdlib::generate_arrayf64_class(),
         stdlib::generate_printer_class()];
 
     let mut class_map = HashMap::new();
@@ -54,7 +54,7 @@ fn main() {
     println!("[Main] Class: {:?}", unsafe {class.read()});*/
 
     let method = context.get_method(main_object.class, 1, None, ready_symbol);
-    let method = unsafe { std::mem::transmute::<_, fn(u64)>(method) };
-    method(main_object_ref);
+    let method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64)>(method) };
+    method(&mut Context::new(), main_object_ref);
 
 }

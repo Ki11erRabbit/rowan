@@ -268,6 +268,7 @@ impl Context {
         };
 
         let SymbolEntry::ClassRef(class_ref) = symbol_table[class_symbol] else {
+            println!("{:?}", symbol_table[class_symbol]);
             panic!("class wasn't a class");
         };
         let Ok(class_table) = CLASS_TABLE.read() else {

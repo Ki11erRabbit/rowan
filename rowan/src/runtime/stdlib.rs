@@ -231,20 +231,22 @@ extern "C" fn printer_println(context: &mut Context, _: Reference, string: Refer
 
 macro_rules! array_upcast_contents {
     (object, $ty:ty, $context:ident, $this:ident, $class_symbol:ident) => {
-        let object = $context.get_object($this);
-        let object = unsafe { object.as_mut().unwrap() };
-        let pointer = unsafe { object.get::<u64>(8) };
-        let length = unsafe { object.get::<u64>(0) };
-        let pointer = pointer as *mut u64;
-        unsafe {
-            for i in 0..length as usize {
-                if object_upcast(*pointer.add(i), $class_symbol) == 0 {
-                    return 0;
+        {
+            let object = $context.get_object($this);
+            let object = unsafe { object.as_mut().unwrap() };
+            let pointer = unsafe { object.get::<u64>(8) };
+            let length = unsafe { object.get::<u64>(0) };
+            let pointer = pointer as *mut u64;
+            unsafe {
+                for i in 0..length as usize {
+                    if object_upcast($context, *pointer.add(i), $class_symbol) == 0 {
+                        return 0;
+                    }
                 }
             }
-        }
 
-        this
+            $this
+        }
     };
     ($variant:expr, $ty:ty, $context:ident, $this:ident, $class_symbol:ident) => {
         todo!("create unable to upcast exception and set it in context")
@@ -377,26 +379,33 @@ macro_rules! array_create_drop {
         }
     };
 }
-paste! { [<generate_array 8 _class>]}
 
 macro_rules! create_array_class {
     ($variant:expr, $ty:ty) => {
 
         paste!{
-        array_create_class!($variant, [<generate_array $variant _class >], [<Array $variant >]);
+        array_create_class!($variant, [< generate_array $variant _class >], [<Array $variant >]);
         }
 
         paste!{
-        array_create_init!($variant, [< array $variant _init >], $ty)
+        array_create_init!($variant, [< array $variant _init >], $ty);
         }
 
-        array_create_get!($variant, [< array $variant _get >], $ty)
+        paste!{
+        array_create_get!($variant, [< array $variant _get >], $ty);
+        }
 
-        array_create_set!($variant, [< array $variant _set >], $ty)
+        paste!{
+        array_create_set!($variant, [< array $variant _set >], $ty);
+        }
 
-        array_create_upcast!($variant, [< array $variant _upcast_contents >], $ty)
+        paste!{
+        array_create_upcast!($variant, [< array $variant _upcast_contents >], $ty);
+        }
 
-        array_create_drop!($variant, [< array $variant _drop >], $ty)
+        paste!{
+        array_create_drop!($variant, [< array $variant _drop >], $ty);
+        }
 
     };
 }

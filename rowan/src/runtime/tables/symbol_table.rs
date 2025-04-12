@@ -1,6 +1,6 @@
 use crate::runtime::Symbol;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum SymbolEntry {
     StringRef(usize),
     ClassRef(usize),
