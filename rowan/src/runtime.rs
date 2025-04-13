@@ -94,15 +94,43 @@ impl Context {
     }
 
     pub fn pop_backtrace(&mut self) -> String {
-        self.function_backtrace.pop().unwrap()
+        let bt = self.function_backtrace.pop();
+        bt.unwrap()
     }
 
     pub fn get_current_method(&mut self) -> Reference {
         let string_ref = new_object(59); // String Class Symbol
 
-        stdlib::string_from_str(self, string_ref, self.function_backtrace[self.function_backtrace.len() - 1].as_str());
+        stdlib::string_from_str(self, string_ref, self.function_backtrace[self.function_backtrace.len() - 1].clone());
 
         string_ref
+    }
+
+    pub extern "C" fn should_unwind(ctx: *mut Self) -> u8 {
+        let context = unsafe { ctx.as_mut().unwrap() };
+        if context.current_exception == 0 {
+            return 0;
+        }
+        context.pop_backtrace();
+        let exception = Context::get_object(context.current_exception);
+        let exception = unsafe { exception.as_ref().unwrap() };
+        if let Some(symbols) = context.registered_exceptions.get(context.function_backtrace.last().unwrap()) {
+            for symbol in symbols {
+                if *symbol == exception.class {
+                    return 0;
+                }
+                let parent_exception = Context::get_object(exception.parent_objects[0]);
+                let parent_exception = unsafe { parent_exception.as_ref().unwrap() };
+                if *symbol == parent_exception.class {
+                    return 0;
+                }
+            }
+        }
+        1
+    }
+
+    pub extern "C" fn normal_return(ctx: &mut Self) {
+        ctx.pop_backtrace();
     }
 
 

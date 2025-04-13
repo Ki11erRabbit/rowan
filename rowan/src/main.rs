@@ -30,6 +30,7 @@ fn main() {
         stdlib::generate_exception_class(),
         stdlib::generate_backtrace_class(),
         stdlib::generate_string_class(),
+        stdlib::generate_index_out_of_bounds_class(),
     ];
 
     let mut class_map = HashMap::new();

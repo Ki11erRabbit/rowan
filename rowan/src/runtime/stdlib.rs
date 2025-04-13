@@ -328,7 +328,10 @@ macro_rules! array_create_get {
                 let length = unsafe { object.get::<u64>(0) };
                 let pointer = pointer as *mut $ty;
                 if index >= length {
-                    todo!("provide way to handle out of bounds")
+                    let exception = crate::runtime::new_object(69);
+                    out_of_bounds_init(context, exception, length, index);
+                    context.set_exception(exception);
+                    return 0 as $ty;
                 }
                 unsafe { *pointer.add(index as usize) }
             }
@@ -346,7 +349,10 @@ macro_rules! array_create_set {
                 let length = unsafe { object.get::<u64>(0) };
                 let pointer = pointer as *mut $ty;
                 if index >= length {
-                    todo!("provide way to handle out of bounds")
+                    let exception = crate::runtime::new_object(69);
+                    out_of_bounds_init(context, exception, length, index);
+                    context.set_exception(exception);
+                    return;
                 }
                 unsafe { *pointer.add(index as usize) = value }
             }
@@ -584,6 +590,36 @@ extern "C" fn backtrace_display(_: &mut Context, this: Reference) {
     eprintln!("{} {}:{}", str, line, column);
 }
 
+pub fn generate_index_out_of_bounds_class() -> VMClass {
+    let vtable = VMVTable::new(
+        "IndexOutOfBounds",
+        None,
+        vec![
+            VMMethod::new(
+                "init",
+                out_of_bounds_init as *const (),
+                vec![TypeTag::Void, TypeTag::Object, TypeTag::Object]
+            ),
+        ]
+    );
+
+    let elements = vec![
+    ];
+
+    VMClass::new("IndexOutOfBounds", vec!["Exception"], vec![vtable], elements, Vec::new())
+}
+
+extern "C" fn out_of_bounds_init(context: &mut Context, this: Reference, bounds: u64, index: u64) {
+    let object = Context::get_object(this);
+    let object = unsafe { object.as_mut().unwrap() };
+
+    let message = crate::runtime::new_object(61); // String Class Symbol
+
+    string_from_str(context, message, format!("Index was {index} but length was {bounds}"));
+
+    let base_exception = object.parent_objects[0];
+    exception_init(context, base_exception, message);
+}
 
 pub fn generate_string_class() -> VMClass {
     let vtable = VMVTable::new(
@@ -627,14 +663,14 @@ pub fn generate_string_class() -> VMClass {
     VMClass::new("String", vec!["Object"], vec![vtable], elements, Vec::new())
 }
 
-extern "C" fn string_len(context: &mut Context, this: Reference) -> u64 {
+extern "C" fn string_len(_: &mut Context, this: Reference) -> u64 {
     let object = Context::get_object(this);
     let object = unsafe { object.as_ref().unwrap() };
     let length = unsafe { object.get::<u64>(0) };
     length
 }
 
-extern "C" fn string_load_str(context: &mut Context, this: Reference, string_ref: Reference) {
+extern "C" fn string_load_str(_: &mut Context, this: Reference, string_ref: Reference) {
     use std::alloc::*;
     let string = Context::get_string(string_ref as Symbol);
     let bytes = string.as_bytes();
@@ -672,22 +708,14 @@ extern "C" fn string_init(_: &mut Context, this: Reference) {
     unsafe { object.set::<u64>(16, pointer as u64) };
 }
 
-pub fn string_from_str(_: &mut Context, this: Reference, string: &str) {
-    use std::alloc::*;
+pub fn string_from_str(_: &mut Context, this: Reference, string: String) {
     let object = Context::get_object(this);
     let object = unsafe { object.as_mut().unwrap() };
     unsafe { object.set::<u64>(0, string.len() as u64) };
     unsafe { object.set::<u64>(8, string.len() as u64) };
-    let layout = Layout::array::<u8>(string.len()).expect("string layout is wrong or too big");
-    let pointer = unsafe { alloc(layout) };
-    if pointer.is_null() {
-        eprintln!("Out of memory");
-        handle_alloc_error(layout);
-    }
-    unsafe {
-        std::ptr::copy_nonoverlapping(string.as_ptr(), pointer, string.len())
-    }
-    unsafe { object.set::<u64>(16, pointer as u64) };
+    let string = string.into_boxed_str();
+    let pointer = Box::into_raw(string);
+    unsafe { object.set::<*mut str>(16, pointer) };
 }
 
 pub fn string_drop(object: &mut Object) {

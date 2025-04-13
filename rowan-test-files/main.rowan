@@ -16,16 +16,20 @@ class Main {
         printer.println-int(x);
         let arr: [u64] = [1, 2 ,3, 4];
         let counter: u64 = 0;
+        self.do-thing();
         while counter < arr.len() {
             printer.println-int(arr[counter]);
             counter = counter + 1;
         }
-        self.do-thing();
     }
 
     fn do-thing(self) {
-        let y: u64 = 10;
         let printer: Printer = new Printer();
+        let arr: [u64] = [1, 2 ,3, 4];
+        arr[5];
+        printer.println-int(arr[5]);
+
+        let y: u64 = 11;
         printer.println-int(y);
     }
 }

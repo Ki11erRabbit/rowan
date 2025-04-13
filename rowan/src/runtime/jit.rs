@@ -53,6 +53,8 @@ impl Default for JITController {
         builder.symbol("arrayf64_init", super::stdlib::arrayf64_init as *const u8);
         builder.symbol("arrayf64_set", super::stdlib::arrayf64_set as *const u8);
         builder.symbol("arrayf64_get", super::stdlib::arrayf64_get as *const u8);
+        builder.symbol("context_should_unwind", Context::should_unwind as *const u8);
+        builder.symbol("context_normal_return", Context::normal_return as *const u8);
         let mut module = JITModule::new(builder);
 
         let mut context = module.make_context();
@@ -238,6 +240,7 @@ impl JITCompiler {
 
         let mut function_translator = FunctionTranslator::new(
             arg_types,
+            return_type.clone(),
             &mut self.context,
             &mut self.builder_context,
         );
@@ -255,6 +258,7 @@ impl JITCompiler {
 
 
 pub struct FunctionTranslator<'a> {
+    return_type: runtime::class::TypeTag,
     builder: FunctionBuilder<'a>,
     context_var: Variable,
     call_args: [Option<(Variable, ir::Type)>; 256],
@@ -269,6 +273,7 @@ pub struct FunctionTranslator<'a> {
 impl FunctionTranslator<'_> {
     pub fn new<'a>(
         arg_types: &[runtime::class::TypeTag],
+        return_type: runtime::class::TypeTag,
         context: &'a mut codegen::Context,
         builder_context: &'a mut FunctionBuilderContext,
     ) -> FunctionTranslator<'a> {
@@ -317,6 +322,7 @@ impl FunctionTranslator<'_> {
         block_arg_types.insert(0, start_block_args);
 
         FunctionTranslator {
+            return_type,
             builder,
             context_var,
             call_args: [None; 256],
@@ -906,7 +912,8 @@ impl FunctionTranslator<'_> {
                     let array_set = module.declare_func_in_func(array_set, self.builder.func);
                     let array_set = self.builder.ins().call(array_set, &[context_value, array, index, value]);
                     self.builder.inst_results(array_set);
-                    // TODO: add code for handling an index out of bounds exception
+
+                    self.create_bail_block(module, None, &[]);
                 }
                 Bytecode::ArrayGet(type_tag) => {
                     // println!("array get");
@@ -964,6 +971,9 @@ impl FunctionTranslator<'_> {
                         TypeTag::F32 => types::F32,
                         TypeTag::F64 => types::F64,
                     };
+
+                    self.create_bail_block(module, Some(ty), &[value]);
+
                     self.push(value, ty);
                 }
                 // TODO: implement object ops
@@ -1043,10 +1053,14 @@ impl FunctionTranslator<'_> {
                     let sig = self.builder.import_signature(sig);
                     
                     let result = self.builder.ins().call_indirect(sig, method_value, &method_args);
+
                     let return_value = self.builder.inst_results(result);
+                    let return_value = return_value.to_vec();
                     if return_value.len() != 0 {
                         self.push(return_value[0], return_type.unwrap().value_type)
                     }
+
+                    self.create_bail_block(module, return_type.map(|x| x.value_type), &return_value);
                 }
                 // TODO: implement signal ops
                 Bytecode::StartBlock(index) => {
@@ -1126,9 +1140,82 @@ impl FunctionTranslator<'_> {
 
         }
 
+        let normal_return_id = if let Some(id) = module.get_name("context_normal_return") {
+            match id {
+                FuncOrDataId::Func(id) => id,
+                _ => unreachable!("cannot create array object from data id"),
+            }
+        } else {
+            let mut new_object = module.make_signature();
+            new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+            let fn_id = module.declare_function("context_normal_return", Linkage::Import, &new_object).unwrap();
+            fn_id
+        };
+
+        let normal_return = module.declare_func_in_func(normal_return_id, self.builder.func);
+
+        let context_value = self.builder.use_var(self.context_var);
+
+        let should_unwind_result = self.builder.ins()
+            .call(normal_return, &[context_value]);
+
+        let _ = self.builder.inst_results(should_unwind_result);
 
         self.builder.ins().return_(&[]);
 
+
         Ok(())
+    }
+
+    fn create_bail_block(&mut self, module: &mut JITModule, return_type: Option<Type>, return_value: &[Value]) {
+        let should_unwind_id = if let Some(id) = module.get_name("context_should_unwind") {
+            match id {
+                FuncOrDataId::Func(id) => id,
+                _ => unreachable!("cannot create array object from data id"),
+            }
+        } else {
+            let mut new_object = module.make_signature();
+            new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+            new_object.returns.push(AbiParam::new(cranelift::codegen::ir::types::I8));
+
+            let fn_id = module.declare_function("context_should_unwind", Linkage::Import, &new_object).unwrap();
+            fn_id
+        };
+
+        let should_unwind = module.declare_func_in_func(should_unwind_id, self.builder.func);
+
+        let context_value = self.builder.use_var(self.context_var);
+
+        let should_unwind_result = self.builder.ins()
+            .call(should_unwind, &[context_value]);
+
+        let boolean = self.builder.inst_results(should_unwind_result)[0];
+        let bail_block = self.builder.create_block();
+        let new_block = self.builder.create_block();
+        if let Some(ret_type) = return_type {
+            self.builder.append_block_param(new_block, ret_type);
+        }
+
+        self.builder.ins()
+            .brif(boolean, bail_block, &[], new_block, &return_value);
+
+        self.builder.switch_to_block(bail_block);
+
+        let returns: &[Value] = match self.return_type {
+            runtime::class::TypeTag::U8 | runtime::class::TypeTag::I8 => &[self.builder.ins().iconst(types::I8, 0)],
+            runtime::class::TypeTag::U16 | runtime::class::TypeTag::I16 => &[self.builder.ins().iconst(types::I16, 0)],
+            runtime::class::TypeTag::U32 | runtime::class::TypeTag::I32 => &[self.builder.ins().iconst(types::I32, 0)],
+            runtime::class::TypeTag::U64 | runtime::class::TypeTag::I64 => &[self.builder.ins().iconst(types::I64, 0)],
+            runtime::class::TypeTag::F32  => &[self.builder.ins().f32const(0.0)],
+            runtime::class::TypeTag::F64 => &[self.builder.ins().f64const(0.0)],
+            runtime::class::TypeTag::Object | runtime::class::TypeTag::Str => &[self.builder.ins().iconst(types::I64, 0)],
+            runtime::class::TypeTag::Void => &[],
+        };
+        let ret_result = self.builder.ins().return_(returns);
+        self.builder.inst_results(ret_result);
+        self.builder.seal_block(bail_block);
+        self.builder.switch_to_block(new_block);
+        // TODO: add check to see if exception was caught and jump to the right block
     }
 }
