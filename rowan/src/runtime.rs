@@ -1,4 +1,5 @@
 use std::{collections::HashMap, sync::{LazyLock, RwLock}};
+use std::cell::RefCell;
 use std::sync::Arc;
 
 use class::{Class, MemberInfo, SignalInfo};
@@ -64,7 +65,7 @@ static JIT_CONTROLLER: LazyLock<RwLock<JITController>> = LazyLock::new(|| {
 pub struct Context {
     /// The reference to the current exception
     /// If the reference is non-zero then we should unwind until we hit a registered exception
-    pub current_exception: Reference,
+    pub current_exception: RefCell<Reference>,
     /// The backtrace of function names.
     /// This gets appended as functions get called, popped as functions return
     function_backtrace: Vec<String>,
@@ -75,18 +76,18 @@ pub struct Context {
 impl Context {
     pub fn new() -> Self {
         Context {
-            current_exception: 0,
+            current_exception: RefCell::new(0),
             function_backtrace: Vec::new(),
             registered_exceptions: HashMap::new()
         }
     }
 
-    pub fn set_exception(&mut self, exception: Reference) {
-        self.current_exception = exception;
+    pub fn set_exception(&self, exception: Reference) {
+        *self.current_exception.borrow_mut() = exception;
     }
 
     pub fn get_exception(&self) -> Reference {
-        self.current_exception
+        *self.current_exception.borrow()
     }
 
     pub fn push_backtrace(&mut self, method_name: String) {
@@ -106,20 +107,24 @@ impl Context {
         string_ref
     }
 
-    pub extern "C" fn should_unwind(ctx: *mut Self) -> u8 {
-        let context = unsafe { ctx.as_mut().unwrap() };
-        if context.current_exception == 0 {
+    pub extern "C" fn should_unwind(context: &mut Self) -> u8 {
+        if *context.current_exception.borrow() == 0 {
             return 0;
         }
         context.pop_backtrace();
-        let exception = Context::get_object(context.current_exception);
+        let Some(exception) = context.get_object(*context.current_exception.borrow()) else {
+            unreachable!("after checking exception wasn't zero, exception was zero");
+        };
         let exception = unsafe { exception.as_ref().unwrap() };
         if let Some(symbols) = context.registered_exceptions.get(context.function_backtrace.last().unwrap()) {
             for symbol in symbols {
                 if *symbol == exception.class {
                     return 0;
                 }
-                let parent_exception = Context::get_object(exception.parent_objects[0]);
+                let parent_exception = exception.parent_objects[0];
+                let Some(parent_exception) = context.get_object(parent_exception) else {
+                    unreachable!("parents shouldn't be null");
+                };
                 let parent_exception = unsafe { parent_exception.as_ref().unwrap() };
                 if *symbol == parent_exception.class {
                     return 0;
@@ -227,11 +232,17 @@ impl Context {
         }
     }
 
-    pub fn get_object(reference: Reference) -> *mut Object {
+    pub fn get_object(&self, reference: Reference) -> Option<*mut Object> {
         let Ok(object_table) = OBJECT_TABLE.read() else {
             panic!("Lock poisoned");
         };
-        object_table[reference]
+        if reference == 0 {
+            let exception = crate::runtime::new_object(71);
+            stdlib::null_pointer_init(self, exception);
+            self.set_exception(exception);
+            return None;
+        }
+        Some(object_table[reference])
     }
 
     pub fn get_method(
@@ -417,10 +428,11 @@ impl Context {
 
 
 
-pub extern "C" fn get_virtual_function(context: *mut Context, object: Reference, class_symbol: u64, source_class: i64, method_name: u64) -> u64 {
-    let object = Context::get_object(object);
+pub extern "C" fn get_virtual_function(context: &mut Context, object: Reference, class_symbol: u64, source_class: i64, method_name: u64) -> u64 {
+    let Some(object) = context.get_object(object) else {
+        return 0;
+    };
     let object = unsafe {object.as_mut().unwrap()};
-    let context = unsafe { context.as_mut().unwrap() };
 
     let object_class_symbol = object.class;
     let class_symbol = class_symbol as Symbol;

@@ -31,6 +31,7 @@ fn main() {
         stdlib::generate_backtrace_class(),
         stdlib::generate_string_class(),
         stdlib::generate_index_out_of_bounds_class(),
+        stdlib::generate_null_pointer_class(),
     ];
 
     let mut class_map = HashMap::new();
@@ -50,7 +51,9 @@ fn main() {
     Context::finish_linking_classes(pre_class_table);
 
     let main_object_ref = Context::new_object(main_symbol);
-    let main_object = Context::get_object(main_object_ref);
+    let Some(main_object) = context.get_object(main_object_ref) else {
+        unreachable!("should have succeeded");
+    };
     let main_object = unsafe { main_object.as_ref().unwrap() };
 
     /*println!("[Main] {}", context.get_class_name(12));
@@ -58,6 +61,7 @@ fn main() {
     let class = context.get_class(main_object.class);
     println!("[Main] Class: {:?}", unsafe {class.read()});*/
 
+    // println!("{ready_symbol}");
     let method = context.get_method(main_object.class, 1, None, ready_symbol);
     let method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64)>(method) };
     method(&mut context, main_object_ref);
