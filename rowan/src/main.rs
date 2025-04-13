@@ -61,5 +61,4 @@ fn main() {
     let method = context.get_method(main_object.class, 1, None, ready_symbol);
     let method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64)>(method) };
     method(&mut context, main_object_ref);
-
 }

@@ -64,7 +64,7 @@ static JIT_CONTROLLER: LazyLock<RwLock<JITController>> = LazyLock::new(|| {
 pub struct Context {
     /// The reference to the current exception
     /// If the reference is non-zero then we should unwind until we hit a registered exception
-    current_exception: Reference,
+    pub current_exception: Reference,
     /// The backtrace of function names.
     /// This gets appended as functions get called, popped as functions return
     function_backtrace: Vec<String>,
