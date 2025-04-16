@@ -70,6 +70,7 @@ pub enum FunctionValue {
     Builtin(*const (), Signature),
     Bytecode(Vec<Bytecode>, FuncId, Signature),
     Compiled(*const (), Signature),
+    Native(*const (), Signature),
     Blank,
 }
 

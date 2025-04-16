@@ -5,7 +5,7 @@
 //! Here is the structure of the class file as binary data using a vaguely Rust-like format:
 //! ```ignore
 //! type StringIndex = u64;
-//! type BytecodeIndex = u64;
+//! type BytecodeIndex = i64;
 //! type SignatureIndex = u64;
 //! type TypeTag = u8;
 //!
@@ -75,7 +75,7 @@ use crate::TypeTag;
 /// Index into the string table
 pub type StringIndex = u64;
 /// Index into the bytecode table
-pub type BytecodeIndex = u64;
+pub type BytecodeIndex = i64;
 /// Index into the signature table
 pub type SignatureIndex = u64;
 
@@ -350,10 +350,12 @@ impl ClassFile {
     }
 
     pub fn index_string_table(&self, index: StringIndex) -> &str {
+        assert_ne!(index, 0, "string index should not be zero");
         std::str::from_utf8(&self.string_table[(index - 1) as usize].value).unwrap()
     }
 
-    pub fn index_bytecode_table(&self, index: StringIndex) -> &BytecodeEntry {
+    pub fn index_bytecode_table(&self, index: BytecodeIndex) -> &BytecodeEntry {
+        assert_ne!(index, 0, "bytecode index should not be zero");
         &self.bytecode_table[(index - 1) as usize]
     }
 
