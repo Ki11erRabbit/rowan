@@ -34,19 +34,18 @@ fn main() {
         stdlib::generate_null_pointer_class(),
     ];
 
-    let mut class_map = HashMap::new();
     let mut string_map = HashMap::new();
 
     let mut pre_class_table = Vec::new();
     let mut vtables_map = HashMap::new(); 
 
-    Context::link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map, &mut string_map, &mut class_map);
+    Context::link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map, &mut string_map);
 
     let class = ClassFile::new(&output);
 
     let classes = vec![class];
 
-    let (main_symbol, ready_symbol) = Context::link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map, &mut class_map);
+    let (main_symbol, ready_symbol) = Context::link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map);
 
     Context::finish_linking_classes(pre_class_table);
 

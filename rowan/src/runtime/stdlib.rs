@@ -184,7 +184,7 @@ extern "C" fn object_get_child(context: &mut Context, this: Reference, nth: u64)
     };
     let object = unsafe { object.as_mut().unwrap() };
     if object.children.len() <= nth as usize {
-        let exception = crate::runtime::new_object(69);
+        let exception = Context::new_object("IndexOutOfBounds");
         out_of_bounds_init(context, exception, object.children.len() as u64, nth);
         context.set_exception(exception);
         return 0;
@@ -234,7 +234,7 @@ extern "C" fn object_add_child_at(context: &mut Context, this: Reference, child:
     let object = unsafe { object.as_mut().unwrap() };
 
     if object.children.len() <= nth as usize {
-        let exception = crate::runtime::new_object(69);
+        let exception = Context::new_object("IndexOutOfBounds");
         out_of_bounds_init(context, exception, object.children.len() as u64, nth);
         context.set_exception(exception);
         return
@@ -414,7 +414,7 @@ macro_rules! array_create_get {
                 let length = unsafe { object.get::<u64>(0) };
                 let pointer = pointer as *mut $ty;
                 if index >= length {
-                    let exception = crate::runtime::new_object(69);
+                    let exception = Context::new_object("IndexOutOfBounds");
                     out_of_bounds_init(context, exception, length, index);
                     context.set_exception(exception);
                     return 0 as $ty;
@@ -437,7 +437,7 @@ macro_rules! array_create_set {
                 let length = unsafe { object.get::<u64>(0) };
                 let pointer = pointer as *mut $ty;
                 if index >= length {
-                    let exception = crate::runtime::new_object(69);
+                    let exception = Context::new_object("IndexOutOfBounds");
                     out_of_bounds_init(context, exception, length, index);
                     context.set_exception(exception);
                     return;
@@ -605,7 +605,7 @@ extern "C" fn exception_fill_in_stack_trace(context: &mut Context, this: Referen
     };
     unsafe { object.set::<u64>(24, pointer as u64) };
 
-    let backtrace = crate::runtime::new_object(53); // Backtrace class Symbol
+    let backtrace = Context::new_object("Backtrace");
 
     let method_name = context.get_current_method();
 
@@ -717,7 +717,7 @@ extern "C" fn out_of_bounds_init(context: &mut Context, this: Reference, bounds:
     };
     let object = unsafe { object.as_mut().unwrap() };
 
-    let message = crate::runtime::new_object(61); // String Class Symbol
+    let message = Context::new_object("String"); // String Class Symbol
 
     string_from_str(context, message, format!("Index was {index} but length was {bounds}"));
 
@@ -750,7 +750,7 @@ pub extern "C" fn null_pointer_init(context: &Context, this: Reference) {
     };
     let object = unsafe { object.as_mut().unwrap() };
 
-    let message = crate::runtime::new_object(61); // String Class Symbol
+    let message = Context::new_object("String"); // String Class Symbol
 
     string_from_str(context, message, String::from("NullPointerException"));
 
@@ -909,7 +909,7 @@ extern "C" fn string_as_bytes(context: &mut Context, this: Reference) -> Referen
     let length = unsafe { object.get::<u64>(8) };
     let pointer = unsafe { object.get::<*mut u8>(16) };
 
-    let byte_array = crate::runtime::new_object(11); // Array8 Class Symbol
+    let byte_array = Context::new_object("Array8");
 
     array8_init(context, byte_array, length);
     let Some(array) = context.get_object(byte_array) else {

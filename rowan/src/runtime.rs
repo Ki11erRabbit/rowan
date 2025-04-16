@@ -9,9 +9,11 @@ use cranelift::prelude::Configurable;
 use jit::{JITCompiler, JITController};
 use linker::TableEntry;
 use object::Object;
+use rowan_shared::bytecode::linked::Bytecode::NewObject;
 use rowan_shared::classfile::{BytecodeEntry, BytecodeIndex, ClassFile, Member, Signal, SignatureIndex, VTableEntry};
 use stdlib::{VMClass, VMMember, VMMethod, VMSignal, VMVTable};
 use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{self, SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}};
+use std::borrow::BorrowMut;
 
 
 mod tables;
@@ -60,7 +62,105 @@ static JIT_CONTROLLER: LazyLock<RwLock<JITController>> = LazyLock::new(|| {
     RwLock::new(jit_controller)
 });
 
+static CLASS_MAPPER: LazyLock<RwLock<HashMap<String, Symbol>>> = LazyLock::new(|| {
+    let map = HashMap::new();
+    RwLock::new(map)
+});
 
+trait MakeObject<N> {
+    fn make_self() -> Self;
+    fn new_object(&self, class_name: N) -> Reference;
+}
+
+struct ContextHelper;
+
+impl MakeObject<Symbol> for ContextHelper {
+
+    #[inline]
+    fn make_self() -> Self {
+        ContextHelper
+    }
+
+    #[inline]
+    fn new_object(&self, class_symbol: Symbol) -> Reference {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let SymbolEntry::ClassRef(class_ref) = symbol_table[class_symbol] else {
+            panic!("class wasn't a class");
+        };
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let class = &class_table[class_ref];
+        let parent_objects = &class.parents;
+
+        let mut parents = Vec::new();
+
+        for parent in parent_objects.iter() {
+            parents.push(Context::new_object(*parent));
+        }
+
+        let data_size = class.get_member_size();
+
+        let object = Object::new(class_symbol, parents.into_boxed_slice(), data_size);
+
+        let Ok(mut object_table) = OBJECT_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+
+        let reference = object_table.add(object);
+
+        reference
+    }
+}
+
+impl MakeObject<&str> for ContextHelper {
+
+    #[inline]
+    fn make_self() -> Self {
+        ContextHelper
+    }
+
+    #[inline]
+    fn new_object(&self, class_name: &str) -> Reference {
+        let Ok(mut class_map) = CLASS_MAPPER.read() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let class_symbol = class_map[class_name];
+
+        let SymbolEntry::ClassRef(class_ref) = symbol_table[class_symbol] else {
+            panic!("class wasn't a class");
+        };
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let class = &class_table[class_ref];
+        let parent_objects = &class.parents;
+
+        let mut parents = Vec::new();
+
+        for parent in parent_objects.iter() {
+            parents.push(Context::new_object(*parent));
+        }
+
+        let data_size = class.get_member_size();
+
+        let object = Object::new(class_symbol, parents.into_boxed_slice(), data_size);
+
+        let Ok(mut object_table) = OBJECT_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+
+        let reference = object_table.add(object);
+
+        reference
+    }
+}
 
 pub struct Context {
     /// The reference to the current exception
@@ -147,7 +247,6 @@ impl Context {
         // For example, two matching symbols means that that is the vtable of that particular class
         vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, Arc<RwLock<FunctionValue>>)>>>,
         string_map: &mut HashMap<String, Symbol>,
-        class_map: &mut HashMap<String, Symbol>
     ) -> (Symbol, Symbol) {
         let Ok(mut string_table) = STRING_TABLE.write() else {
             panic!("Lock poisoned");
@@ -161,6 +260,9 @@ impl Context {
         let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
             panic!("Lock poisoned");
         };
+        let Ok(mut class_map) = CLASS_MAPPER.write() else {
+            panic!("Lock poisoned");
+        };
 
         linker::link_class_files(
             classes,
@@ -171,7 +273,7 @@ impl Context {
             &mut vtable_tables,
             vtables_map,
             string_map,
-            class_map,
+            class_map.borrow_mut(),
         ).unwrap()
     }
 
@@ -184,7 +286,6 @@ impl Context {
         // For example, two matching symbols means that that is the vtable of that particular class
         vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Option<Symbol>, Vec<rowan_shared::TypeTag>, Vec<u8>, Arc<RwLock<FunctionValue>>)>>>,
         string_map: &mut HashMap<String, Symbol>,
-        class_map: &mut HashMap<String, Symbol>
     ) {
         let Ok(mut string_table) = STRING_TABLE.write() else {
             panic!("Lock poisoned");
@@ -198,6 +299,9 @@ impl Context {
         let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
             panic!("Lock poisoned");
         };
+        let Ok(mut class_map) = CLASS_MAPPER.write() else {
+            panic!("Lock poisoned");
+        };
 
         linker::link_vm_classes(
             classes,
@@ -208,12 +312,12 @@ impl Context {
             &mut vtable_tables,
             vtables_map,
             string_map,
-            class_map,
+            class_map.borrow_mut(),
         );
     }
 
     pub fn finish_linking_classes(
-        pre_class_table: Vec<TableEntry<Class>>
+        pre_class_table: Vec<TableEntry<Class>>,
     ) {
         let Ok(mut class_table) = CLASS_TABLE.write() else {
             panic!("Lock poisoned");
@@ -237,7 +341,7 @@ impl Context {
             panic!("Lock poisoned");
         };
         if reference == 0 {
-            let exception = crate::runtime::new_object(71);
+            let exception = Context::new_object("NullPointerException");
             stdlib::null_pointer_init(self, exception);
             self.set_exception(exception);
             return None;
@@ -344,37 +448,21 @@ impl Context {
         }
     }
 
-    pub fn new_object(class_symbol: Symbol) -> Reference {
+    pub fn new_object<N>(class_name: N) -> Reference
+    where
+        ContextHelper: MakeObject<N> {
+        let creator = ContextHelper::make_self();
+        creator.new_object(class_name)
+    }
+
+    pub fn get_class_symbol(class_name: &str) -> Symbol {
+        let Ok(mut class_map) = CLASS_MAPPER.read() else {
+            panic!("Lock poisoned");
+        };
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
-
-        let SymbolEntry::ClassRef(class_ref) = symbol_table[class_symbol] else {
-            panic!("class wasn't a class");
-        };
-        let Ok(class_table) = CLASS_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-        let class = &class_table[class_ref];
-        let parent_objects = &class.parents;
-
-        let mut parents = Vec::new();
-        
-        for parent in parent_objects.iter() {
-            parents.push(Context::new_object(*parent));
-        }
-
-        let data_size = class.get_member_size();
-
-        let object = Object::new(class_symbol, parents.into_boxed_slice(), data_size);
-        
-        let Ok(mut object_table) = OBJECT_TABLE.write() else {
-            panic!("Lock poisoned");
-        };
-
-        let reference = object_table.add(object);
-        
-        reference
+        class_map[class_name]
     }
 
     pub fn get_class_name(class_symbol: Symbol) -> String {

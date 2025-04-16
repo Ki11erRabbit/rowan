@@ -804,25 +804,25 @@ impl FunctionTranslator<'_> {
 
                     let array_symbol = match tag {
                         TypeTag::U8 | TypeTag::I8 => {
-                            self.builder.ins().iconst(ir::types::I64, 11)
+                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Array8") as i64)
                         }
                         TypeTag::U16 | TypeTag::I16 => {
-                            self.builder.ins().iconst(ir::types::I64, 18)
+                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Array16") as i64)
                         }
                         TypeTag::U32 | TypeTag::I32 => {
-                            self.builder.ins().iconst(ir::types::I64, 22)
+                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Array32") as i64)
                         }
                         TypeTag::U64 | TypeTag::I64 => {
-                            self.builder.ins().iconst(ir::types::I64, 26)
+                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Array64") as i64)
                         }
                         TypeTag::Object | TypeTag::Str | TypeTag::Void => {
-                            self.builder.ins().iconst(ir::types::I64, 30)
+                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("ArrayObject") as i64)
                         }
                         TypeTag::F32 => {
-                            self.builder.ins().iconst(ir::types::I64, 34)
+                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Arrayf32") as i64)
                         }
                         TypeTag::F64 => {
-                            self.builder.ins().iconst(ir::types::I64, 38)
+                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Arrayf64") as i64)
                         }
                     };
 
@@ -1049,6 +1049,8 @@ impl FunctionTranslator<'_> {
                             method_name_value,
                         ]);
                     let method_value = self.builder.inst_results(method_instructions)[0];
+                    self.create_bail_block(module, Some(types::I64), &[method_value]);
+
                     let return_type = sig.returns.first().cloned();
                     let sig = self.builder.import_signature(sig);
                     
