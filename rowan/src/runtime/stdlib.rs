@@ -115,8 +115,8 @@ pub fn generate_object_class() -> VMClass {
                 vec![TypeTag::Void, TypeTag::Object]
                 ),
             VMMethod::new(
-                "upcast",
-                object_upcast as *const (),
+                "downcast",
+                object_downcast as *const (),
                 vec![TypeTag::Object, TypeTag::Object, TypeTag::U64]
                 ),
             VMMethod::new(
@@ -160,7 +160,7 @@ extern "C" fn object_ready(_: &mut Context, _: Reference) {
 }
 
 
-extern "C" fn object_upcast(context: &mut Context, this: Reference, class_index: u64) -> Reference {
+extern "C" fn object_downcast(context: &mut Context, this: Reference, class_index: u64) -> Reference {
     let Some(object) = context.get_object(this) else {
         return 0;
     };
@@ -169,7 +169,7 @@ extern "C" fn object_upcast(context: &mut Context, this: Reference, class_index:
         this
     } else {
         for obj in object.parent_objects.iter() {
-            if object_upcast(context, *obj, class_index) != 0 {
+            if object_downcast(context, *obj, class_index) != 0 {
                 return this;
             }
         }
@@ -310,7 +310,7 @@ extern "C" fn printer_println(context: &mut Context, _: Reference, string: Refer
     println!("{}", string);
 }
 
-macro_rules! array_upcast_contents {
+macro_rules! array_downcast_contents {
     (object, $ty:ty, $context:ident, $this:ident, $class_symbol:ident) => {
         {
             let Some(object) = $context.get_object($this) else {
@@ -322,7 +322,7 @@ macro_rules! array_upcast_contents {
             let pointer = pointer as *mut u64;
             unsafe {
                 for i in 0..length as usize {
-                    if object_upcast($context, *pointer.add(i), $class_symbol) == 0 {
+                    if object_downcast($context, *pointer.add(i), $class_symbol) == 0 {
                         return 0;
                     }
                 }
@@ -355,7 +355,7 @@ macro_rules! array_create_class {
                             vec![TypeTag::U64, TypeTag::Object]
                             ),
                         VMMethod::new(
-                            "upcast-contents",
+                            "downcast-contents",
                             [< array $variant _upcast_contents >] as *const (),
                             vec![TypeTag::U64, TypeTag::Object, TypeTag::U64]
                             ),
@@ -448,11 +448,11 @@ macro_rules! array_create_set {
     };
 }
 
-macro_rules! array_create_upcast {
+macro_rules! array_create_downcast {
     ($variant:expr, $fn_name:ident, $ty:ty) => {
         paste! {
             pub extern "C" fn $fn_name(context: &mut Context, this: Reference, class_symbol: u64) -> Reference {
-                array_upcast_contents!($variant, $ty, context, this, class_symbol)
+                array_downcast_contents!($variant, $ty, context, this, class_symbol)
             }
         }
     };
@@ -495,7 +495,7 @@ macro_rules! create_array_class {
         }
 
         paste!{
-        array_create_upcast!($variant, [< array $variant _upcast_contents >], $ty);
+        array_create_downcast!($variant, [< array $variant _upcast_contents >], $ty);
         }
 
         paste!{

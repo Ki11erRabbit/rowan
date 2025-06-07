@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use rowan_shared::{classfile::{BytecodeEntry, ClassFile, Member, Signal, SignatureEntry, SignatureIndex, StringEntry, StringIndex, VTable, VTableEntry}, TypeTag};
-
+use rowan_shared::classfile::BytecodeIndex;
 use crate::ast::Method;
 
 #[derive(Debug)]
@@ -262,7 +262,7 @@ impl PartialClass {
         self.bytecode_table.push(BytecodeEntry::new(code.as_ref()));
         let bytecode_index = self.bytecode_table.len();
 
-        self.vtables[vtable_index].functions[method_index].bytecode = bytecode_index as u64;
+        self.vtables[vtable_index].functions[method_index].bytecode = bytecode_index as u64 as BytecodeIndex;
         Ok(())
     }
 
