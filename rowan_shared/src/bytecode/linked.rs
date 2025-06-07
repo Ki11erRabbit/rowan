@@ -147,11 +147,11 @@ pub enum Bytecode {
     /// Get a field from an object of the specified class
     /// The first Symbol is the class name we are accesssing, the second Symbol is another classname
     /// that allows for selecting the particular parent to access the field.
-    GetField(Symbol, Symbol, u64),
+    GetField(Symbol, Symbol, u64, TypeTag),
     /// Set a field in an object of the specified class
     /// The first Symbol is the class name we are accesssing, the second Symbol is another classname
     /// that allows for selecting the particular parent to access the field.
-    SetField(Symbol, Symbol, u64),
+    SetField(Symbol, Symbol, u64, TypeTag),
     /// Check if an object is of a specified class
     IsA(Symbol),
     /// Invoke a virtual method on an object of the specified class

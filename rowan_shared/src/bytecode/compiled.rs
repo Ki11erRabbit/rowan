@@ -146,13 +146,13 @@ pub enum Bytecode {
     /// Create a new object of the specified class
     NewObject(StringIndex),
     /// Get a field from an object of the specified class
-    /// The first StringIndex is the class name we are accesssing, the second StringIndex is another classname
+    /// The first StringIndex is the class name we are accessing, the second StringIndex is another classname
     /// that allows for selecting the particular parent to access the field.
-    GetField(StringIndex, StringIndex, u64),
+    GetField(StringIndex, StringIndex, u64, TypeTag),
     /// Set a field in an object of the specified class
-    /// The first StringIndex is the class name we are accesssing, the second StringIndex is another classname
+    /// The first StringIndex is the class name we are accessing, the second StringIndex is another classname
     /// that allows for selecting the particular parent to access the field.
-    SetField(StringIndex, StringIndex, u64),
+    SetField(StringIndex, StringIndex, u64, TypeTag),
     /// Check if an object is of a specified class
     IsA(StringIndex),
     /// Invoke a virtual method on an object of the specified class
@@ -415,7 +415,8 @@ impl Bytecode {
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                     ]);
-                    result.push(Bytecode::GetField(class_name, parent_class_name, member_index));
+                    let tag = TypeTag::from(*iter.next().ok_or("Expected u8 value")?);
+                    result.push(Bytecode::GetField(class_name, parent_class_name, member_index, tag));
                 },
                 66 => {
                     let class_name = u64::from_le_bytes([
@@ -436,7 +437,8 @@ impl Bytecode {
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                     ]);
-                    result.push(Bytecode::SetField(class_name, parent_class_name, member_index));
+                    let tag = TypeTag::from(*iter.next().ok_or("Expected u8 value")?);
+                    result.push(Bytecode::SetField(class_name, parent_class_name, member_index, tag));
                 },
                 67 => {
                     let class_name = u64::from_le_bytes([
@@ -842,17 +844,19 @@ impl Bytecode {
                 result.push(64);
                 result.extend_from_slice(&index.to_le_bytes());
             },
-            Bytecode::GetField(class_name, parent_class_name, member_index) => {
+            Bytecode::GetField(class_name, parent_class_name, member_index, tag) => {
                 result.push(65);
                 result.extend_from_slice(&class_name.to_le_bytes());
                 result.extend_from_slice(&parent_class_name.to_le_bytes());
                 result.extend_from_slice(&member_index.to_le_bytes());
+                result.push(tag.as_byte());
             },
-            Bytecode::SetField(class_name, parent_class_name, member_index) => {
+            Bytecode::SetField(class_name, parent_class_name, member_index, tag) => {
                 result.push(66);
                 result.extend_from_slice(&class_name.to_le_bytes());
                 result.extend_from_slice(&parent_class_name.to_le_bytes());
                 result.extend_from_slice(&member_index.to_le_bytes());
+                result.push(tag.as_byte());
             },
             Bytecode::IsA(class_name) => {
                 result.push(67);

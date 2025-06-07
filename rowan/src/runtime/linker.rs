@@ -737,17 +737,17 @@ fn link_bytecode(
 
                 output.push(linked::Bytecode::NewObject(symbol as u64));
             }
-            compiled::Bytecode::GetField(index, _, pos) => {
+            compiled::Bytecode::GetField(index, _, pos, tag) => {
                 let class_str = class_file.index_string_table(index);
                 let symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet"); 
 
-                output.push(linked::Bytecode::GetField(symbol as u64, 0, pos));
+                output.push(linked::Bytecode::GetField(symbol as u64, 0, pos, tag));
             }
-            compiled::Bytecode::SetField(index, _, pos) => {
+            compiled::Bytecode::SetField(index, _, pos, tag) => {
                 let class_str = class_file.index_string_table(index);
                 let symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet"); 
 
-                output.push(linked::Bytecode::SetField(symbol as u64, 0, pos));
+                output.push(linked::Bytecode::SetField(symbol as u64, 0, pos, tag));
             }
             compiled::Bytecode::IsA(index) => {
                 let class_str = class_file.index_string_table(index);
