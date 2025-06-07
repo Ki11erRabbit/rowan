@@ -312,4 +312,66 @@ impl PartialClass {
         self.string_to_index.insert(String::from(string.as_ref()), out);
         out
     }
+    
+    pub fn get_class_name<'a>(&'a self) -> &'a str {
+        let index = self.name;
+        self.index_string_table(index)
+    }
+    
+    pub fn contains_field(&self, field: &str) -> bool{
+        for member in self.members.iter() {
+            if field == self.index_string_table(member.name) {
+                return true;
+            }
+        }
+        false
+    }
+    
+    pub fn find_class_with_field<'a>(
+        &'a self, 
+        classes: &'a HashMap<String, PartialClass>, 
+        field: &str
+    ) -> Option<(&'a str, &'a str)> {
+        for parent in self.parents.iter() {
+            let parent = self.index_string_table(*parent);
+            let parent_class = classes.get(parent).unwrap();
+            
+            let Some(class_name) = parent_class.find_class_with_field_helper(classes, field) else {
+                continue;
+            };
+            return Some((class_name, parent))
+        }
+        None
+    }
+    
+    fn find_class_with_field_helper<'a>(
+        &'a self,
+        classes: &'a HashMap<String, PartialClass>, 
+        field: &str
+    ) -> Option<&'a str> {
+        if self.contains_field(field) {
+            return Some(self.index_string_table(self.name))
+        }
+        
+        for parent in self.parents.iter() {
+            let parent = self.index_string_table(*parent);
+            let parent = classes.get(parent).unwrap();
+            
+            let Some(class_name) = parent.find_class_with_field_helper(classes, field) else {
+                continue;
+            };
+            
+            return Some(class_name);
+        }
+        None
+    }
+    
+    pub fn get_member_offset(&self, field: &str) -> (u64, TypeTag) {
+        for (i, member) in self.members.iter().enumerate() {
+            if field == self.index_string_table(member.name) {
+                return (i as u64, member.type_tag);
+            }
+        }
+        unreachable!("Can't find member {}", field)
+    }
 }

@@ -1,9 +1,13 @@
 module Main;
 
 class Main {
+
+    t: u64;
     @Override
     fn ready(self) {
-        let x: u64 = 4 + 4;
+
+        self.t = 1;
+        let x: u64 = 4 + 4 + self.t;
         let printer: Printer = new Printer();
         printer.println-int(x);
         if x < 10 {

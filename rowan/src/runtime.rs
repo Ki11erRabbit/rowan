@@ -194,9 +194,8 @@ impl Context {
         self.function_backtrace.push(method_name);
     }
 
-    pub fn pop_backtrace(&mut self) -> String {
-        let bt = self.function_backtrace.pop();
-        bt.unwrap()
+    pub fn pop_backtrace(&mut self) -> Option<String> {
+        self.function_backtrace.pop()
     }
 
     pub fn get_current_method(&mut self) -> Reference {
@@ -216,7 +215,10 @@ impl Context {
             unreachable!("after checking exception wasn't zero, exception was zero");
         };
         let exception = unsafe { exception.as_ref().unwrap() };
-        if let Some(symbols) = context.registered_exceptions.get(context.function_backtrace.last().unwrap()) {
+        let Some(last) = context.function_backtrace.last() else {
+            return 0;
+        };
+        if let Some(symbols) = context.registered_exceptions.get(last) {
             for symbol in symbols {
                 if *symbol == exception.class {
                     return 0;
@@ -341,6 +343,7 @@ impl Context {
             panic!("Lock poisoned");
         };
         if reference == 0 {
+            drop(object_table);
             let exception = Context::new_object("NullPointerException");
             stdlib::null_pointer_init(self, exception);
             self.set_exception(exception);

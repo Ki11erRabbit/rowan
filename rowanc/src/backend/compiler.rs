@@ -709,6 +709,15 @@ impl Compiler {
                                 defer(output);
                             }
                         }
+                        Expression::MemberAccess {
+                             ..
+                        } => {
+                            let defer = self.compile_member_set(class_name, partial_class, target, output)?;
+                            self.compile_expression(class_name, partial_class, value, output, false)?;
+                            if let Some(defer) = defer {
+                                defer(output);
+                            }
+                        }
                         _ => todo!("lhs assignment")
                     }
                 }
@@ -879,85 +888,85 @@ impl Compiler {
                 self.compile_expression(class_name, partial_class, right.as_ref(), output, lhs)?;
 
                 match (left.get_type(), operator, right.get_type()) {
-                    (Some(lhs), BinaryOperator::Add, Some(rhs)) if lhs.is_integer() && rhs.is_integer() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Add, Some(Either::Left(rhs))) if lhs.is_integer() && rhs.is_integer() => {
                         output.push(Bytecode::AddInt)
                     }
-                    (Some(lhs), BinaryOperator::Sub, Some(rhs)) if lhs.is_integer() && rhs.is_integer() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Sub, Some(Either::Left(rhs))) if lhs.is_integer() && rhs.is_integer() => {
                         output.push(Bytecode::SubInt)
                     }
-                    (Some(lhs), BinaryOperator::Mul, Some(rhs)) if lhs.is_integer() && rhs.is_integer() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Mul, Some(Either::Left(rhs))) if lhs.is_integer() && rhs.is_integer() => {
                         output.push(Bytecode::MulInt)
                     }
-                    (Some(lhs), BinaryOperator::Div, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Div, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::DivUnsigned)
                     }
-                    (Some(lhs), BinaryOperator::Div, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Div, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::DivSigned)
                     }
-                    (Some(lhs), BinaryOperator::Mod, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Mod, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::ModUnsigned)
                     }
-                    (Some(lhs), BinaryOperator::Mod, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Mod, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::ModSigned)
                     }
-                    (Some(lhs), BinaryOperator::Add, Some(rhs)) if lhs.is_float() || rhs.is_float() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Add, Some(Either::Left(rhs))) if lhs.is_float() || rhs.is_float() => {
                         output.push(Bytecode::AddFloat)
                     }
-                    (Some(lhs), BinaryOperator::Sub, Some(rhs)) if lhs.is_float() || rhs.is_float() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Sub, Some(Either::Left(rhs))) if lhs.is_float() || rhs.is_float() => {
                         output.push(Bytecode::SubFloat)
                     }
-                    (Some(lhs), BinaryOperator::Mul, Some(rhs)) if lhs.is_float() || rhs.is_float() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Mul, Some(Either::Left(rhs))) if lhs.is_float() || rhs.is_float() => {
                         output.push(Bytecode::MulFloat)
                     }
-                    (Some(lhs), BinaryOperator::Div, Some(rhs)) if lhs.is_float() || rhs.is_float() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Div, Some(Either::Left(rhs))) if lhs.is_float() || rhs.is_float() => {
                         output.push(Bytecode::DivFloat)
                     }
-                    (Some(lhs), BinaryOperator::Mod, Some(rhs)) if lhs.is_float() || rhs.is_float() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Mod, Some(Either::Left(rhs))) if lhs.is_float() || rhs.is_float() => {
                         output.push(Bytecode::ModFloat)
                     }
-                    (Some(lhs), BinaryOperator::Eq, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Eq, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::EqualUnsigned)
                     }
-                    (Some(lhs), BinaryOperator::Eq, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Eq, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::EqualSigned)
                     }
-                    (Some(lhs), BinaryOperator::Ne, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Ne, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::NotEqualUnsigned)
                     }
-                    (Some(lhs), BinaryOperator::Ne, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Ne, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::NotEqualSigned)
                     }
-                    (Some(lhs), BinaryOperator::Lt, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Lt, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::LessUnsigned)
                     }
-                    (Some(lhs), BinaryOperator::Lt, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Lt, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::LessSigned)
                     }
-                    (Some(lhs), BinaryOperator::Le, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Le, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::LessOrEqualUnsigned)
                     }
-                    (Some(lhs), BinaryOperator::Le, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Le, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::LessOrEqualSigned)
                     }
-                    (Some(lhs), BinaryOperator::Gt, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Gt, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::GreaterUnsigned)
                     }
-                    (Some(lhs), BinaryOperator::Gt, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Gt, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::GreaterSigned)
                     }
-                    (Some(lhs), BinaryOperator::Ge, Some(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Ge, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::GreaterOrEqualUnsigned)
                     }
-                    (Some(lhs), BinaryOperator::Ge, Some(rhs)) if lhs.is_signed() && rhs.is_signed() => {
+                    (Some(Either::Left(lhs)), BinaryOperator::Ge, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::GreaterOrEqualSigned)
                     }
-                    (Some(Type::U8), BinaryOperator::And, Some(Type::U8)) => {
+                    (Some(Either::Left(Type::U8)), BinaryOperator::And, Some(Either::Left(Type::U8))) => {
                         output.push(Bytecode::And)
                     }
-                    (Some(Type::U8), BinaryOperator::Or, Some(Type::U8)) => {
+                    (Some(Either::Left(Type::U8)), BinaryOperator::Or, Some(Either::Left(Type::U8))) => {
                         output.push(Bytecode::Or)
                     }
-                    (Some(Type::Array(generic, _)), BinaryOperator::Index, _) => {
+                    (Some(Either::Left(Type::Array(generic, _))), BinaryOperator::Index, _) => {
                         let type_tag = match generic.as_ref() {
                             Type::U8 => TypeTag::U8,
                             Type::I8 => TypeTag::I8,
@@ -1012,7 +1021,7 @@ impl Compiler {
             }
             Expression::Call { name, args, .. } => {
                 let (name, ty, var) = match name.as_ref() {
-                    Expression::MemberAccess { object, field, span } => {
+                    Expression::MemberAccess { object, field, span, .. } => {
                         match object.as_ref() {
                             Expression::Variable(var, Some(Type::Object(ty, _)), _) => {
                                 (field, ty.clone(), var.clone())
@@ -1103,6 +1112,11 @@ impl Compiler {
                     panic!("Classes are in a bad order of compiling")
                 }
             }
+            Expression::MemberAccess {
+                ..
+            } => {
+                self.compile_member_get(class_name, partial_class, expr, output)?;
+            }
             Expression::New(ty, arr_size, _) => {
                 let name = match ty {
                     Type::Object(name, _) => name,
@@ -1167,5 +1181,118 @@ impl Compiler {
             }
         }
         Ok(())
+    }
+
+    fn compile_member_get<'a>(
+        &mut self,
+        class_name: &str,
+        partial_class: &mut PartialClass,
+        expr: &'a Expression<'a>,
+        output: &mut Vec<Bytecode>
+    ) -> Result<(), CompilerError> {
+        let Expression::MemberAccess {
+            object, field, ..
+        } = expr else {
+            unreachable!("We have already checked for expr being a MemberAccess");
+        };
+
+        self.compile_expression(class_name, partial_class, object.as_ref(), output, false)?;
+
+        let Some(annotation) = object.get_type() else {
+            unreachable!("Expression should be annotated by this point");
+        };
+
+        let name = match annotation  {
+            Either::Left(Type::Object(name, _)) => name,
+            Either::Right(()) => {
+                Text::Borrowed(class_name)
+            }
+            _ => todo!("report error about method output not being an object"),
+        };
+
+        let class = match self.classes.get(name.as_str()) {
+            Some(class) => class,
+            _ => partial_class,
+        };
+        let (class_name, parent_name) = if class.contains_field(field.to_string().as_str()) {
+            (class.get_class_name(), "")
+        } else {
+            let Some((name, parent)) = class.find_class_with_field(&self.classes, field.to_string().as_str()) else {
+                todo!("report error about being unable to find field")
+            };
+
+            (name, parent)
+        };
+        let (offset, type_tag) = if parent_name != "" {
+            let class = self.classes.get(parent_name).unwrap();
+            class.get_member_offset(field.to_string().as_str())
+        } else {
+            class.get_member_offset(field.to_string().as_str())
+        };
+        let class_name = class_name.to_string();
+        let parent_name = parent_name.to_string();
+
+        let class_name = partial_class.add_string(class_name);
+        let parent_name = partial_class.add_string(parent_name);
+
+        output.push(Bytecode::GetField(class_name, parent_name, offset, type_tag));
+
+        Ok(())
+    }
+
+    fn compile_member_set<'a>(
+        &mut self,
+        class_name: &str,
+        partial_class: &mut PartialClass,
+        expr: &'a Expression<'a>,
+        output: &mut Vec<Bytecode>
+    ) -> Result<Option<Box<dyn Fn(&mut Vec<Bytecode>) + 'a>>, CompilerError> {
+        let Expression::MemberAccess {
+            object, field, ..
+        } = expr else {
+            unreachable!("We have already checked for expr being a MemberAccess");
+        };
+
+        self.compile_expression(class_name, partial_class, object.as_ref(), output, false)?;
+
+        let Some(annotation) = object.get_type() else {
+            unreachable!("Expression should be annotated by this point");
+        };
+
+        let name = match annotation  {
+            Either::Left(Type::Object(name, _)) => name,
+            Either::Right(()) => {
+                Text::Borrowed(class_name)
+            }
+            _ => todo!("report error about method output not being an object"),
+        };
+
+        let class = self.classes.get(name.as_str()).unwrap_or(partial_class);
+        let (class_name, parent_name) = if class.contains_field(field.to_string().as_str()) {
+            (class.get_class_name(), "")
+        } else {
+            let Some((name, parent)) = class.find_class_with_field(&self.classes, field.to_string().as_str()) else {
+                todo!("report error about being unable to find field")
+            };
+
+            (name, parent)
+        };
+        let (offset, type_tag) = if parent_name != "" {
+            let class = self.classes.get(parent_name).unwrap();
+            class.get_member_offset(field.to_string().as_str())
+        } else {
+            class.get_member_offset(field.to_string().as_str())
+        };
+        let class_name = class_name.to_string();
+        let parent_name = parent_name.to_string();
+
+        let class_name = partial_class.add_string(class_name);
+        let parent_name = partial_class.add_string(parent_name);
+
+        
+
+        Ok(Some(Box::new(move |output: &mut Vec<Bytecode>| {
+            output.push(Bytecode::SetField(class_name, parent_name, offset, type_tag));
+        })))
     }
 }

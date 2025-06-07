@@ -867,6 +867,9 @@ impl TypeChecker {
                 let lhs = self.get_type(left.as_mut())?;
                 self.annotate_expr(&lhs, right.as_mut())?;
             }
+            (ty, Expression::MemberAccess { annotation, ..}) => {
+                *annotation = Some(ty.clone());
+            }
             _ => {}
         }
         Ok(())

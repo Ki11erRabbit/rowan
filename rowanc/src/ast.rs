@@ -526,6 +526,7 @@ pub enum Expression<'a> {
         object: Box<Expression<'a>>,
         field: PathName<'a>,
         span: Span,
+        annotation: Option<Type<'a>>,
     },
     Closure {
         params: Vec<ClosureParameter<'a>>,
@@ -601,7 +602,8 @@ impl Expression<'_> {
         Expression::MemberAccess {
             object,
             field,
-            span
+            span,
+            annotation: None,
         }
     }
 
@@ -709,42 +711,48 @@ impl Expression<'_> {
         }
     }
 
-    pub fn get_type(&self) -> Option<Type> {
+    pub fn get_type(&self) -> Option<Either<Type, ()>> {
         match self {
-            Expression::As {typ, ..} => Some(typ.clone()),
-            Expression::Into {typ, ..} => Some(typ.clone()),
+            Expression::As {typ, ..} => Some(Either::Left(typ.clone())),
+            Expression::Into {typ, ..} => Some(Either::Left(typ.clone())),
             Expression::Literal(Literal::Constant(Constant::Bool(_, _))) => {
-                Some(Type::U8)
+                Some(Either::Left(Type::U8))
             }
             Expression::Literal(Literal::Constant(Constant::Character(_, _))) => {
-                Some(Type::U32)
+                Some(Either::Left(Type::U32))
             }
             Expression::Literal(Literal::Constant(Constant::Integer(_, ty, _))) => {
-                ty.clone()
+                ty.clone().map(|t| Either::Left(t))
             }
             Expression::Literal(Literal::Constant(Constant::Float(_, ty, _))) => {
-                ty.clone()
+                ty.clone().map(|t| Either::Left(t))
             }
             Expression::Literal(Literal::Constant(Constant::String(_, _))) => {
-                Some(Type::Str)
+                Some(Either::Left(Type::Str))
             }
             Expression::Literal(Literal::Void(_)) => {
-                Some(Type::Void)
+                Some(Either::Left(Type::Void))
             }
             Expression::Literal(Literal::Tuple(_, ty, _)) => {
-                ty.clone()
+                ty.clone().map(|t| Either::Left(t))
             }
             Expression::Literal(Literal::Array(_, ty, _)) => {
-                ty.clone()
+                ty.clone().map(|t| Either::Left(t))
             }
             Expression::Variable(_, ty, _) => {
-                ty.clone()
+                ty.clone().map(|t| Either::Left(t))
             }
             Expression::BinaryOperation { operator: BinaryOperator::Add, left,  .. } => {
                 left.get_type()
             }
             Expression::Call {annotation, ..} => {
-                annotation.clone()
+                annotation.clone().map(|t| Either::Left(t))
+            }
+            Expression::This(_) => Some(Either::Right(())),
+            Expression::MemberAccess {
+                annotation, ..
+            } => {
+                annotation.clone().map(|t| Either::Left(t))
             }
             x => todo!("Expression::get_type {:?}", x),
         }

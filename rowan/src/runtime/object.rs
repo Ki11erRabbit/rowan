@@ -85,10 +85,10 @@ impl Object {
         let mut pointer_offset = 0;
         for field in class.members.iter() {
             pointer_offset += field.get_size();
-            offset -= 1;
             if offset == 0 {
                 break;
             }
+            offset -= 1;
         }
 
         if offset != 0 {
@@ -106,10 +106,10 @@ impl Object {
         let mut pointer_offset = 0;
         for field in class.members.iter() {
             pointer_offset += field.get_size();
-            offset -= 1;
             if offset == 0 {
                 break;
             }
+            offset -= 1;
         }
         
         if offset != 0 {
