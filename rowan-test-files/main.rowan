@@ -30,10 +30,16 @@ class Main {
     fn do-thing(self) {
         let printer: Printer = new Printer();
         let arr: [u64] = [1, 2 ,3, 4];
-        arr[5];
-        printer.println-int(arr[5]);
+        printer.println-int(arr[0]);
 
         let y: u64 = 11;
         printer.println-int(y);
+        let j: u64 = 9999999999999;
+        printer.println-int(j);
+    }
+
+    @Override
+    fn tick(self, delta: f64) {
+        self.t = 1;
     }
 }

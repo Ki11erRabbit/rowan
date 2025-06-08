@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{Symbol, VTableIndex};
+use super::{Context, Symbol, VTableIndex};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum TypeTag {

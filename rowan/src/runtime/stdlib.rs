@@ -390,8 +390,8 @@ macro_rules! array_create_init {
                     handle_alloc_error(layout);
                 }
                 unsafe {
-                    for i in 0..length {
-                        std::ptr::write(pointer.add(i as usize), 0);
+                    for i in 0..(length as usize * std::mem::size_of::<$ty>()) {
+                        std::ptr::write(pointer.add(i), 0);
                     }
                 }
                 unsafe { object.set::<u64>(8, pointer as u64) };
@@ -419,7 +419,10 @@ macro_rules! array_create_get {
                     context.set_exception(exception);
                     return 0 as $ty;
                 }
-                unsafe { *pointer.add(index as usize) }
+                
+                let index = index as usize;
+                
+                unsafe { *pointer.add(index) }
             }
         }
     };

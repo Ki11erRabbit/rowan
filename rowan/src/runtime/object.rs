@@ -20,13 +20,12 @@ impl Object {
         let data_layout = Layout::array::<u8>(data_size).expect("Wrong layout or too big");
 
         let (whole_layout, _) = layout.extend(data_layout).expect("Wrong layout or too big");
-
         let pointer = unsafe { alloc(whole_layout) };
 
         if pointer.is_null() {
             eprintln!("Out of memory in object allocate");
             handle_alloc_error(whole_layout);
-        }
+        }        
         let pointer = pointer as *mut Object;
         unsafe {
             std::ptr::write(pointer, Object {
@@ -62,7 +61,7 @@ impl Object {
     }
 
     pub unsafe fn get<T: Sized>(&self, offset: usize) -> T {
-        let mut pointer = self as *const Self;
+        let mut pointer = self as *const Self as *const u8;
         unsafe {
             pointer = pointer.add(size_of::<Object>());
             pointer = pointer.add(offset);
@@ -71,7 +70,7 @@ impl Object {
     }
     
     pub unsafe fn set<T: Sized>(&mut self, offset: usize, value: T) {
-        let mut pointer = self as *mut Self;
+        let mut pointer = self as *mut Self as *mut u8;
         unsafe {
             pointer = pointer.add(size_of::<Object>());
             pointer = pointer.add(offset);

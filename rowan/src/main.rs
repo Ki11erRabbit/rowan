@@ -2,6 +2,7 @@ use std::{collections::HashMap, io::Read};
 
 use rowan_shared::classfile::ClassFile;
 use runtime::{stdlib, Context};
+use crate::runtime::Runtime;
 
 mod runtime;
 
@@ -16,7 +17,6 @@ fn main() {
     let mut output = Vec::new();
     file.read_to_end(&mut output).unwrap();
 
-    let mut context = Context::new();
     let vm_classes = vec![
         stdlib::generate_object_class(),
         stdlib::generate_array8_class(),
@@ -46,22 +46,27 @@ fn main() {
     let classes = vec![class];
 
     let (main_symbol, ready_symbol) = Context::link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map);
-
+    
     Context::finish_linking_classes(pre_class_table);
 
-    let main_object_ref = Context::new_object(main_symbol);
+    let mut runtime = Runtime::new(1);
+    runtime.spawn_thread();
+    
+    runtime.main_loop(main_symbol);
+
+    /*let main_object_ref = Context::new_object(main_symbol);
     let Some(main_object) = context.get_object(main_object_ref) else {
         unreachable!("should have succeeded");
     };
     let main_object = unsafe { main_object.as_ref().unwrap() };
 
-    /*println!("[Main] {}", context.get_class_name(12));
+    println!("[Main] {}", context.get_class_name(12));
 
     let class = context.get_class(main_object.class);
-    println!("[Main] Class: {:?}", unsafe {class.read()});*/
+    println!("[Main] Class: {:?}", unsafe {class.read()});
 
     // println!("{ready_symbol}");
     let method = context.get_method(main_object.class, 1, None, ready_symbol);
     let method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64)>(method) };
-    method(&mut context, main_object_ref);
+    method(&mut context, main_object_ref);*/
 }

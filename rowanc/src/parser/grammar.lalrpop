@@ -402,6 +402,8 @@ BaseType: Type<'a> = {
     "i64" => Type::I64,
     "char" => Type::Char,
     "str" => Type::Str,
+    "f32" => Type::F32,
+    "f64" => Type::F64,
 };
 
 ObjectType: Type<'a> ={

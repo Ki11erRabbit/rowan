@@ -1,20 +1,20 @@
 use std::{collections::HashMap, sync::{LazyLock, RwLock}};
 use std::cell::RefCell;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use class::{Class, MemberInfo, SignalInfo};
-use cranelift_jit::{JITModule, JITBuilder};
-use cranelift::{codegen, prelude::Signature};
-use cranelift::prelude::Configurable;
+use class::Class;
+
+use cranelift::prelude::Signature;
 use jit::{JITCompiler, JITController};
 use linker::TableEntry;
 use object::Object;
-use rowan_shared::bytecode::linked::Bytecode::NewObject;
-use rowan_shared::classfile::{BytecodeEntry, BytecodeIndex, ClassFile, Member, Signal, SignatureIndex, VTableEntry};
-use stdlib::{VMClass, VMMember, VMMethod, VMSignal, VMVTable};
-use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{self, SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}};
+use rowan_shared::classfile::ClassFile;
+use stdlib::VMClass;
+use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{FunctionValue, VTables}};
 use std::borrow::BorrowMut;
-
+use std::num::NonZeroU64;
+use std::sync::mpsc::{Receiver, Sender, TryRecvError};
+use crate::runtime::runtime::{AttachObject, Command};
 
 mod tables;
 pub mod class;
@@ -22,6 +22,10 @@ pub mod object;
 pub mod stdlib;
 pub mod linker;
 pub mod jit;
+mod runtime;
+
+pub use runtime::Runtime;
+
 
 pub type Symbol = usize;
 
@@ -170,18 +174,69 @@ pub struct Context {
     /// This gets appended as functions get called, popped as functions return
     function_backtrace: Vec<String>,
     /// A map between function_backtraces and all currently registered exceptions
-    registered_exceptions: HashMap<String, Vec<Symbol>>
+    registered_exceptions: HashMap<String, Vec<Symbol>>,
+    receiver: Receiver<Command>,
+    semaphore: Arc<Mutex<usize>>,
+    attachment_sender: Sender<AttachObject>,
 }
 
 impl Context {
-    pub fn new() -> Self {
+    pub fn new(
+        receiver: Receiver<Command>, 
+        semaphore: Arc<Mutex<usize>>,
+        attachment_sender: Sender<AttachObject>
+    ) -> Self {
         Context {
             current_exception: RefCell::new(0),
             function_backtrace: Vec::new(),
-            registered_exceptions: HashMap::new()
+            registered_exceptions: HashMap::new(),
+            receiver,
+            semaphore,
+            attachment_sender
         }
     }
 
+    pub fn main_loop(&mut self) {
+        loop {
+            
+            let command = match self.receiver.try_recv() {
+                Ok(command) => command,
+                Err(TryRecvError::Empty) => {
+                    
+                    let Ok(mut guard) = self.semaphore.lock() else {
+                        panic!("semaphore poisoned");
+                    };
+
+                    *guard += 1;
+                    
+                    let Ok(command) = self.receiver.recv() else {
+                        return;
+                    };
+                    command
+                }
+                Err(TryRecvError::Disconnected) => return,
+            };
+            
+            match command {
+                Command::Tick(object, delta) => {
+                    let object_pointer = self.get_object(object)
+                        .expect("main loop provided bad reference");
+                    let object_ref = unsafe { object_pointer.as_ref().unwrap() };
+                    let tick_method = self.get_method(object_ref.class, 1, None, 2);
+                    let tick_method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64, f64)>(tick_method) };
+                    tick_method(self, object, delta);
+                }
+                Command::Ready(object) => {
+                    let object_pointer = self.get_object(object)
+                        .expect("main loop provided bad reference");
+                    let object_ref = unsafe { object_pointer.as_ref().unwrap() };
+                    let ready_method = self.get_method(object_ref.class, 1, None, 3);
+                    let ready_method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64)>(ready_method) };
+                    ready_method(self, object);
+                }
+            }
+        }
+    }
     pub fn set_exception(&self, exception: Reference) {
         *self.current_exception.borrow_mut() = exception;
     }
@@ -350,6 +405,13 @@ impl Context {
             return None;
         }
         Some(object_table[reference])
+    }
+    
+    pub fn get_object_safe(reference: NonZeroU64) -> *mut Object {
+        let Ok(object_table) = OBJECT_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        object_table[reference.get()]
     }
 
     pub fn get_method(
