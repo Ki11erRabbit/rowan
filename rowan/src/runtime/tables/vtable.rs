@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
 use cranelift::prelude::Signature;
@@ -63,9 +64,20 @@ impl Function {
     }
 }
 
+impl Debug for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        f.debug_struct("Function")
+        .field("name", &self.name)
+        .field("value", &self.value)
+        .field("responds_to", &self.responds_to)
+        .field("arguments", &self.arguments)
+        .field("return_type", &self.return_type)
+        .finish()
+    }
+}
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum FunctionValue {
     Builtin(*const (), Signature),
     Bytecode(Vec<Bytecode>, FuncId, Signature),
@@ -83,6 +95,33 @@ impl FunctionValue {
     }
 }
 
+impl Debug for FunctionValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        match self {
+            FunctionValue::Builtin(ptr, signature) => {
+                f.debug_struct("Builtin")
+                .field("ptr", ptr)
+                    .finish()
+            }
+            FunctionValue::Blank => f.debug_struct("Blank").finish(),
+            FunctionValue::Compiled(ptr, signature) => {
+                f.debug_struct("Compiled")
+                .field("ptr", ptr)
+                .finish()
+            }
+            FunctionValue::Native(ptr, signature) => {
+                f.debug_struct("Native")
+                .field("ptr", ptr)
+                .finish()
+            }
+            FunctionValue::Bytecode(bytecode,_,  _) => {
+                f.debug_struct("Bytecode")
+                .field("bytecode", bytecode)
+                .finish()
+            }
+        }
+    }
+}
 
 
 unsafe impl Send for FunctionValue {}

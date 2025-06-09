@@ -658,7 +658,7 @@ impl Compiler {
         self.current_block = 0;
         self.compile_block(class_name, partial_class, &body, &mut output)?;
         println!("Bytecode output: {:#?}", output);
-        
+
         Ok(output)
     }
 
@@ -1075,7 +1075,7 @@ impl Compiler {
 
 
                 let name = name.segments.last().unwrap();
-                
+
                 if name.as_str() == "downcast" {
                     assert_eq!(type_args.len(), 1, "Downcast only takes one type argument");
                     let ty = match type_args.first().unwrap() {
@@ -1093,13 +1093,13 @@ impl Compiler {
                         Type::Object(name, _) => name.clone(),
                         _ => unreachable!("downcast can only take type arguments that are Objects or Arrays, not Tuples or primitives like integers and floats"),
                     };
-                    
+
                     let class_symbol = partial_class.add_string(ty.as_str());
-                    
+
                     output.push(Bytecode::LoadSymbol(class_symbol));
                     output.push(Bytecode::StoreArgument(argument_pos));
                 }
-                
+
                 if let Some(class) = self.classes.get(&ty.to_string()) {
                     //println!("{:#?}", class);
                     let vtable = class.get_vtable(name).expect("add proper handling of missing vtable");
@@ -1327,7 +1327,7 @@ impl Compiler {
         let class_name = partial_class.add_string(class_name);
         let parent_name = partial_class.add_string(parent_name);
 
-        
+
 
         Ok(Some(Box::new(move |output: &mut Vec<Bytecode>| {
             output.push(Bytecode::SetField(class_name, parent_name, offset, type_tag));

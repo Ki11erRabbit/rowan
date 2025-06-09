@@ -408,7 +408,7 @@ pub fn link_class_files(
                         .zip(derived_functions.into_iter())
                         .enumerate()
                         .map(|(i, (base, derived))| {
-                            let (_base_name_symbol, base_responds_to, base_signature, _, _) = base;
+                            let (_base_name_symbol, base_responds_to, base_signature, _, base_value) = base;
                             let (derived_name_symbol, derived_responds_to, derived_signature, derived_bytecode, _) = derived;
 
                             let SymbolEntry::StringRef(name_index) = &symbol_table[*derived_name_symbol] else {
@@ -419,25 +419,20 @@ pub fn link_class_files(
                             let cranelift_sig = jit_controller.create_signature(&base_signature[1..], &base_signature[0]);
                             let func_id = jit_controller.declare_function(name, &cranelift_sig).expect("Failed to declare function");
 
-
                             let value = match derived_bytecode {
                                 MethodLocation::Bytecode(bytecode) => {
                                     let bytecode = link_bytecode(class, &bytecode, string_map, class_map, string_table, symbol_table);
                                     let value = FunctionValue::Bytecode(bytecode, func_id, cranelift_sig);
-                                    value
+                                    Arc::new(RwLock::new(value))
                                 }
                                 MethodLocation::Native(_string) => {
                                     todo!("load shared object file and pull the function named by `string` from it")
                                 }
                                 MethodLocation::Blank => {
-                                    let value = FunctionValue::Bytecode(Vec::new(), func_id, cranelift_sig);
-                                    value
+                                    base_value.clone()
                                 }
                             };
 
-
-
-                            let value = Arc::new(RwLock::new(value));
                             functions_mapper.insert(*derived_name_symbol, i);
 
                             (*derived_name_symbol, *base_responds_to, derived_signature.clone(), MethodLocation::Blank, value)
@@ -1311,7 +1306,6 @@ pub fn link_vm_classes(
             };
 
             class_table[*class_index] = TableEntry::Entry(class);
-            
         }
         if class_parts_to_try_again.len() == 0 {
             break;
