@@ -19,15 +19,24 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         VTableEntry::default(),
         VTableEntry::default(),
         VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
     ];
     let names = vec![
         "tick",
         "ready",
-        "upcast",
+        "downcast",
         "get-child",
         "remove-child",
+        "add-child",
+        "add-child-at",
+        "child-died",
     ];
     let responds_to = vec![
+        "",
+        "",
+        "",
         "",
         "",
         "",
@@ -40,6 +49,9 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object, TypeTag::U64]),
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::Object]),
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::Object]),
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::Object, TypeTag::U64]),
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::U64, TypeTag::Object]),
     ];
     let vtable = VTable::new(functions);
     object.add_vtable("Object", vtable, &names, &responds_to, &signatures);
@@ -645,7 +657,8 @@ impl Compiler {
         //output.push(Bytecode::Goto(1));
         self.current_block = 0;
         self.compile_block(class_name, partial_class, &body, &mut output)?;
-
+        println!("Bytecode output: {:#?}", output);
+        
         Ok(output)
     }
 
@@ -1019,7 +1032,7 @@ impl Compiler {
             Expression::Parenthesized(expr, _) => {
                 self.compile_expression(class_name, partial_class, expr.as_ref(), output, lhs)?;
             }
-            Expression::Call { name, args, .. } => {
+            Expression::Call { name, type_args, args, .. } => {
                 let (name, ty, var) = match name.as_ref() {
                     Expression::MemberAccess { object, field, span, .. } => {
                         match object.as_ref() {
@@ -1062,6 +1075,31 @@ impl Compiler {
 
 
                 let name = name.segments.last().unwrap();
+                
+                if name.as_str() == "downcast" {
+                    assert_eq!(type_args.len(), 1, "Downcast only takes one type argument");
+                    let ty = match type_args.first().unwrap() {
+                        Type::Array(ty, _) => {
+                            match ty.as_ref() {
+                                Type::U8 | Type::I8 => Text::Borrowed("Array8"),
+                                Type::U16 | Type::I16 => Text::Borrowed("Array16"),
+                                Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
+                                Type::U64 | Type::I64 => Text::Borrowed("Array64"),
+                                Type::Object(_, _) | Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                                Type::F32 => Text::Borrowed("Arrayf32"),
+                                Type::F64 => Text::Borrowed("Arrayf64"),
+                            }
+                        }
+                        Type::Object(name, _) => name.clone(),
+                        _ => unreachable!("downcast can only take type arguments that are Objects or Arrays, not Tuples or primitives like integers and floats"),
+                    };
+                    
+                    let class_symbol = partial_class.add_string(ty.as_str());
+                    
+                    output.push(Bytecode::LoadSymbol(class_symbol));
+                    output.push(Bytecode::StoreArgument(argument_pos));
+                }
+                
                 if let Some(class) = self.classes.get(&ty.to_string()) {
                     //println!("{:#?}", class);
                     let vtable = class.get_vtable(name).expect("add proper handling of missing vtable");

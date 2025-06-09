@@ -25,6 +25,8 @@ class Main {
             printer.println-int(arr[counter]);
             counter = counter + 1;
         }
+
+        self.add-child(printer);
     }
 
     fn do-thing(self) {
@@ -41,5 +43,9 @@ class Main {
     @Override
     fn tick(self, delta: f64) {
         self.t = 1;
+        let index: u64 = 0;
+        let object: Object = self.get-child(index);
+        let printer: Printer = object.downcast::[Printer]();
+        printer.println-int(self.t);
     }
 }

@@ -4,22 +4,29 @@ use either::Either;
 
 use crate::ast::{BinaryOperator, Literal, Span, Type};
 
-fn create_stdlib<'a>() -> HashMap<String, HashMap<String, ClassAttribute>> {
+fn create_stdlib<'a>() -> HashMap<String, (Vec<String>, HashMap<String, ClassAttribute>)> {
     let mut info = HashMap::new();
     let mut object_attributes = HashMap::new();
     object_attributes.insert("tick".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::F64], Box::new(TypeCheckerType::Void))));
+    object_attributes.insert("ready".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::Void))));
+    object_attributes.insert("downcast".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::Object(String::from("Object"))))));
+    object_attributes.insert("get-child".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64], Box::new(TypeCheckerType::Object(String::from("Object"))))));
+    object_attributes.insert("remove-child".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::Object(String::from("Object"))], Box::new(TypeCheckerType::Void))));
+    object_attributes.insert("add-child".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::Object(String::from("Object"))], Box::new(TypeCheckerType::Void))));
+    object_attributes.insert("add-child-at".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::Object(String::from("Object")), TypeCheckerType::U64], Box::new(TypeCheckerType::Void))));
+    object_attributes.insert("child-died".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64, TypeCheckerType::Object(String::from("Object"))], Box::new(TypeCheckerType::Void))));
 
-    info.insert("Object".to_string(), object_attributes);
+    info.insert("Object".to_string(), (Vec::new(), object_attributes));
 
     let mut printer_attributes = HashMap::new();
     printer_attributes.insert("println-int".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64], Box::new(TypeCheckerType::Void))));
 
-    info.insert("Printer".to_string(), printer_attributes);
+    info.insert("Printer".to_string(), (vec![String::from("Object")], printer_attributes));
 
     let mut array_attributes = HashMap::new();
     array_attributes.insert("len".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::U64))));
 
-    info.insert("Array".to_string(), array_attributes);
+    info.insert("Array".to_string(), (vec![String::from("Object")], array_attributes));
     
     info
 }
@@ -33,7 +40,7 @@ pub enum TypeCheckerError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone)]
 pub enum TypeCheckerType {
     Void,
     U8,
@@ -133,7 +140,7 @@ impl<'a, 'b> Into<Type<'a>> for &'b TypeCheckerType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum ClassAttribute {
     Member(TypeCheckerType),
     Method(TypeCheckerType),
@@ -160,7 +167,7 @@ impl Frame {
 }
 
 pub struct TypeChecker {
-    class_information: HashMap<String, HashMap<String, ClassAttribute>>,
+    class_information: HashMap<String, (Vec<String>, HashMap<String, ClassAttribute>)>,
     scopes: Vec<Frame>,
     current_class: String,
 }
@@ -201,9 +208,58 @@ impl TypeChecker {
 
     fn get_attribute<S: AsRef<str>>(&self, class: S, attribute: S) -> Option<&ClassAttribute> {
         self.class_information.get(class.as_ref()).and_then(|attributes| {
-            let out = attributes.get(attribute.as_ref());
+            let out = attributes.1.get(attribute.as_ref());
             out
         })
+    }
+    
+    fn compare_types(&self, left: &TypeCheckerType, right: &TypeCheckerType) -> bool {
+        match (left, right) {
+            (TypeCheckerType::Void, TypeCheckerType::Void) => true,
+            (TypeCheckerType::U8, TypeCheckerType::U8) => true,
+            (TypeCheckerType::U16, TypeCheckerType::U16) => true,
+            (TypeCheckerType::U32, TypeCheckerType::U32) => true,
+            (TypeCheckerType::U64, TypeCheckerType::U64) => true,
+            (TypeCheckerType::I8, TypeCheckerType::I8) => true,
+            (TypeCheckerType::I16, TypeCheckerType::I16) => true,
+            (TypeCheckerType::I32, TypeCheckerType::I32) => true,
+            (TypeCheckerType::I64, TypeCheckerType::I64) => true,
+            (TypeCheckerType::F32, TypeCheckerType::F32) => true,
+            (TypeCheckerType::F64, TypeCheckerType::F64) => true,
+            (TypeCheckerType::Char, TypeCheckerType::Char) => true,
+            (TypeCheckerType::Str, TypeCheckerType::Str) => true,
+            (TypeCheckerType::Array(ty1), TypeCheckerType::Array(ty2)) => {
+                self.compare_types(ty1, ty2)
+            }
+            (TypeCheckerType::Object(name1), TypeCheckerType::Object(name2)) => {
+                if name1 == name2 {
+                    true
+                } else {
+                    self.compare_object(name1, name2)
+                }
+            }
+            _ => false,
+        }
+    }
+    
+    fn compare_object(&self, left: &str, right: &str) -> bool {
+        if left == "object" || right == "object" {
+            true
+        } else if left == right {
+            true
+        } else {
+            for right_parents in self.class_information.get(right).unwrap().0.iter() {
+                if self.compare_object(left, right_parents) {
+                    return true;
+                }
+            }
+            for left_parent in self.class_information.get(left).unwrap().0.iter() {
+                if self.compare_object(right, left_parent) {
+                    return true;
+                }
+            }
+            false
+        }
     }
 
     pub fn check<'a>(&mut self, files: Vec<crate::ast::File<'a>>) -> Result<Vec<crate::ast::File<'a>>, TypeCheckerError> {
@@ -233,7 +289,7 @@ impl TypeChecker {
     }
 
     fn check_class<'a>(&mut self, class: &mut crate::ast::Class<'a>) -> Result<(), TypeCheckerError> {
-        let crate::ast::Class { name, members, methods, .. } = class;
+        let crate::ast::Class { name, members, methods, parents, .. } = class;
         let class_name = name;
         let mut class_attributes = HashMap::new();
         for member in members.iter() {
@@ -257,8 +313,10 @@ impl TypeChecker {
             let ty = TypeCheckerType::Function(argument_types, Box::new(TypeCheckerType::from(return_type.clone())));
             class_attributes.insert(name.to_string(), ClassAttribute::Method(ty));
         }
+        
+        let parents = parents.iter().map(|dec| dec.name.to_string()).collect();
 
-        self.class_information.insert(class_name.to_string(), class_attributes);
+        self.class_information.insert(class_name.to_string(), (parents, class_attributes));
 
         self.current_class = class_name.to_string();
         for method in methods.iter_mut() {
@@ -352,7 +410,7 @@ impl TypeChecker {
                 self.check_if_expr(return_type, expr)?;
             }
             Expression::Return(None, _) => {
-                if *return_type != TypeCheckerType::Void {
+                if !self.compare_types(return_type, &TypeCheckerType::Void) {
                     todo!("report type mismatch returning void when non-void")
                 }
             }
@@ -493,11 +551,11 @@ impl TypeChecker {
                     self.check_expr(return_type, arg)?;
                     let arg_ty = self.get_type(arg)?;
                     match &method {
-                        Type::Function(arg_types, return_type, _) => {
+                        Type::Function(arg_types, ..) => {
                             if i < arg_types.len() {
                                 let expected_ty = &arg_types[i];
-                                if arg_ty != *expected_ty {
-                                    todo!("report type mismatch for argument {} in method call", i);
+                                if !self.compare_types(&TypeCheckerType::from(&arg_ty), &TypeCheckerType::from(expected_ty)) {
+                                    todo!("report type mismatch for argument {} in method call {:?} ({:?}, {:?})", i, name, arg_ty, expected_ty);
                                 }
                             } else {
                                 todo!("report too many arguments in method call");
@@ -679,8 +737,20 @@ impl TypeChecker {
                                         Ok(ty.clone().into())
                                     }
                                     _ => {
-                                        eprintln!("Failed to find attribute {} in class {}", field.to_string(), name);
-                                        todo!("report unknown member access")
+                                        // TODO: change this to look at base classes
+                                        match self.get_attribute(String::from("Object"), field.to_string()) {
+                                            Some(ClassAttribute::Member(ty)) => {
+                                                Ok(ty.clone().into())
+                                            }
+                                            Some(ClassAttribute::Method(ty)) => {
+                                                Ok(ty.clone().into())
+                                            }
+                                            _ => {
+                                                eprintln!("Failed to find attribute {} in class {}", field.to_string(), name);
+                                                todo!("report unknown member access")
+                                            }
+                                        }
+                                        
                                     }
                                 }
                             }
@@ -821,7 +891,7 @@ impl TypeChecker {
             }
             (ty, Expression::Variable(var, annotation, _)) => {
                 if let Some(var_ty) = self.lookup_var(var) {
-                    if *var_ty == TypeCheckerType::from(ty) {
+                    if self.compare_types(var_ty, &TypeCheckerType::from(ty)) {
                         *annotation = Some(ty.clone());
                     } else {
                         todo!("report type mismatch");
@@ -855,7 +925,7 @@ impl TypeChecker {
 
                 match access_ty {
                     Type::Function(_, ret_ty, _) => {
-                        if *ty != *ret_ty {
+                        if !self.compare_types(&TypeCheckerType::from(ty), &TypeCheckerType::from(ret_ty.as_ref())) {
                             todo!("report type mismatch")
                         }
                     }

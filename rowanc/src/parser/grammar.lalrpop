@@ -522,18 +522,9 @@ TermExpr: Expression<'a> = {
     }
 }
 
-
-
-
-IndexExpr: Expression<'a> = {
+MemberExpr: Expression<'a> = {
     <term:TermExpr> => term,
-    <start: @L> <lhs:IndexExpr> "[" <expr:Expr> "]" <end: @R> => {
-        let lhs = Box::new(lhs);
-        let expr = Box::new(expr);
-        let span = Span::new(start, end);
-        Expression::new_binary_operation(BinaryOperator::Index, lhs, expr, span)
-    },
-    <start: @L> <obj:IndexExpr> "." <path:Path> <name:Identifier> <end: @R> => {
+    <start: @L> <obj:MemberExpr> "." <path:Path> <name:Identifier> <end: @R> => {
         let obj = Box::new(obj);
         let mut p = path;
         p.segments.push(name);
@@ -553,6 +544,63 @@ IndexExpr: Expression<'a> = {
         Expression::New(id, Some(array_size), Span::new(start, end))
     },
     <call:Call> => call,
+};
+
+
+IndexExpr: Expression<'a> = {
+    <term:MemberExpr> => term,
+    <start: @L> <lhs:IndexExpr> "[" <expr:Expr> "]" <end: @R> => {
+        let lhs = Box::new(lhs);
+        let expr = Box::new(expr);
+        let span = Span::new(start, end);
+        Expression::new_binary_operation(BinaryOperator::Index, lhs, expr, span)
+    },
+};
+
+
+Call: Expression<'a> = {
+    <start: @L> <start_inner: @L> <obj:MemberExpr> "." <path:Path> <name:Identifier> <end_inner: @R> <args:ArgList> <end: @R> => {
+        let obj = Box::new(obj);
+        let mut p = path;
+        p.segments.push(name);
+        p.span.end = end;
+        let callee = Expression::new_member_access(obj, p, Span::new(start_inner, end_inner));
+
+        Expression::new_call(Box::new(callee), Vec::new(), args, Span::new(start, end))
+    },
+    <start: @L> <start_inner: @L> <obj:MemberExpr> "." <path:Path> <name:Identifier> <end_inner: @R> <typeargs:TypeArgList> <args:ArgList> <end: @R> => {
+        let obj = Box::new(obj);
+        let mut p = path;
+        p.segments.push(name);
+        p.span.end = end;
+        let callee = Expression::new_member_access(obj, p, Span::new(start_inner, end_inner));
+
+        Expression::new_call(Box::new(callee), typeargs, args, Span::new(start, end))
+    },
+    //<start: @L> <callee:CallExpr> <typeargs:TypeArgList> <args:ArgList> <end: @R> => Expression::new_call(Box::new(callee), typeargs, args, Span::new(start, end)),
+};
+
+
+ArgList: Vec<Expression<'a>> = {
+    "(" <arg:Expr> <args:("," <Expr>)*> ")" => {
+        let mut v = vec![arg];
+        for a in args.into_iter() {
+            v.push(a);
+        }
+        v
+    },
+    "(" ")" => Vec::new(),
+};
+
+TypeArgList: Vec<Type<'a>> = {
+    "::" "[" <arg:Type> <args:("," <Type>)*> "]" => {
+        let mut v = vec![arg];
+        for a in args.into_iter() {
+            v.push(a);
+        }
+        v
+    },
+    "::" "[" "]" => Vec::new(),
 };
 
 FactorExpr: Expression<'a> = {
@@ -831,34 +879,6 @@ pub ClosureParam: ClosureParameter<'a> = {
 };
 
 
-Call: Expression<'a> = {
-    <start: @L> <callee:IndexExpr> <args:ArgList> <end: @R> => {
-        Expression::new_call(Box::new(callee), Vec::new(), args, Span::new(start, end))
-    },
-    //<start: @L> <callee:CallExpr> <typeargs:TypeArgList> <args:ArgList> <end: @R> => Expression::new_call(Box::new(callee), typeargs, args, Span::new(start, end)),
-};
 
-
-ArgList: Vec<Expression<'a>> = {
-    "(" <arg:Expr> <args:("," <Expr>)*> ")" => {
-        let mut v = vec![arg];
-        for a in args.into_iter() {
-            v.push(a);
-        }
-        v
-    },
-    "(" ")" => Vec::new(),
-};
-
-TypeArgList: Vec<Type<'a>> = {
-    "::" "[" <arg:Type> <args:("," <Type>)*> "]" => {
-        let mut v = vec![arg];
-        for a in args.into_iter() {
-            v.push(a);
-        }
-        v
-    },
-    "::" "[" "]" => Vec::new(),
-};
 
 
