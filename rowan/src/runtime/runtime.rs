@@ -3,17 +3,20 @@ use std::num::{NonZeroU64, NonZeroUsize};
 use std::sync::{mpsc, Arc, LazyLock, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
-use crossbeam_deque::Injector;
+use crossbeam_deque::{Injector, Steal};
 use crate::runtime::{Context, Reference, Symbol};
 
 pub static MESSAGE_QUEUE: LazyLock<Injector<Message>> = LazyLock::new(|| {
     Injector::<Message>::new()
 });
 
+static TICK_QUEUE: LazyLock<Injector<Tick>> = LazyLock::new(|| {
+    Injector::<Tick>::new()
+});
+
 pub struct Runtime {
-    parent_to_child: HashMap<Reference, HashSet<Reference>>,
-    ref_to_bucket: HashMap<Reference, HashSet<Reference>>,
-    buckets: Vec<HashSet<Reference>>,
+    parent_to_children: HashMap<Reference, HashSet<Reference>>,
+    live_objects: HashSet<Reference>,
     thread_handles: Vec<std::thread::JoinHandle<()>>,
     thread_channels: Vec<Sender<Command>>,
     semaphore: Arc<Mutex<usize>>,
@@ -25,9 +28,8 @@ impl Runtime {
     pub fn new(pool_size: usize) -> Self {        
         let (sender, receiver) = mpsc::channel();
         Self {
-            parent_to_child: HashMap::new(),
-            ref_to_bucket: HashMap::new(),
-            buckets: Vec::with_capacity(pool_size),
+            parent_to_children: HashMap::new(),
+            live_objects: HashSet::new(),
             thread_handles: Vec::with_capacity(pool_size),
             thread_channels: Vec::with_capacity(pool_size),
             semaphore: Arc::new(Mutex::new(0)),
@@ -49,12 +51,11 @@ impl Runtime {
 
         self.thread_handles.push(handle);
         self.thread_channels.push(sender);
-        self.buckets.push(HashSet::new());
     }
 
     pub fn main_loop(&mut self, main_symbol: Symbol) {
         let main_object_ref = Context::new_object(main_symbol);
-        self.buckets[0].insert(main_object_ref);
+        self.live_objects.insert(main_object_ref);
         self.thread_channels[0].send(Command::Ready(main_object_ref)).unwrap();
         
         let mut start_time = Instant::now();
@@ -63,27 +64,57 @@ impl Runtime {
             let duration = current_time.duration_since(start_time);
             let delta = duration.as_secs_f64();
             
-            for (i, bucket) in self.buckets.iter().enumerate() {
-                for object in bucket {
-                    // TODO: ensure that this ticks things bottom up to preserve thread safety
-                    self.thread_channels[i].send(Command::Tick(*object, delta)).unwrap();
-                }
+            // Fill queue with tasks
+            for reference in &self.live_objects {
+                Self::push_tick(*reference, delta);
             }
+            
+            // Notify threads of work to be done
+            for channel in &self.thread_channels {
+                channel.send(Command::Tick).unwrap()
+            }
+            
+            
             // TODO: handle messages sent out
             // TODO: handle object attaching
             
             start_time = current_time;
         }
     }
+    
+    fn push_tick(reference: Reference, delta: f64) {
+        TICK_QUEUE.push(Tick {
+            object: reference,
+            delta
+        })
+    }
+    
+    pub fn pop_tick() -> Steal<Tick> {
+        TICK_QUEUE.steal()
+    }
+}
+
+pub struct Tick {
+    pub object: Reference,
+    pub delta: f64,
 }
 
 pub struct Message {}
 
 pub enum Command {
     /// Tells a context to perform a tick on the object reference with the time since tick
-    Tick(Reference, f64),
+    Tick,
     /// Tells a context to perform a ready on the object reference
     Ready(Reference),
 }
 
-pub struct AttachObject {}
+pub enum AttachObject {
+    Attach {
+        parent: Reference,
+        child: Reference,
+    },
+    Detach {
+        parent: Reference,
+        child: Reference,
+    }
+}

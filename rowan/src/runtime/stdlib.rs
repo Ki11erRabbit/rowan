@@ -204,6 +204,7 @@ extern "C" fn object_remove_child(context: &mut Context, this: Reference, refere
         }
     }
     if let Some(index) = index {
+        context.notify_detachment(this, object.children[index]);
         object.children[index] = 0;
     }// maybe throw some kind of exception?
 }
@@ -215,6 +216,7 @@ extern "C" fn object_add_child(context: &mut Context, this: Reference, child: Re
     let object = unsafe { object.as_mut().unwrap() };
 
     object.children.push(child);
+    context.notify_attachment(this, child);
 
     let Some(child_object) = context.get_object(child) else {
         return 0;
@@ -241,6 +243,7 @@ extern "C" fn object_add_child_at(context: &mut Context, this: Reference, child:
     }
 
     object.children[nth as usize] = child;
+    context.notify_attachment(this, child);
 
     let Some(child_object) = context.get_object(child) else {
         return
@@ -257,8 +260,10 @@ extern "C" fn object_child_died(context: &mut Context, this: Reference, child_in
         return
     };
     let object = unsafe { object.as_mut().unwrap() };
-
+    
+    context.notify_detachment(this, object.children[child_index as usize]);
     object.children[child_index as usize] = 0;
+    
     context.set_exception(exception);
 }
 

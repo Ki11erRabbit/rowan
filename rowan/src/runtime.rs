@@ -14,6 +14,7 @@ use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::S
 use std::borrow::BorrowMut;
 use std::num::NonZeroU64;
 use std::sync::mpsc::{Receiver, Sender, TryRecvError};
+use crossbeam_deque::Steal;
 use crate::runtime::runtime::{AttachObject, Command};
 
 mod tables;
@@ -25,7 +26,7 @@ pub mod jit;
 mod runtime;
 
 pub use runtime::Runtime;
-
+use runtime::Tick;
 
 pub type Symbol = usize;
 
@@ -199,32 +200,29 @@ impl Context {
     pub fn main_loop(&mut self) {
         loop {
             
-            let command = match self.receiver.try_recv() {
+            let command = match self.receiver.recv() {
                 Ok(command) => command,
-                Err(TryRecvError::Empty) => {
-                    
-                    let Ok(mut guard) = self.semaphore.lock() else {
-                        panic!("semaphore poisoned");
-                    };
-
-                    *guard += 1;
-                    
-                    let Ok(command) = self.receiver.recv() else {
-                        return;
-                    };
-                    command
-                }
-                Err(TryRecvError::Disconnected) => return,
+                Err(_) => return,
             };
             
             match command {
-                Command::Tick(object, delta) => {
-                    let object_pointer = self.get_object(object)
-                        .expect("main loop provided bad reference");
-                    let object_ref = unsafe { object_pointer.as_ref().unwrap() };
-                    let tick_method = self.get_method(object_ref.class, 1, None, 2);
-                    let tick_method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64, f64)>(tick_method) };
-                    tick_method(self, object, delta);
+                Command::Tick => {
+                    'tickloop: loop {
+                        let task = match Runtime::pop_tick() {
+                            Steal::Success(task) => task,
+                            Steal::Retry => continue 'tickloop,
+                            Steal::Empty => break 'tickloop,
+                        };
+                        
+                        let Tick { object, delta } = task;
+                        
+                        let object_pointer = self.get_object(object)
+                            .expect("main loop provided bad reference");
+                        let object_ref = unsafe { object_pointer.as_ref().unwrap() };
+                        let tick_method = self.get_method(object_ref.class, 1, None, 2);
+                        let tick_method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64, f64)>(tick_method) };
+                        tick_method(self, object, delta);
+                    }
                 }
                 Command::Ready(object) => {
                     let object_pointer = self.get_object(object)
@@ -237,6 +235,15 @@ impl Context {
             }
         }
     }
+    
+    pub fn notify_attachment(&self, parent: Reference, child: Reference) {
+        self.attachment_sender.send(AttachObject::Attach { parent, child }).unwrap();
+    }
+    
+    pub fn notify_detachment(&self, parent: Reference, child: Reference) {
+        self.attachment_sender.send(AttachObject::Detach { parent, child }).unwrap();
+    }
+    
     pub fn set_exception(&self, exception: Reference) {
         *self.current_exception.borrow_mut() = exception;
     }
