@@ -260,10 +260,10 @@ extern "C" fn object_child_died(context: &mut Context, this: Reference, child_in
         return
     };
     let object = unsafe { object.as_mut().unwrap() };
-    
+
     context.notify_detachment(this, object.children[child_index as usize]);
     object.children[child_index as usize] = 0;
-    
+
     context.set_exception(exception);
 }
 
@@ -424,9 +424,9 @@ macro_rules! array_create_get {
                     context.set_exception(exception);
                     return 0 as $ty;
                 }
-                
+
                 let index = index as usize;
-                
+
                 unsafe { *pointer.add(index) }
             }
         }

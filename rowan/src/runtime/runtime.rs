@@ -63,6 +63,10 @@ impl Runtime {
             let current_time = Instant::now();
             let duration = current_time.duration_since(start_time);
             let delta = duration.as_secs_f64();
+
+            self.handle_attachments();
+            
+            *self.semaphore.lock().unwrap() = 0;
             
             // Fill queue with tasks
             for reference in &self.live_objects {
@@ -74,11 +78,43 @@ impl Runtime {
                 channel.send(Command::Tick).unwrap()
             }
             
+            loop {
+                if *self.semaphore.lock().unwrap() == self.thread_channels.len() {
+                    break;
+                }
+            }
+
+            self.handle_attachments();
             
             // TODO: handle messages sent out
-            // TODO: handle object attaching
             
             start_time = current_time;
+        }
+    }
+    
+    fn handle_attachments(&mut self) {
+        while let Ok(attach) = self.attachment_receiver.try_recv() {
+            match attach {
+                AttachObject::Attach {
+                    parent,
+                    child
+                } => {
+                    println!("parent: {}, child: {}", parent, child);
+                    self.live_objects.insert(child);
+                    self.parent_to_children.entry(parent)
+                        .or_insert(HashSet::new())
+                        .insert(child);
+                }
+                AttachObject::Detach {
+                    parent,
+                    child
+                } => {
+                    self.live_objects.remove(&child);
+                    self.parent_to_children.entry(parent)
+                        .or_insert(HashSet::new())
+                        .remove(&child);
+                }
+            }
         }
     }
     

@@ -1254,11 +1254,18 @@ pub fn link_vm_classes(
                         .zip(derived_functions.into_iter())
                         .enumerate()
                         .map(|(i, (base, derived))| {
-                            let (_base_name_symbol, base_responds_to, _base_signature, _, _) = base;
+                            let (_base_name_symbol, base_responds_to, _base_signature, _, base_value) = base;
                             let (derived_name_symbol, _derived_responds_to, derived_signature, _, value) = derived;
                             functions_mapper.insert(*derived_name_symbol, i);
+                            
+                            let value = match *value.read().expect("lock is poisoned") {
+                                FunctionValue::Blank => {
+                                    base_value.clone()
+                                }
+                                _ => value.clone()
+                            };
 
-                            (*derived_name_symbol, *base_responds_to, derived_signature.clone(), MethodLocation::Blank, value.clone())
+                            (*derived_name_symbol, *base_responds_to, derived_signature.clone(), MethodLocation::Blank, value)
                         })
                         .collect::<Vec<_>>();
                     *vtables_map.get_mut(class_name).unwrap().get_mut(class_name).unwrap() = functions.clone();

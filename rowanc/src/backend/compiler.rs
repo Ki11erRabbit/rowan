@@ -1076,7 +1076,7 @@ impl Compiler {
 
                 let name = name.segments.last().unwrap();
 
-                if name.as_str() == "downcast" {
+                if name.as_str() == "downcast" || name.as_str() == "downcast-contents" {
                     assert_eq!(type_args.len(), 1, "Downcast only takes one type argument");
                     let ty = match type_args.first().unwrap() {
                         Type::Array(ty, _) => {

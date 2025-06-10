@@ -223,6 +223,7 @@ impl Context {
                         let tick_method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64, f64)>(tick_method) };
                         tick_method(self, object, delta);
                     }
+                    *self.semaphore.lock().unwrap() += 1;
                 }
                 Command::Ready(object) => {
                     let object_pointer = self.get_object(object)
