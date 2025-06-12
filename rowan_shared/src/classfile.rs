@@ -97,8 +97,8 @@ pub struct ClassFile {
     pub vtables: Vec<VTable>,
     /// Members and their types
     pub members: Vec<Member>,
-    /// Signals and their types
-    pub signals: Vec<Signal>,
+    /// Static Method VTable
+    pub static_methods: StaticMethods,
     /// Where the bytecode is stored
     /// This table is 1 indexed to allow for methods to be empty
     pub(crate) bytecode_table: Vec<BytecodeEntry>,
@@ -117,7 +117,7 @@ impl ClassFile {
         parents: Vec<StringIndex>,
         vtables: Vec<VTable>,
         members: Vec<Member>,
-        signals: Vec<Signal>,
+        static_methods: StaticMethods,
         bytecode_table: Vec<BytecodeEntry>,
         string_table: Vec<StringEntry>,
         signature_table: Vec<SignatureEntry>,
@@ -131,7 +131,7 @@ impl ClassFile {
             parents,
             vtables,
             members,
-            signals,
+            static_methods,
             bytecode_table,
             string_table,
             signature_table
@@ -187,6 +187,8 @@ impl ClassFile {
                 binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
             ]);
             index += std::mem::size_of::<u64>();
+            eprintln!("vtable size: {}", vtable_size);
+            eprintln!("pointer: {:?}", binary.as_ptr() as usize + index);
             let functions = unsafe {
                 std::slice::from_raw_parts(
                     binary.as_ptr().add(index) as *const VTableEntry,
@@ -225,35 +227,25 @@ impl ClassFile {
             index += std::mem::size_of::<u8>();
         }
 
-        
-        let signals_size = u64::from_le_bytes([
+
+        index += 7; // Weird padding of 7 bytes
+
+        let static_methods_size = u64::from_le_bytes([
             binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
             binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
         ]);
-        index += 8;
-
-        let mut signals = Vec::new();
-        for _ in 0..signals_size {
-            let name = u64::from_le_bytes([
-                binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
-                binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
-            ]);
-            index += std::mem::size_of::<StringIndex>();
-            let is_static = unsafe {
-                std::ptr::read(binary.as_ptr().add(index) as *const u8)
-            } != 0;
-            index += std::mem::size_of::<u8>();
-            let signature = u64::from_le_bytes([
-                binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
-                binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
-            ]);
-            index += std::mem::size_of::<SignatureIndex>();
-            signals.push(Signal {
-                name,
-                is_static,
-                signature
-            });
-        }
+        index += std::mem::size_of::<u64>();
+        eprintln!("static_methods_size: {}", static_methods_size);
+        eprintln!("pointer: {:?}", binary.as_ptr() as usize + index);
+        let functions = unsafe {
+            std::slice::from_raw_parts(
+                binary.as_ptr().add(index) as *const VTableEntry,
+                static_methods_size as usize
+            )
+        };
+        let static_methods = StaticMethods::new(functions.to_vec());
+        index += static_methods_size as usize * std::mem::size_of::<VTableEntry>();
+        
 
         let mut bytecode_table = Vec::new();
         let bytecode_table_size = u64::from_le_bytes([
@@ -341,7 +333,7 @@ impl ClassFile {
             parents,
             vtables,
             members,
-            signals,
+            static_methods,
             bytecode_table,
             string_table,
             signature_table
@@ -370,7 +362,7 @@ impl ClassFile {
         binary.extend_from_slice(&self.name.to_le_bytes());
         binary.push(self.parents.len() as u8);
 
-        binary.extend_from_slice(&[0, 0, 0]); // Weird padding of 3 bytes
+        binary.extend_from_slice(&[0; 3]); // Weird padding of 3 bytes
 
         binary.extend_from_slice(&self.parents.iter().flat_map(|&p| p.to_le_bytes()).collect::<Vec<u8>>());
         binary.extend_from_slice(&self.vtables.len().to_le_bytes());
@@ -380,7 +372,6 @@ impl ClassFile {
             binary.extend_from_slice(&(vtable.functions.len() as u64).to_le_bytes());
             for function in &vtable.functions {
                 binary.extend_from_slice(&function.name.to_le_bytes());
-                binary.extend_from_slice(&function.responds_to.to_le_bytes());
                 binary.extend_from_slice(&function.signature.to_le_bytes());
                 binary.extend_from_slice(&function.bytecode.to_le_bytes());
             }
@@ -390,11 +381,13 @@ impl ClassFile {
             binary.extend_from_slice(&member.name.to_le_bytes());
             binary.push(member.type_tag.as_byte());
         }
-        binary.extend_from_slice(&(self.signals.len() as u64).to_le_bytes());
-        for signal in self.signals.iter() {
-            binary.extend_from_slice(&signal.name.to_le_bytes());
-            binary.push(signal.is_static as u8);
-            binary.extend_from_slice(&signal.signature.to_le_bytes());
+        binary.extend_from_slice(&[0; 7]); // Weird padding of 7 bytes
+        
+        binary.extend_from_slice(&(self.static_methods.functions.len() as u64).to_le_bytes());
+        for function in &self.static_methods.functions {
+            binary.extend_from_slice(&function.name.to_le_bytes());
+            binary.extend_from_slice(&function.signature.to_le_bytes());
+            binary.extend_from_slice(&function.bytecode.to_le_bytes());
         }
         binary.extend_from_slice(&(self.bytecode_table.len() as u64).to_le_bytes());
         for bytecode in &self.bytecode_table {
@@ -422,7 +415,7 @@ impl ClassFile {
         self.parents.clear();
         self.vtables.clear();
         self.members.clear();
-        self.signals.clear();
+        self.static_methods.functions.clear();
         self.bytecode_table.clear();
         self.string_table.clear();
         self.signature_table.clear();
@@ -458,6 +451,17 @@ impl Member {
     }
 }
 
+#[derive(PartialEq, Debug, Clone)]
+pub struct StaticMethods {
+    pub functions: Vec<VTableEntry>,
+}
+
+impl StaticMethods {
+    pub fn new(functions: Vec<VTableEntry>) -> Self {
+        StaticMethods { functions }
+    }
+}
+
 /// Represents a virtual table for a class
 #[derive(PartialEq, Debug, Clone)]
 pub struct VTable {
@@ -483,8 +487,6 @@ impl VTable {
 pub struct VTableEntry {
     /// The name of the function
     pub name: StringIndex,
-    /// The name of the signal this method responds to
-    pub responds_to: StringIndex,
     /// The signature of the function
     pub signature: SignatureIndex,
     /// The index of the bytecode for this function
@@ -503,30 +505,6 @@ impl BytecodeEntry {
     pub fn new<B: AsRef<[u8]>>(code: B) -> BytecodeEntry {
         BytecodeEntry {
             code: code.as_ref().to_vec()
-        }
-    }
-}
-
-/// Represents a signal in a class
-/// This is a signal that can be emitted by a class
-/// A static signal is a signal that is broadcasted to all objects that are connected to the class staticly
-#[derive(PartialEq, Debug)]
-pub struct Signal {
-    /// The name of the signal
-    pub name: StringIndex,
-    /// Whether the signal is static or not
-    pub is_static: bool,
-    /// The signature of the signal
-    /// A signal always has a return type of void
-    pub signature: SignatureIndex,
-}
-
-impl Signal {
-    pub fn new(is_static: bool) -> Self {
-        Signal {
-            name: 0,
-            is_static,
-            signature: 0,
         }
     }
 }
@@ -575,7 +553,6 @@ mod tests {
                 functions: [
                     VTableEntry {
                         name: 1,
-                        responds_to: 2,
                         signature: 3,
                         bytecode: 4
                     }
@@ -590,13 +567,7 @@ mod tests {
             }
         ];
 
-        let signals = vec![
-            Signal {
-                name: 1,
-                is_static: true,
-                signature: 2
-            }
-        ];
+        let static_methods = StaticMethods::new(Vec::new());
 
         let bytecode_table = vec![
             BytecodeEntry {
@@ -626,7 +597,7 @@ mod tests {
             parents,
             vtables,
             members,
-            signals,
+            static_methods,
             bytecode_table,
             string_table,
             signature_table

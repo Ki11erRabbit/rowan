@@ -41,7 +41,6 @@ impl VTable {
 pub struct Function {
     pub name: Symbol,
     pub value: Arc<RwLock<FunctionValue>>,
-    pub responds_to: Option<Symbol>,
     pub arguments: Vec<TypeTag>,
     pub return_type: TypeTag,
 }
@@ -50,14 +49,12 @@ impl Function {
     pub fn new(
         name: Symbol,
         value: Arc<RwLock<FunctionValue>>,
-        responds_to: Option<Symbol>,
         arguments: Vec<TypeTag>,
         return_type: TypeTag
     ) -> Self {
         Function {
             name,
             value,
-            responds_to,
             arguments,
             return_type
         }
@@ -69,7 +66,6 @@ impl Debug for Function {
         f.debug_struct("Function")
         .field("name", &self.name)
         .field("value", &self.value)
-        .field("responds_to", &self.responds_to)
         .field("arguments", &self.arguments)
         .field("return_type", &self.return_type)
         .finish()

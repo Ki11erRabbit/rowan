@@ -13,7 +13,7 @@ pub struct VMClass {
     pub parents: Vec<&'static str>,
     pub vtables: Vec<VMVTable>,
     pub members: Vec<VMMember>,
-    pub signals: Vec<VMSignal>,
+    pub static_methods: Vec<VMMethod>,
 }
 
 impl VMClass {
@@ -22,14 +22,14 @@ impl VMClass {
         parents: Vec<&'static str>,
         vtables: Vec<VMVTable>,
         members: Vec<VMMember>,
-        signals: Vec<VMSignal>,
+        static_methods: Vec<VMMethod>,
     ) -> Self {
         VMClass {
             name,
             parents,
             vtables,
             members,
-            signals,
+            static_methods,
         }
     }
 }

@@ -46,7 +46,7 @@ pub struct Class {
     pub parents: Vec<Symbol>,
     pub vtables: HashMap<(Symbol, Option<Symbol>), VTableIndex>,
     pub members: Vec<MemberInfo>,
-    pub signals: Vec<SignalInfo>,
+    pub static_methods: VTableIndex,
 }
 
 impl Class {
@@ -55,14 +55,14 @@ impl Class {
         parents: Vec<Symbol>,
         vtables: HashMap<(Symbol, Option<Symbol>), VTableIndex>,
         members: Vec<MemberInfo>,
-        signals: Vec<SignalInfo>
+        static_methods: VTableIndex
     ) -> Self {
         Class {
             name,
             parents,
             vtables,
             members,
-            signals
+            static_methods
         }
     }
     
@@ -95,20 +95,3 @@ impl MemberInfo {
     }
 }
 
-
-#[derive(Debug)]
-pub struct SignalInfo {
-    name: Symbol,
-    is_static: bool,
-    arguments: Vec<TypeTag>,
-}
-
-impl SignalInfo {
-    pub fn new(name: Symbol, is_static: bool, arguments: Vec<TypeTag>) -> Self {
-        SignalInfo {
-            name,
-            is_static,
-            arguments,
-        }
-    }
-}
