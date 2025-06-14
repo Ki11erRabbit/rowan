@@ -37,7 +37,7 @@ pub fn link_class_files(
 ) -> Result<(Symbol, Symbol), ()> {
 
     let mut main_class_symbol = None;
-    let mut main_class_ready_symbol = None;
+    let mut main_method_symbol = None;
 
     for class in classes.iter() {
         let ClassFile { name, parents, vtables, static_methods, .. } = class;
@@ -133,10 +133,6 @@ pub fn link_class_files(
                     symbol
                 };
 
-                if name_str == "ready" {
-                    main_class_ready_symbol = Some(name_symbol);
-                }
-
 
                 let signature = class.signature_table[*signature as usize].types.clone();
                 let bytecode = if *bytecode == 0 {
@@ -213,7 +209,7 @@ pub fn link_class_files(
             };
 
             if name_str == "main" {
-                //main_class_ready_symbol = Some(name_symbol);
+                main_method_symbol = Some(name_symbol);
             }
 
 
@@ -514,8 +510,8 @@ pub fn link_class_files(
     }
 
 
-    match (main_class_symbol, main_class_ready_symbol) {
-        (Some(main_class_symbol), Some(main_class_ready_symbol)) => Ok((main_class_symbol, main_class_ready_symbol)),
+    match (main_class_symbol, main_method_symbol) {
+        (Some(main_class_symbol), Some(main_method_symbol)) => Ok((main_class_symbol, main_method_symbol)),
         _ => Err(()),
     }
 }

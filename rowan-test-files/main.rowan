@@ -2,6 +2,12 @@ module Main;
 
 class Main {
 
+    fn main(args: [String]) {
+        let x: u64 = 4 + 4;
+        let printer: Printer = new Printer();
+        printer.println-int(x);
+    }
+
     t: u64;
     @Override
     fn ready(self) {

@@ -45,7 +45,7 @@ fn main() {
 
     let classes = vec![class];
 
-    let (main_symbol, ready_symbol) = Context::link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map);
+    let (main_symbol, main_method_symbol) = Context::link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map);
     
     Context::finish_linking_classes(pre_class_table);
 

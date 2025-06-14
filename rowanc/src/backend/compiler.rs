@@ -1,7 +1,7 @@
 use std::{collections::HashMap, io::Write, path::{Path, PathBuf}};
 use either::Either;
 use rowan_shared::{bytecode::compiled::Bytecode, classfile::{Member, SignatureEntry, VTable, VTableEntry}, TypeTag};
-
+use rowan_shared::classfile::SignatureIndex;
 use crate::{ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator, Text}, backend::compiler_utils::Frame};
 use crate::ast::IfExpression;
 use super::compiler_utils::{PartialClass, PartialClassError};
@@ -405,14 +405,15 @@ impl Compiler {
             partial_class.add_parent(&parent.name);
         });
 
-        let (vtable, names, responds_to, signatures) = self.construct_vtable(&name, &methods, &mut partial_class)?;
+        let (vtable, names, signatures, static_method_map) = self.construct_vtable(&name, &methods)?;
 
+        partial_class.set_static_method_to_sig(static_method_map);
+        
         if vtable.functions.len() != 0 {
             partial_class.add_vtable(&name, vtable, &names, &signatures);
         } else {
             drop(vtable);
             drop(names);
-            drop(responds_to);
             drop(signatures);
         }
 
@@ -445,17 +446,18 @@ impl Compiler {
         Ok(())
     }
 
-    fn construct_vtable(&self, class_name: &str, methods: &Vec<Method>, class: &mut PartialClass) -> Result<(
+    fn construct_vtable(&self, class_name: &str, methods: &Vec<Method>) -> Result<(
         VTable,
         Vec<String>,
-        Vec<String>,
-        Vec<SignatureEntry>), CompilerError> {
+        Vec<SignatureEntry>,
+        HashMap<String,SignatureIndex>
+    ), CompilerError> {
 
 
         let mut entries = Vec::new();
         let mut names = Vec::new();
-        let mut responds_to = Vec::new();
         let mut signatures = Vec::new();
+        let mut static_method_to_signature = HashMap::new();
 
         'methods: for method in methods.iter() {
             let Method {
@@ -471,23 +473,17 @@ impl Compiler {
                 if annotation.name == "Override" {
                     continue 'methods;
                 }
-                if annotation.name == "RespondsTo" {
-                    responds_to.push(annotation.parameters[0].to_string());
-                } else {
-                    responds_to.push(String::from(""));
-                }
             }
-
-            names.push(name.to_string());
-
-            entries.push(VTableEntry::default());
 
             let mut signature = Vec::new();
             signature.push(self.convert_type(return_type));
+            
+            let mut static_method = true;
 
             parameters.iter().for_each(|param| {
                 match param {
                     Parameter::This(_, _) => {
+                        static_method = false;
                         signature.push(TypeTag::Object);
                     }
                     Parameter::Pattern { ty, .. } => {
@@ -497,12 +493,21 @@ impl Compiler {
 
             });
             signatures.push(SignatureEntry::new(signature));
+            let signature_index = signatures.len() - 1;
+            
+            if static_method {
+                static_method_to_signature.insert(name.to_string(), signature_index as SignatureIndex);
+            } else {
+                
+                names.push(name.to_string());
 
+                entries.push(VTableEntry::default());
+            }
         }
         let vtable = VTable::new(entries);
 
 
-        Ok((vtable, names, responds_to, signatures))
+        Ok((vtable, names, signatures, static_method_to_signature))
     }
 
     fn convert_type(&self, ty: &Type) -> TypeTag {
@@ -541,10 +546,11 @@ impl Compiler {
             } = method;
 
             self.push_scope();
-
+            let mut is_static = true;
             for parameter in parameters {
                 let Parameter::Pattern { name, .. } = parameter else {
                     self.bind_variable("self");
+                    is_static = false;
                     continue;
                 };
                 self.bind_patterns(&name);
@@ -557,12 +563,16 @@ impl Compiler {
                 code.into_binary()
             }).collect::<Vec<_>>();
 
-            //println!("{}", name);
-            let vtable = partial_class.get_vtable(&name).unwrap();
-            let method_class_name = String::from(partial_class.index_string_table(vtable.class_name));
-            //println!("{}", method_class_name);
+            if is_static {
+                partial_class.add_static_method(name, bytecode);
+            } else {
+                //println!("{}", name);
+                let vtable = partial_class.get_vtable(&name).unwrap();
+                let method_class_name = String::from(partial_class.index_string_table(vtable.class_name));
+                //println!("{}", method_class_name);
 
-            partial_class.attach_bytecode(method_class_name, name, bytecode).expect("Handle partial class error");
+                partial_class.attach_bytecode(method_class_name, name, bytecode).expect("Handle partial class error");
+            }
 
             self.pop_scope();
         }
@@ -590,7 +600,7 @@ impl Compiler {
         //output.push(Bytecode::Goto(1));
         self.current_block = 0;
         self.compile_block(class_name, partial_class, &body, &mut output)?;
-        println!("Bytecode output: {:#?}", output);
+        //println!("Bytecode output: {:#?}", output);
 
         Ok(output)
     }

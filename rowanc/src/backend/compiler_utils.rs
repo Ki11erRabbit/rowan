@@ -93,6 +93,8 @@ pub struct PartialClass {
     /// Maps method names to a vec of class names
     /// This is so that we can reference the class a method is coming from
     method_to_class: HashMap<String, Vec<String>>,
+    /// Maps static method names to a method signature
+    static_method_to_signature: HashMap<String, SignatureIndex>,
     /// A flag to mark the class as one to not emit a class file for
     dont_print: bool,
 }
@@ -157,6 +159,7 @@ impl PartialClass {
             method_to_function: HashMap::new(),
             method_to_class: HashMap::new(),
             vtable_to_class: HashMap::new(),
+            static_method_to_signature: HashMap::new(),
             dont_print: false,
         }
     }
@@ -182,6 +185,10 @@ impl PartialClass {
 
     pub fn set_name(&mut self, name: &str) {
         self.name = self.add_string(name);
+    }
+    
+    pub fn set_static_method_to_sig(&mut self, map: HashMap<String, SignatureIndex>) {
+        self.static_method_to_signature = map;
     }
 
     pub fn add_parent(&mut self, name: &str) {
@@ -216,6 +223,24 @@ impl PartialClass {
             .or_insert(vec![self.vtables.len()]);
         self.vtable_to_class.insert(self.vtables.len(), class_name.as_ref().to_string());
         self.vtables.push(vtable);
+    }
+    
+    pub fn add_static_method<B: AsRef<[u8]>>(
+        &mut self,
+        method_name: impl AsRef<str>,
+        code: B,
+    ) {
+        let name_index = self.add_string(method_name.as_ref());
+        let signature_index = self.static_method_to_signature.get(method_name.as_ref()).unwrap();
+        
+        self.bytecode_table.push(BytecodeEntry::new(code.as_ref()));
+        let bytecode_index = self.bytecode_table.len() as BytecodeIndex;
+        
+        self.static_methods.push(VTableEntry {
+            name: name_index,
+            signature: *signature_index,
+            bytecode: bytecode_index,
+        })
     }
 
     pub fn add_member<S: AsRef<str>>(&mut self, mut member: Member, name: S) {
