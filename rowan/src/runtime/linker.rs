@@ -158,8 +158,6 @@ pub fn link_class_files(
                     map
                 });
         }
-        
-
     }
 
     let mut class_parts: Vec<(Symbol, Symbol, Vec<Symbol>, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, MethodLocation)>, &ClassFile, Vec<(Symbol, Option<Symbol>)>)> = Vec::new();
@@ -213,6 +211,7 @@ pub fn link_class_files(
 
 
             let signature = class.signature_table[*signature as usize].types.clone();
+            //println!("{}'s signature: {:?}", name_str, signature);
             let function = if *bytecode == 0 {
                 MethodLocation::Blank
             } else if *bytecode < 0 {

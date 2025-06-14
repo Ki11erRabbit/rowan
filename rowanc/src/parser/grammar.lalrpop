@@ -556,6 +556,21 @@ Call: Expression<'a> = {
 
         Expression::new_call(Box::new(callee), typeargs, args, Span::new(start, end))
     },
+    <start: @L> <start_inner: @L> <path:Path> <name:Identifier> <end_inner: @R> <args:ArgList> <end: @R> => {
+        let mut p = path;
+        p.segments.push(name);
+        p.span.end = end;
+
+        Expression::new_static_call(p, Vec::new(), args, Span::new(start, end))
+    },
+    <start: @L> <start_inner: @L> <path:Path> <name:Identifier> <end_inner: @R> <typeargs:TypeArgList> <args:ArgList> <end: @R> => {
+        let mut p = path;
+        p.segments.push(name);
+        p.span.end = end;
+        p.span.end = end;
+
+        Expression::new_static_call(p, Vec::new(), args, Span::new(start, end))
+    },
     //<start: @L> <callee:CallExpr> <typeargs:TypeArgList> <args:ArgList> <end: @R> => Expression::new_call(Box::new(callee), typeargs, args, Span::new(start, end)),
 };
 

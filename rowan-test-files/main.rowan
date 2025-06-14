@@ -6,14 +6,6 @@ class Main {
         let x: u64 = 4 + 4;
         let printer: Printer = new Printer();
         printer.println-int(x);
-    }
-
-    t: u64;
-    @Override
-    fn ready(self) {
-
-        self.t = 1;
-        let x: u64 = 4 + 4 + self.t;
         let printer: Printer = new Printer();
         printer.println-int(x);
         if x < 10 {
@@ -26,16 +18,16 @@ class Main {
         printer.println-int(x);
         let arr: [u64] = [1, 2 ,3, 4];
         let counter: u64 = 0;
-        self.do-thing();
+        Main::do-thing();
         while counter < arr.len() {
             printer.println-int(arr[counter]);
             counter = counter + 1;
         }
-
-        self.add-child(printer);
     }
 
-    fn do-thing(self) {
+    t: u64;
+
+    fn do-thing() {
         let printer: Printer = new Printer();
         let arr: [u64] = [1, 2 ,3, 4];
         printer.println-int(arr[0]);
@@ -46,12 +38,4 @@ class Main {
         printer.println-int(j);
     }
 
-    @Override
-    fn tick(self, delta: f64) {
-        self.t = 1;
-        let index: u64 = 0;
-        let object: Object = self.get-child(index);
-        let printer: Printer = object.downcast::[Printer]();
-        printer.println-int(self.t);
-    }
 }

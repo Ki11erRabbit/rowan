@@ -68,7 +68,7 @@ pub struct PartialClass {
     vtables: Vec<VTable>,
     /// Members and their types
     members: Vec<Member>,
-    /// Signals and their types
+    /// Static methods and their entry
     static_methods: Vec<VTableEntry>,
     /// Where the bytecode is stored
     /// This table is 1 indexed to allow for methods to be empty
@@ -182,11 +182,15 @@ impl PartialClass {
             self.string_table,
             self.signature_table))
     }
+    
+    pub fn add_signatures(&mut self, sigs: Vec<SignatureEntry>) {
+        self.signature_table.extend(sigs);
+    }
 
     pub fn set_name(&mut self, name: &str) {
         self.name = self.add_string(name);
     }
-    
+
     pub fn set_static_method_to_sig(&mut self, map: HashMap<String, SignatureIndex>) {
         self.static_method_to_signature = map;
     }
@@ -224,7 +228,7 @@ impl PartialClass {
         self.vtable_to_class.insert(self.vtables.len(), class_name.as_ref().to_string());
         self.vtables.push(vtable);
     }
-    
+
     pub fn add_static_method<B: AsRef<[u8]>>(
         &mut self,
         method_name: impl AsRef<str>,
@@ -232,10 +236,10 @@ impl PartialClass {
     ) {
         let name_index = self.add_string(method_name.as_ref());
         let signature_index = self.static_method_to_signature.get(method_name.as_ref()).unwrap();
-        
+
         self.bytecode_table.push(BytecodeEntry::new(code.as_ref()));
         let bytecode_index = self.bytecode_table.len() as BytecodeIndex;
-        
+
         self.static_methods.push(VTableEntry {
             name: name_index,
             signature: *signature_index,

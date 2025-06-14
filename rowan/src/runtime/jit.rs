@@ -1201,6 +1201,7 @@ impl FunctionTranslator<'_> {
                     get_static_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
                     get_static_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
                     get_static_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    get_static_func.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
 
                     let fn_id = module.declare_function("get_static_function", Linkage::Import, &get_static_func).unwrap();
 

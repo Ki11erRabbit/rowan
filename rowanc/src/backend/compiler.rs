@@ -15,33 +15,12 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     object.set_name("Object");
     let functions = vec![
         VTableEntry::default(),
-        VTableEntry::default(),
-        VTableEntry::default(),
-        VTableEntry::default(),
-        VTableEntry::default(),
-        VTableEntry::default(),
-        VTableEntry::default(),
-        VTableEntry::default(),
     ];
     let names = vec![
-        "tick",
-        "ready",
         "downcast",
-        "get-child",
-        "remove-child",
-        "add-child",
-        "add-child-at",
-        "child-died",
     ];
     let signatures = vec![
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::F64]),
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object]),
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
-        SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object, TypeTag::U64]),
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::Object]),
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::Object]),
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::Object, TypeTag::U64]),
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::U64, TypeTag::Object]),
     ];
     let vtable = VTable::new(functions);
     object.add_vtable("Object", vtable, &names, &signatures);
@@ -405,8 +384,10 @@ impl Compiler {
             partial_class.add_parent(&parent.name);
         });
 
-        let (vtable, names, signatures, static_method_map) = self.construct_vtable(&name, &methods)?;
+        let (vtable, names, signatures, static_method_map, static_signatures) = self.construct_vtable(&name, &methods)?;
 
+        partial_class.add_signatures(static_signatures);
+        
         partial_class.set_static_method_to_sig(static_method_map);
         
         if vtable.functions.len() != 0 {
@@ -450,13 +431,15 @@ impl Compiler {
         VTable,
         Vec<String>,
         Vec<SignatureEntry>,
-        HashMap<String,SignatureIndex>
+        HashMap<String,SignatureIndex>,
+        Vec<SignatureEntry>,
     ), CompilerError> {
 
 
         let mut entries = Vec::new();
         let mut names = Vec::new();
         let mut signatures = Vec::new();
+        let mut static_signatures = Vec::new();
         let mut static_method_to_signature = HashMap::new();
 
         'methods: for method in methods.iter() {
@@ -492,22 +475,21 @@ impl Compiler {
                 }
 
             });
-            signatures.push(SignatureEntry::new(signature));
-            let signature_index = signatures.len() - 1;
+
+            let signature_index = signatures.len() + static_signatures.len(); 
             
             if static_method {
                 static_method_to_signature.insert(name.to_string(), signature_index as SignatureIndex);
+                static_signatures.push(SignatureEntry::new(signature));
             } else {
-                
                 names.push(name.to_string());
-
                 entries.push(VTableEntry::default());
+                signatures.push(SignatureEntry::new(signature));
             }
         }
         let vtable = VTable::new(entries);
 
-
-        Ok((vtable, names, signatures, static_method_to_signature))
+        Ok((vtable, names, signatures, static_method_to_signature, static_signatures))
     }
 
     fn convert_type(&self, ty: &Type) -> TypeTag {
@@ -1092,6 +1074,21 @@ impl Compiler {
                 } else {
                     panic!("Classes are in a bad order of compiling")
                 }
+            }
+            Expression::StaticCall { name, type_args, args, .. } => {
+                let mut argument_pos: u8 = 0;
+                for arg in args {
+                    self.compile_expression(class_name, partial_class, arg, output, lhs)?;
+                    output.push(Bytecode::StoreArgument(argument_pos));
+                    argument_pos += 1;
+                }
+
+                let method_name = name.segments.last().unwrap();
+                let method_class = name.segments.iter().rev().skip(1).next().unwrap();
+                let method_name = partial_class.add_string(method_name);
+                let method_class = partial_class.add_string(method_class);
+                
+                output.push(Bytecode::InvokeStatic(method_class, method_name));
             }
             Expression::MemberAccess {
                 ..

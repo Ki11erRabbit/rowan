@@ -518,6 +518,13 @@ pub enum Expression<'a> {
         span: Span,
         annotation: Option<Type<'a>>,
     },
+    StaticCall {
+        name: PathName<'a>,
+        type_args: Vec<Type<'a>>,
+        args: Vec<Expression<'a>>,
+        span: Span,
+        annotation: Option<Type<'a>>,
+    },
     MemberAccess {
         object: Box<Expression<'a>>,
         field: PathName<'a>,
@@ -586,6 +593,21 @@ impl Expression<'_> {
         span: Span
     ) -> Expression<'a> {
         Expression::Call {
+            name,
+            type_args,
+            args,
+            span,
+            annotation: None,
+        }
+    }
+
+    pub fn new_static_call<'a>(
+        name: PathName<'a>,
+        type_args: Vec<Type<'a>>,
+        args: Vec<Expression<'a>>,
+        span: Span
+    ) -> Expression<'a> {
+        Expression::StaticCall {
             name,
             type_args,
             args,

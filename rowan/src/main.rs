@@ -50,7 +50,7 @@ fn main() {
     Context::finish_linking_classes(pre_class_table);
     let mut context = Context::new();
     
-    println!("main_symbol: {}, main_method_symbol: {}", main_symbol, main_method_symbol);
+    //println!("main_symbol: {}, main_method_symbol: {}", main_symbol, main_method_symbol);
     
     let method = context.get_static_method(main_symbol, main_method_symbol);
 
