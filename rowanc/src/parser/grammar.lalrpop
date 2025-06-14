@@ -158,15 +158,13 @@ pub Class: TopLevelStatement<'a> = {
          };
          let mut members = Vec::new();
          let mut methods = Vec::new();
-         let mut signals = Vec::new();
          for member in class_members {
             match member {
                 ClassMember::Member(mem) => members.push(mem),
                 ClassMember::Method(meth) => methods.push(meth),
-                ClassMember::Signal(sig) => signals.push(sig),
             }
          }
-         TopLevelStatement::Class(Class::new(name, parents, members, methods, signals, type_params, span))
+         TopLevelStatement::Class(Class::new(name, parents, members, methods, type_params, span))
     }
 };
 
@@ -201,7 +199,6 @@ ClassMembers: Vec<ClassMember<'a>> = {
 ClassMember: ClassMember<'a> = {
     <member:Member> => member,
     <method:Method> => method,
-    <signal:Signal> => signal,
 };
 
 Member: ClassMember<'a> = {
@@ -212,24 +209,6 @@ Member: ClassMember<'a> = {
                 visibility: vis,
                 name,
                 ty,
-                span,
-            }
-        )
-    }
-};
-
-Signal: ClassMember<'a> = {
-    <start: @L> <s:"static"?> "signal" <name:Identifier> <params:TypeList> <end: @R> => {
-        let span = Span::new(start, end);
-        let is_static = match s {
-            Some(_) => true,
-            None => false,
-        };
-        ClassMember::Signal(
-            Signal {
-                name,
-                is_static,
-                parameters: params,
                 span,
             }
         )

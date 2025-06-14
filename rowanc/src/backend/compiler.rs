@@ -1,6 +1,6 @@
 use std::{collections::HashMap, io::Write, path::{Path, PathBuf}};
 use either::Either;
-use rowan_shared::{bytecode::compiled::Bytecode, classfile::{Member, Signal, SignatureEntry, VTable, VTableEntry}, TypeTag};
+use rowan_shared::{bytecode::compiled::Bytecode, classfile::{Member, SignatureEntry, VTable, VTableEntry}, TypeTag};
 
 use crate::{ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator, Text}, backend::compiler_utils::Frame};
 use crate::ast::IfExpression;
@@ -33,16 +33,6 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         "add-child-at",
         "child-died",
     ];
-    let responds_to = vec![
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-    ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::F64]),
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object]),
@@ -54,7 +44,7 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::U64, TypeTag::Object]),
     ];
     let vtable = VTable::new(functions);
-    object.add_vtable("Object", vtable, &names, &responds_to, &signatures);
+    object.add_vtable("Object", vtable, &names, &signatures);
     object.make_not_printable();
     classes.insert(String::from("Object"), object);
 
@@ -69,11 +59,6 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         "println-float",
         "println",
     ];
-    let responds_to = vec![
-        "",
-        "",
-        "",
-    ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::U64]),
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::F64]),
@@ -81,7 +66,7 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    printer.add_vtable("Printer", vtable, &names, &responds_to, &signatures);
+    printer.add_vtable("Printer", vtable, &names, &signatures);
     printer.make_not_printable();
     classes.insert(String::from("Printer"), printer);
 
@@ -98,11 +83,6 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         "init",
         "len",
     ];
-    let responds_to = vec![
-        "",
-        "",
-        "",
-    ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
@@ -110,7 +90,7 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    string.add_vtable("String", vtable, &names, &responds_to, &signatures);
+    string.add_vtable("String", vtable, &names, &signatures);
     string.make_not_printable();
     classes.insert(String::from("String"), string);
 
@@ -127,11 +107,6 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         "init",
         "len",
     ];
-    let responds_to = vec![
-        "",
-        "",
-        "",
-    ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
@@ -139,7 +114,7 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("Array8", vtable, &names, &responds_to, &signatures);
+    array.add_vtable("Array8", vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(String::from("Array8"), array);
 
@@ -155,11 +130,6 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         "init",
         "len",
     ];
-    let responds_to = vec![
-        "",
-        "",
-        "",
-    ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
@@ -167,7 +137,7 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("Array16", vtable, &names, &responds_to, &signatures);
+    array.add_vtable("Array16", vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(String::from("Array16"), array);
 
@@ -183,11 +153,6 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         "init",
         "len",
     ];
-    let responds_to = vec![
-        "",
-        "",
-        "",
-    ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
@@ -195,7 +160,7 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("Array32", vtable, &names, &responds_to, &signatures);
+    array.add_vtable("Array32", vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(String::from("Array32"), array);
 
@@ -211,11 +176,6 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         "init",
         "len",
     ];
-    let responds_to = vec![
-        "",
-        "",
-        "",
-    ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
@@ -223,7 +183,7 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("Array64", vtable, &names, &responds_to, &signatures);
+    array.add_vtable("Array64", vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(String::from("Array64"), array);
 
@@ -239,11 +199,6 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         "init",
         "len",
     ];
-    let responds_to = vec![
-        "",
-        "",
-        "",
-    ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
@@ -251,7 +206,7 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("Arrayf32", vtable, &names, &responds_to, &signatures);
+    array.add_vtable("Arrayf32", vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(String::from("Arrayf32"), array);
 
@@ -267,11 +222,6 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         "init",
         "len",
     ];
-    let responds_to = vec![
-        "",
-        "",
-        "",
-    ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
@@ -279,7 +229,7 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("Arrayf64", vtable, &names, &responds_to, &signatures);
+    array.add_vtable("Arrayf64", vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(String::from("Arrayf64"), array);
 
@@ -295,11 +245,6 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
         "init",
         "len",
     ];
-    let responds_to = vec![
-        "",
-        "",
-        "",
-    ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
@@ -307,7 +252,7 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("ArrayObject", vtable, &names, &responds_to, &signatures);
+    array.add_vtable("ArrayObject", vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(String::from("ArrayObject"), array);
     
@@ -396,7 +341,7 @@ impl Compiler {
         None
     }
 
-    /// files should be sorted in a way that means that means we don't need to do each file incrementally
+    /// files should be sorted in a way that means we don't need to do each file incrementally
     pub fn compile_files(mut self, files: Vec<File>) -> Result<(), CompilerError> {
 
         for file in files {
@@ -436,7 +381,6 @@ impl Compiler {
             parents,
             members,
             methods,
-            signals,
             ..
         } = class;
 
@@ -446,14 +390,14 @@ impl Compiler {
         let parent_vtables = parents.iter().map(|parent_name| {
             let partial_class = self.classes.get(&parent_name.name.clone().to_string()).expect("Order of files is wrong");
             let vtables = partial_class.get_vtables(&parent_name.name);
-            vtables.into_iter().map(|(table, names, responds_to, signatures)| {
+            vtables.into_iter().map(|(table, names, signatures)| {
                 let class_name = partial_class.index_string_table(table.class_name);
                 let source_class = if table.sub_class_name == 0 {
                     None
                 } else {
                     Some(partial_class.index_string_table(table.sub_class_name))
                 };
-                (class_name, source_class, table, names, responds_to, signatures)
+                (class_name, source_class, table, names, signatures)
             }).collect::<Vec<_>>()
             
         });
@@ -464,7 +408,7 @@ impl Compiler {
         let (vtable, names, responds_to, signatures) = self.construct_vtable(&name, &methods, &mut partial_class)?;
 
         if vtable.functions.len() != 0 {
-            partial_class.add_vtable(&name, vtable, &names, &responds_to, &signatures);
+            partial_class.add_vtable(&name, vtable, &names, &signatures);
         } else {
             drop(vtable);
             drop(names);
@@ -476,15 +420,15 @@ impl Compiler {
             let object_class = self.classes.get("Object").expect("Object not added to known classes");
 
             let vtables = object_class.get_vtables("Object");
-            let (vtable, names, responds_to, signatures) = &vtables[0];
+            let (vtable, names, signatures) = &vtables[0];
 
-            partial_class.add_vtable("Object", vtable.clone(), names, responds_to, signatures);
+            partial_class.add_vtable("Object", vtable.clone(), names, signatures);
             partial_class.add_parent("Object");
         }
         
         for vtables in parent_vtables {
-            for (class_name, _source_class, vtable, names, responds_to, signatures) in vtables {
-                partial_class.add_vtable(class_name, vtable.clone(), &names, &responds_to, &signatures);
+            for (class_name, _source_class, vtable, names, signatures) in vtables {
+                partial_class.add_vtable(class_name, vtable.clone(), &names, &signatures);
             }
         }
 
@@ -492,17 +436,6 @@ impl Compiler {
             (member.name, Member::new(self.convert_type(&member.ty)))
         }).for_each(|(name, member)| {
             partial_class.add_member(member, name);
-        });
-
-        signals.into_iter().map(|sig| {
-            let parameters = sig.parameters.into_iter().map(|ty| {
-                self.convert_type(&ty)
-            });
-            (sig.name, Signal::new(sig.is_static), parameters)
-        }).for_each(|(name, signal, param)| {
-            let mut signature = vec![TypeTag::Void];
-            signature.extend(param);
-            partial_class.add_signal(signal, name, SignatureEntry::new(signature));
         });
 
         self.compile_methods(&name, &mut partial_class, methods)?;

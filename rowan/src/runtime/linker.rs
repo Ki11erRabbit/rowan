@@ -289,14 +289,14 @@ pub fn link_class_files(
                     // In this block, this means that we likely have a diamond inheritance situation
                     // This means that we have 2 copies of the same vtable
                     // We use the class name to get the base vtable
-                    // We then use the source class to lookup the same vtable as class name but the implementation by source class
+                    // We then use the source class to look up the same vtable as class name but the implementation by source class
                     let derived_functions = vtables_map.get(class_name).unwrap().get(source_class).unwrap();
                     let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
 
                     for (_,_,_,value) in base_functions {
                         if value.read().expect("lock poisoned").is_blank() {
                             // We bail if any of base has not yet been linked
-                            class_parts_to_try_again.push((class_symbol, class_name_symbol, parents, members, signals, class, vtables));
+                            class_parts_to_try_again.push((class_symbol, class_name_symbol, parents, members, static_methods, class, vtables));
                             continue 'outer;
                         }
                     }
@@ -385,7 +385,7 @@ pub fn link_class_files(
                     for (_,_,_,value) in base_functions {
                         if value.read().expect("lock is poisoned").is_blank() {
                             // We bail if any of base has not yet been linked
-                            class_parts_to_try_again.push((class_symbol, class_name_symbol, parents, members, signals, class, vtables));
+                            class_parts_to_try_again.push((class_symbol, class_name_symbol, parents, members, static_methods, class, vtables));
                             continue 'outer;
                         }
                     }
@@ -1263,7 +1263,7 @@ pub fn link_vm_classes(
                     for (_,_,_,value) in base_functions {
                         if value.read().expect("lock is poisoned").is_blank() {
                             // We bail if any of base has not yet been linked
-                            class_parts_to_try_again.push((class_symbol, parents, members, signals, vtables));
+                            class_parts_to_try_again.push((class_symbol, parents, members, static_methods, vtables));
                             continue 'outer;
                         }
                     }
@@ -1326,6 +1326,7 @@ pub fn link_vm_classes(
             let functions = static_methods.into_iter()
                 .enumerate()
                 .map(|(i, (name, signature, value))| {
+                    static_method_mapper.insert(name, i);
                     let name_symbol = name;
                     let arguments = signature[1..].into_iter()
                         .map(convert_type)

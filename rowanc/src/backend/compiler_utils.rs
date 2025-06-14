@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use rowan_shared::{classfile::{BytecodeEntry, ClassFile, Member, Signal, SignatureEntry, SignatureIndex, StringEntry, StringIndex, VTable, VTableEntry}, TypeTag};
-use rowan_shared::classfile::BytecodeIndex;
+use rowan_shared::{classfile::{BytecodeEntry, ClassFile, Member, SignatureEntry, SignatureIndex, StringEntry, StringIndex, VTable, VTableEntry}, TypeTag};
+use rowan_shared::classfile::{BytecodeIndex, StaticMethods};
 use crate::ast::Method;
 
 #[derive(Debug)]
@@ -69,7 +69,7 @@ pub struct PartialClass {
     /// Members and their types
     members: Vec<Member>,
     /// Signals and their types
-    signals: Vec<Signal>,
+    static_methods: Vec<VTableEntry>,
     /// Where the bytecode is stored
     /// This table is 1 indexed to allow for methods to be empty
     bytecode_table: Vec<BytecodeEntry>,
@@ -81,7 +81,7 @@ pub struct PartialClass {
     /// This holds the signatures of methods
     signature_table: Vec<SignatureEntry>,
     /// This maps class names to a vtable.
-    /// If there are more than one indices, then that means that we have two different versions of the same vtable
+    /// If there are more than one index, then that means that we have two different versions of the same vtable
     class_to_vtable: HashMap<String, Vec<usize>>,
     /// This maps a vtable index to a string with the name of the class the vtable comes from.
     /// The origin class should always be a parent of the current object
@@ -148,7 +148,7 @@ impl PartialClass {
             parents: Vec::new(),
             vtables: Vec::new(),
             members: Vec::new(),
-            signals: Vec::new(),
+            static_methods: Vec::new(),
             bytecode_table: Vec::new(),
             string_table: Vec::new(),
             string_to_index: HashMap::new(),
@@ -174,7 +174,7 @@ impl PartialClass {
             self.parents,
             self.vtables,
             self.members,
-            self.signals,
+            StaticMethods::new(self.static_methods),
             self.bytecode_table,
             self.string_table,
             self.signature_table))
@@ -194,7 +194,6 @@ impl PartialClass {
         class_name: impl AsRef<str>,
         mut vtable: VTable,
         names: &Vec<impl AsRef<str>>,
-        responds_to: &Vec<impl AsRef<str>>,
         signatures: &Vec<SignatureEntry>,
 
     ) {
@@ -202,9 +201,6 @@ impl PartialClass {
         vtable.class_name = self.add_string(class_name.as_ref());
         for (i, function) in vtable.functions.iter_mut().enumerate() {
             function.name = self.add_string(names[i].as_ref());
-            if responds_to.len() > 0 && responds_to[i].as_ref() != "" {
-                function.responds_to = self.add_string(responds_to[i].as_ref());
-            }
             function.signature = self.signature_table.len() as u64;
             self.signature_table.push(signatures[i].clone());
 
@@ -226,13 +222,6 @@ impl PartialClass {
         member.name = self.add_string(name);
 
         self.members.push(member);
-    }
-
-    pub fn add_signal<S: AsRef<str>>(&mut self, mut signal: Signal, name: S, sig: SignatureEntry) {
-        signal.name = self.add_string(name);
-
-        signal.signature = self.signature_table.len() as u64;
-        self.signature_table.push(sig);
     }
 
     pub fn attach_bytecode<B: AsRef<[u8]>>(
@@ -269,7 +258,6 @@ impl PartialClass {
     pub fn get_vtables<S: AsRef<str>>(&self, class_name: S) -> Vec<(
         VTable,
         Vec<String>,
-        Vec<String>,
         Vec<SignatureEntry>)> {
 
         let vtable_indices = self.class_to_vtable.get(class_name.as_ref()).unwrap();
@@ -279,25 +267,18 @@ impl PartialClass {
             let mut vtable = self.vtables[*vtable_index].clone();
 
             let mut names = Vec::new();
-            let mut responds_to = Vec::new();
             let mut signatures = Vec::new();
 
             for function in vtable.functions.iter_mut() {
                 names.push(String::from(self.index_string_table(function.name)));
-                if function.responds_to != 0 {
-                    responds_to.push(String::from(self.index_string_table(function.responds_to)));
-                } else {
-                    responds_to.push(String::from(""));
-                }
                 signatures.push(self.signature_table[function.signature as usize].clone());
 
                 function.bytecode = 0;
                 function.name = 0;
-                function.responds_to = 0;
                 function.signature = 0;
             }
 
-            output.push((vtable, names, responds_to, signatures));
+            output.push((vtable, names, signatures));
         }
         output
     }
