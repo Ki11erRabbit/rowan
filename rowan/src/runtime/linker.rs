@@ -133,7 +133,6 @@ pub fn link_class_files(
                     symbol
                 };
 
-
                 let signature = class.signature_table[*signature as usize].types.clone();
                 let bytecode = if *bytecode == 0 {
                     MethodLocation::Blank
@@ -160,7 +159,7 @@ pub fn link_class_files(
                 });
         }
         
-        
+
     }
 
     let mut class_parts: Vec<(Symbol, Symbol, Vec<Symbol>, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, MethodLocation)>, &ClassFile, Vec<(Symbol, Option<Symbol>)>)> = Vec::new();
@@ -193,7 +192,7 @@ pub fn link_class_files(
 
             class_members.push(MemberInfo::new(name_symbol, type_tag));
         }
-        
+
         let mut static_method_functions = Vec::new();
         for function in static_methods.functions.iter() {
             let VTableEntry { name, signature, bytecode, .. } = function;
@@ -456,7 +455,7 @@ pub fn link_class_files(
                 }
                 _ => {},
             }
-            
+
             let mut static_method_mapper = HashMap::new();
             let functions = static_methods.into_iter()
                 .enumerate()
@@ -485,14 +484,14 @@ pub fn link_class_files(
                             Arc::new(RwLock::new(value))
                         }
                     };
-                    
+
                     Function::new(name_symbol, value, arguments, return_type)
                 })
                 .collect::<Vec<_>>();
-            
+
             let vtable = VTable::new(functions, static_method_mapper);
             let vtable_index = vtables_table.add_vtable(vtable);
-            
+
             // Create new class
             let class = Class::new(class_name_symbol, parents, class_vtable_mapper, members, vtable_index);
 
@@ -1085,20 +1084,20 @@ pub fn link_vm_classes(
 
             class_members.push(MemberInfo::new(name_symbol, ty));
         }
-        
+
         let static_methods = static_methods.iter()
             .map(|method|{
                 let cranelift_sig = jit_controller.create_signature(&method.signature[1..], &method.signature[0]);
 
                 let index = string_table.add_static_string(method.name);
                 let symbol = symbol_table.add_string(index);
-                
+
                 let value = FunctionValue::Builtin(method.fn_pointer, cranelift_sig);
                 (symbol, method.signature.clone(), Arc::new(RwLock::new(value)))
             })
             .collect::<Vec<_>>();
-        
-        
+
+
         let mut vtables_to_link = Vec::new();
         for vtable in vtables {
             let VMVTable { class, source_class, methods } = vtable;
@@ -1328,7 +1327,7 @@ pub fn link_vm_classes(
                         .map(convert_type)
                         .collect();
                     let return_type = convert_type(&signature[0]);
-                    
+
 
                     Function::new(name_symbol, value, arguments, return_type)
                 })

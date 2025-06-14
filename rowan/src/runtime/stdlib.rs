@@ -105,58 +105,14 @@ pub fn generate_object_class() -> VMClass {
         None,
         vec![
             VMMethod::new(
-                "tick",
-                object_tick as *const (),
-                vec![TypeTag::Void, TypeTag::Object, TypeTag::F64]
-                ),
-            VMMethod::new(
-                "ready",
-                object_ready as *const (),
-                vec![TypeTag::Void, TypeTag::Object]
-                ),
-            VMMethod::new(
                 "downcast",
                 object_downcast as *const (),
                 vec![TypeTag::Object, TypeTag::Object, TypeTag::U64]
                 ),
-            VMMethod::new(
-                "get-child",
-                object_get_child as *const (),
-                vec![TypeTag::Object, TypeTag::Object, TypeTag::U64]
-                ),
-            VMMethod::new(
-                "remove-child",
-                object_remove_child as *const (),
-                vec![TypeTag::Void, TypeTag::Object, TypeTag::Object]
-                ),
-            VMMethod::new(
-                "add-child",
-                object_add_child as *const (),
-                vec![TypeTag::U64, TypeTag::Object, TypeTag::Object]
-            ),
-            VMMethod::new(
-                "add-child-at",
-                object_add_child_at as *const (),
-                vec![TypeTag::Void, TypeTag::Object, TypeTag::Object, TypeTag::U64]
-            ),
-            VMMethod::new(
-                "child-died",
-                object_child_died as *const (),
-                vec![TypeTag::Void, TypeTag::Object, TypeTag::U64, TypeTag::Object]
-            ),
         ]
     );
 
     VMClass::new("Object", Vec::new(), vec![vtable], Vec::new(), Vec::new())
-}
-
-
-extern "C" fn object_tick(_: &mut Context, _: Reference, _: f64) {
-    
-}
-
-extern "C" fn object_ready(_: &mut Context, _: Reference) {
-    
 }
 
 
@@ -175,96 +131,6 @@ extern "C" fn object_downcast(context: &mut Context, this: Reference, class_inde
         }
         0
     }
-}
-
-
-extern "C" fn object_get_child(context: &mut Context, this: Reference, nth: u64) -> Reference {
-    let Some(object) = context.get_object(this) else {
-        return 0;
-    };
-    let object = unsafe { object.as_mut().unwrap() };
-    if object.children.len() <= nth as usize {
-        let exception = Context::new_object("IndexOutOfBounds");
-        out_of_bounds_init(context, exception, object.children.len() as u64, nth);
-        context.set_exception(exception);
-        return 0;
-    }
-    object.children[nth as usize]
-}
-
-extern "C" fn object_remove_child(context: &mut Context, this: Reference, reference: Reference) {
-    let Some(object) = context.get_object(this) else {
-        return
-    };
-    let object = unsafe { object.as_mut().unwrap() };
-    let mut index = None;
-    for (i, obj) in object.children.iter().enumerate() {
-        if *obj == reference {
-            index = Some(i);
-        }
-    }
-    if let Some(index) = index {
-        context.notify_detachment(this, object.children[index]);
-        object.children[index] = 0;
-    }// maybe throw some kind of exception?
-}
-
-extern "C" fn object_add_child(context: &mut Context, this: Reference, child: Reference) -> u64 {
-    let Some(object) = context.get_object(this) else {
-        return 0;
-    };
-    let object = unsafe { object.as_mut().unwrap() };
-
-    object.children.push(child);
-    context.notify_attachment(this, child);
-
-    let Some(child_object) = context.get_object(child) else {
-        return 0;
-    };
-    let child_object = unsafe { child_object.as_mut().unwrap() };
-
-    let func = context.get_method(child_object.class, 1, None, 3);
-    let method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64)>(func) };
-    method(context, child);
-
-    object.children.len() as u64 - 1
-}
-extern "C" fn object_add_child_at(context: &mut Context, this: Reference, child: Reference, nth: u64) {
-    let Some(object) = context.get_object(this) else {
-        return
-    };
-    let object = unsafe { object.as_mut().unwrap() };
-
-    if object.children.len() <= nth as usize {
-        let exception = Context::new_object("IndexOutOfBounds");
-        out_of_bounds_init(context, exception, object.children.len() as u64, nth);
-        context.set_exception(exception);
-        return
-    }
-
-    object.children[nth as usize] = child;
-    context.notify_attachment(this, child);
-
-    let Some(child_object) = context.get_object(child) else {
-        return
-    };
-    let child_object = unsafe { child_object.as_mut().unwrap() };
-
-    let func = context.get_method(child_object.class, 1, None, 3);
-    let method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64)>(func) };
-    method(context, child);
-}
-
-extern "C" fn object_child_died(context: &mut Context, this: Reference, child_index: u64, exception: Reference) {
-    let Some(object) = context.get_object(this) else {
-        return
-    };
-    let object = unsafe { object.as_mut().unwrap() };
-
-    context.notify_detachment(this, object.children[child_index as usize]);
-    object.children[child_index as usize] = 0;
-
-    context.set_exception(exception);
 }
 
 pub fn generate_printer_class() -> VMClass {

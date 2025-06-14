@@ -48,11 +48,15 @@ fn main() {
     let (main_symbol, main_method_symbol) = Context::link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map);
     
     Context::finish_linking_classes(pre_class_table);
-
-    let mut runtime = Runtime::new(1);
-    runtime.spawn_thread();
+    let mut context = Context::new();
     
-    runtime.main_loop(main_symbol);
+    println!("main_symbol: {}, main_method_symbol: {}", main_symbol, main_method_symbol);
+    
+    let method = context.get_static_method(main_symbol, main_method_symbol);
+
+    let method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64)>(method) };
+    
+    method(&mut context, 0);
 
     /*let main_object_ref = Context::new_object(main_symbol);
     let Some(main_object) = context.get_object(main_object_ref) else {

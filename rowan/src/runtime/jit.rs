@@ -32,6 +32,7 @@ impl Default for JITController {
             .unwrap();
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
         builder.symbol("get_virtual_function", super::get_virtual_function as *const u8);
+        builder.symbol("get_static_function", super::get_static_function as *const u8);
         builder.symbol("new_object", super::new_object as *const u8);
         builder.symbol("array8_init", super::stdlib::array8_init as *const u8);
         builder.symbol("array8_set", super::stdlib::array8_set as *const u8);
@@ -1195,7 +1196,50 @@ impl FunctionTranslator<'_> {
 
                     self.create_bail_block(module, return_type.map(|x| x.value_type), &return_value);
                 }
-                // TODO: implement signal ops
+                Bytecode::InvokeStatic(class_name, method_name) => {
+                    let mut get_static_func = module.make_signature();
+                    get_static_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    get_static_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    get_static_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+                    let fn_id = module.declare_function("get_static_function", Linkage::Import, &get_static_func).unwrap();
+
+                    let get_static_func_func = module.declare_func_in_func(fn_id, self.builder.func);
+
+                    let sig = Context::get_static_method_signature(*class_name as Symbol, *method_name as Symbol);
+
+                    let class_name_value = self.builder
+                        .ins()
+                        .iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(class_name.to_le_bytes())));
+                    
+                    let method_name_value = self.builder
+                        .ins()
+                        .iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(method_name.to_le_bytes())));
+
+                    let method_args = self.get_call_arguments_as_vec();
+                    let method_instructions = self.builder
+                        .ins()
+                        .call(get_static_func_func, &[
+                            method_args[0],
+                            class_name_value,
+                            method_name_value,
+                        ]);
+                    let method_value = self.builder.inst_results(method_instructions)[0];
+                    self.create_bail_block(module, Some(types::I64), &[method_value]);
+
+                    let return_type = sig.returns.first().cloned();
+                    let sig = self.builder.import_signature(sig);
+
+                    let result = self.builder.ins().call_indirect(sig, method_value, &method_args);
+
+                    let return_value = self.builder.inst_results(result);
+                    let return_value = return_value.to_vec();
+                    if return_value.len() != 0 {
+                        self.push(return_value[0], return_type.unwrap().value_type)
+                    }
+
+                    self.create_bail_block(module, return_type.map(|x| x.value_type), &return_value);
+                }
                 Bytecode::StartBlock(index) => {
                     let block= self.blocks[*index as usize];
                     let params = self.builder.block_params(block).to_vec();

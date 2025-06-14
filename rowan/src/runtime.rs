@@ -176,73 +176,15 @@ pub struct Context {
     function_backtrace: Vec<String>,
     /// A map between function_backtraces and all currently registered exceptions
     registered_exceptions: HashMap<String, Vec<Symbol>>,
-    receiver: Receiver<Command>,
-    semaphore: Arc<Mutex<usize>>,
-    attachment_sender: Sender<AttachObject>,
 }
 
 impl Context {
-    pub fn new(
-        receiver: Receiver<Command>, 
-        semaphore: Arc<Mutex<usize>>,
-        attachment_sender: Sender<AttachObject>
-    ) -> Self {
+    pub fn new() -> Self {
         Context {
             current_exception: RefCell::new(0),
             function_backtrace: Vec::new(),
             registered_exceptions: HashMap::new(),
-            receiver,
-            semaphore,
-            attachment_sender
         }
-    }
-
-    pub fn main_loop(&mut self) {
-        loop {
-            
-            let command = match self.receiver.recv() {
-                Ok(command) => command,
-                Err(_) => return,
-            };
-            
-            match command {
-                Command::Tick => {
-                    'tickloop: loop {
-                        let task = match Runtime::pop_tick() {
-                            Steal::Success(task) => task,
-                            Steal::Retry => continue 'tickloop,
-                            Steal::Empty => break 'tickloop,
-                        };
-                        
-                        let Tick { object, delta } = task;
-                        
-                        let object_pointer = self.get_object(object)
-                            .expect("main loop provided bad reference");
-                        let object_ref = unsafe { object_pointer.as_ref().unwrap() };
-                        let tick_method = self.get_method(object_ref.class, 1, None, 2);
-                        let tick_method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64, f64)>(tick_method) };
-                        tick_method(self, object, delta);
-                    }
-                    *self.semaphore.lock().unwrap() += 1;
-                }
-                Command::Ready(object) => {
-                    let object_pointer = self.get_object(object)
-                        .expect("main loop provided bad reference");
-                    let object_ref = unsafe { object_pointer.as_ref().unwrap() };
-                    let ready_method = self.get_method(object_ref.class, 1, None, 3);
-                    let ready_method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64)>(ready_method) };
-                    ready_method(self, object);
-                }
-            }
-        }
-    }
-    
-    pub fn notify_attachment(&self, parent: Reference, child: Reference) {
-        self.attachment_sender.send(AttachObject::Attach { parent, child }).unwrap();
-    }
-    
-    pub fn notify_detachment(&self, parent: Reference, child: Reference) {
-        self.attachment_sender.send(AttachObject::Detach { parent, child }).unwrap();
     }
     
     pub fn set_exception(&self, exception: Reference) {
@@ -480,6 +422,63 @@ impl Context {
                 }
             }
         }
+    }
+
+    pub fn get_static_method(
+        &mut self,
+        class_symbol: Symbol,
+        method_name: Symbol,
+    ) -> *const () {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(string_table) = STRING_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol] else {
+            panic!("class wasn't a class");
+        };
+
+        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
+            panic!("method wasn't a string");
+        };
+
+        self.push_backtrace(string_table.get_string(method_name_index).to_string());
+
+        let class = &class_table[class_index];
+
+        let vtable_index = class.static_methods;
+        let Ok(vtables_table) = VTABLES.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let vtable = &vtables_table[vtable_index];
+        let function = vtable.get_function(method_name);
+
+        let value = function.value.read().expect("Lock poisoned");
+        match &*value {
+            FunctionValue::Builtin(ptr, _) => *ptr,
+            FunctionValue::Compiled(ptr, _) => *ptr,
+            _ => {
+                drop(value);
+                let mut compiler = Context::create_jit_compiler();
+                let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
+                    panic!("Lock poisoned");
+                };
+
+                compiler.compile(&function, &mut jit_controller.module).unwrap();
+
+                let value = function.value.read().expect("Lock poisoned");
+                match &*value {
+                    FunctionValue::Compiled(ptr, _) => *ptr,
+                    _ => panic!("Function wasn't compiled")
+                }
+            }
+        }
 
     }
 
@@ -506,6 +505,38 @@ impl Context {
 
         let class = &class_table[object_class_index];
         let vtable_index = class.get_vtable(&(class_symbol, None));
+        let Ok(vtables_table) = VTABLES.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let vtable = &vtables_table[vtable_index];
+        let function = vtable.get_function(method_name);
+        let value = function.value.read().expect("Lock poisoned");
+        match &*value {
+            FunctionValue::Builtin(_, signature) => signature.clone(),
+            FunctionValue::Compiled(_, signature) => signature.clone(),
+            FunctionValue::Bytecode(_, _, signature) => signature.clone(),
+            _ => panic!("Method not compiled yet"),
+        }
+    }
+
+    pub fn get_static_method_signature(
+        class_symbol: Symbol, 
+        method_name: Symbol
+    ) -> Signature {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let SymbolEntry::ClassRef(object_class_index) = symbol_table[class_symbol] else {
+            panic!("class wasn't a class");
+        };
+
+        let class = &class_table[object_class_index];
+        let vtable_index = class.static_methods;
         let Ok(vtables_table) = VTABLES.read() else {
             panic!("Lock poisoned");
         };
@@ -612,4 +643,12 @@ pub extern "C" fn new_object(class_symbol: u64) -> u64 {
     let class_symbol = class_symbol as Symbol;
     let object = Context::new_object(class_symbol);
     object as usize as u64
+}
+
+pub extern "C" fn get_static_function(context: &mut Context, class_symbol: u64, method_name: u64) -> u64 {
+    let class_symbol = class_symbol as Symbol;
+    let method_name = method_name as Symbol;
+    let method_ptr = context.get_static_method(class_symbol, method_name);
+
+    method_ptr as usize as u64
 }

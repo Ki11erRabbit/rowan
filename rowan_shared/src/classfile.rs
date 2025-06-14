@@ -187,8 +187,6 @@ impl ClassFile {
                 binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
             ]);
             index += std::mem::size_of::<u64>();
-            eprintln!("vtable size: {}", vtable_size);
-            eprintln!("pointer: {:?}", binary.as_ptr() as usize + index);
             let functions = unsafe {
                 std::slice::from_raw_parts(
                     binary.as_ptr().add(index) as *const VTableEntry,
@@ -235,8 +233,6 @@ impl ClassFile {
             binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
         ]);
         index += std::mem::size_of::<u64>();
-        eprintln!("static_methods_size: {}", static_methods_size);
-        eprintln!("pointer: {:?}", binary.as_ptr() as usize + index);
         let functions = unsafe {
             std::slice::from_raw_parts(
                 binary.as_ptr().add(index) as *const VTableEntry,
@@ -245,7 +241,7 @@ impl ClassFile {
         };
         let static_methods = StaticMethods::new(functions.to_vec());
         index += static_methods_size as usize * std::mem::size_of::<VTableEntry>();
-        
+
 
         let mut bytecode_table = Vec::new();
         let bytecode_table_size = u64::from_le_bytes([
@@ -382,7 +378,7 @@ impl ClassFile {
             binary.push(member.type_tag.as_byte());
         }
         binary.extend_from_slice(&[0; 7]); // Weird padding of 7 bytes
-        
+
         binary.extend_from_slice(&(self.static_methods.functions.len() as u64).to_le_bytes());
         for function in &self.static_methods.functions {
             binary.extend_from_slice(&function.name.to_le_bytes());
