@@ -858,93 +858,29 @@ fn link_bytecode(
 
                 output.push(linked::Bytecode::GetStaticMethod(class_symbol as u64, method_symbol as u64));
             }
-            compiled::Bytecode::EmitSignal(class_index, name_index) => {
+            compiled::Bytecode::GetStaticMember(class_index, member_index, type_tag) => {
                 let class_str = class_file.index_string_table(class_index);
-                let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
-
-                let signal_str = class_file.index_string_table(name_index);
-                let signal_symbol: Symbol = if let Some(index) = string_map.get(signal_str) {
+                let class_symbol = if let Some(index) = string_map.get(class_str) {
                     *index
                 } else {
-                    let index = string_table.add_string(signal_str);
+                    let index = string_table.add_string(class_str);
                     let symbol = symbol_table.add_string(index);
                     symbol
                 };
-
-                output.push(linked::Bytecode::EmitSignal(class_symbol as u64, signal_symbol as u64));
+                
+                output.push(linked::Bytecode::GetStaticMember(class_symbol as u64, member_index, type_tag));
             }
-            compiled::Bytecode::EmitStaticSignal(class_index, name_index) => {
+            compiled::Bytecode::SetStaticMember(class_index, member_index, type_tag) => {
                 let class_str = class_file.index_string_table(class_index);
-                let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
-
-                let signal_str = class_file.index_string_table(name_index);
-                let signal_symbol: Symbol = if let Some(index) = string_map.get(signal_str) {
+                let class_symbol = if let Some(index) = string_map.get(class_str) {
                     *index
                 } else {
-                    let index = string_table.add_string(signal_str);
+                    let index = string_table.add_string(class_str);
                     let symbol = symbol_table.add_string(index);
                     symbol
                 };
 
-                output.push(linked::Bytecode::EmitStaticSignal(class_symbol as u64, signal_symbol as u64));
-            }
-            compiled::Bytecode::ConnectSignal(signal_index, class_index, class_index2, method_index) => {
-                let class_str = class_file.index_string_table(class_index);
-                let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
-
-                let class_str = class_file.index_string_table(class_index2);
-                let class_symbol2: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
-
-                let signal_str = class_file.index_string_table(signal_index);
-                let signal_symbol: Symbol = if let Some(index) = string_map.get(signal_str) {
-                    *index
-                } else {
-                    let index = string_table.add_string(signal_str);
-                    let symbol = symbol_table.add_string(index);
-                    symbol
-                };
-
-                let method_str = class_file.index_string_table(method_index);
-                let method_symbol: Symbol = if let Some(index) = string_map.get(method_str) {
-                    *index
-                } else {
-                    let index = string_table.add_string(method_str);
-                    let symbol = symbol_table.add_string(index);
-                    symbol
-                }; 
-
-                output.push(
-                    linked::Bytecode::ConnectSignal(
-                        signal_symbol as u64,
-                        class_symbol as u64,
-                        class_symbol2 as u64,
-                        method_symbol as u64,
-                    ));
-            }
-            compiled::Bytecode::DisconnectSignal(signal_index, method_index) => {
-                let signal_str = class_file.index_string_table(signal_index);
-                let signal_symbol: Symbol = if let Some(index) = string_map.get(signal_str) {
-                    *index
-                } else {
-                    let index = string_table.add_string(signal_str);
-                    let symbol = symbol_table.add_string(index);
-                    symbol
-                };
-
-                let method_str = class_file.index_string_table(method_index);
-                let method_symbol: Symbol = if let Some(index) = string_map.get(method_str) {
-                    *index
-                } else {
-                    let index = string_table.add_string(method_str);
-                    let symbol = symbol_table.add_string(index);
-                    symbol
-                }; 
-
-                output.push(
-                    linked::Bytecode::DisconnectSignal(
-                        signal_symbol as u64,
-                        method_symbol as u64,
-                    ));
+                output.push(linked::Bytecode::SetStaticMember(class_symbol as u64, member_index, type_tag));
             }
             compiled::Bytecode::GetStrRef(str_index) => {
                 let str_str = class_file.index_string_table(str_index);

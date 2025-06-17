@@ -194,6 +194,7 @@ pub struct Class<'a> {
     pub parents: Vec<ParentDec<'a>>,
     pub members: Vec<Member<'a>>,
     pub methods: Vec<Method<'a>>,
+    pub static_members: Vec<StaticMember<'a>>,
     pub type_params: Vec<TypeParameter<'a>>,
     pub span: Span,
 }
@@ -204,6 +205,7 @@ impl Class<'_> {
         parents: Vec<ParentDec<'a>>,
         members: Vec<Member<'a>>,
         methods: Vec<Method<'a>>,
+        static_members: Vec<StaticMember<'a>>,
         type_params: Vec<TypeParameter<'a>>,
         span: Span
     ) -> Class<'a> {
@@ -212,6 +214,7 @@ impl Class<'_> {
             parents,
             members,
             methods,
+            static_members,
             type_params,
             span
         }
@@ -230,6 +233,7 @@ pub struct ParentDec<'a> {
 pub enum ClassMember<'a> {
     Member(Member<'a>),
     Method(Method<'a>),
+    StaticMember(StaticMember<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
@@ -282,7 +286,15 @@ impl Parameter<'_> {
         }
             
     }
-    
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub struct StaticMember<'a> {
+    pub visibility: Visibility,
+    pub name: Text<'a>,
+    pub ty: Type<'a>,
+    pub value: Option<Expression<'a>>,
+    pub span: Span,
 }
 
 
