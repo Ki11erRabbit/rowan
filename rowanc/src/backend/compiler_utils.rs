@@ -70,6 +70,11 @@ pub struct PartialClass {
     members: Vec<Member>,
     /// Static methods and their entry
     static_methods: Vec<VTableEntry>,
+    /// Static members
+    static_members: Vec<Member>,
+    /// Static member initialization function.
+    /// This can be null
+    static_init: BytecodeIndex,
     /// Where the bytecode is stored
     /// This table is 1 indexed to allow for methods to be empty
     bytecode_table: Vec<BytecodeEntry>,
@@ -151,6 +156,8 @@ impl PartialClass {
             vtables: Vec::new(),
             members: Vec::new(),
             static_methods: Vec::new(),
+            static_members: Vec::new(),
+            static_init: 0,
             bytecode_table: Vec::new(),
             string_table: Vec::new(),
             string_to_index: HashMap::new(),
@@ -178,6 +185,8 @@ impl PartialClass {
             self.vtables,
             self.members,
             StaticMethods::new(self.static_methods),
+            self.static_members,
+            self.static_init,
             self.bytecode_table,
             self.string_table,
             self.signature_table))
@@ -251,6 +260,12 @@ impl PartialClass {
         member.name = self.add_string(name);
 
         self.members.push(member);
+    }
+
+    pub fn add_static_member<S: AsRef<str>>(&mut self, mut member: Member, member_name: S) {
+        member.name = self.add_string(member_name);
+
+        self.static_members.push(member);
     }
 
     pub fn attach_bytecode<B: AsRef<[u8]>>(

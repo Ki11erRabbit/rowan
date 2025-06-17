@@ -99,6 +99,10 @@ pub struct ClassFile {
     pub members: Vec<Member>,
     /// Static Method VTable
     pub static_methods: StaticMethods,
+    /// Static Class Members
+    pub static_members: Vec<Member>,
+    /// Static Initialization Function
+    pub static_init: BytecodeIndex,
     /// Where the bytecode is stored
     /// This table is 1 indexed to allow for methods to be empty
     pub(crate) bytecode_table: Vec<BytecodeEntry>,
@@ -118,6 +122,8 @@ impl ClassFile {
         vtables: Vec<VTable>,
         members: Vec<Member>,
         static_methods: StaticMethods,
+        static_members: Vec<Member>,
+        static_init: BytecodeIndex,
         bytecode_table: Vec<BytecodeEntry>,
         string_table: Vec<StringEntry>,
         signature_table: Vec<SignatureEntry>,
@@ -132,6 +138,8 @@ impl ClassFile {
             vtables,
             members,
             static_methods,
+            static_members,
+            static_init,
             bytecode_table,
             string_table,
             signature_table
@@ -242,6 +250,36 @@ impl ClassFile {
         let static_methods = StaticMethods::new(functions.to_vec());
         index += static_methods_size as usize * std::mem::size_of::<VTableEntry>();
 
+        let members_size = u64::from_le_bytes([
+            binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+            binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+        ]);
+        index += std::mem::size_of::<u64>();
+
+        let mut static_members = Vec::new();
+        for _ in 0..members_size {
+            let name = u64::from_le_bytes([
+                binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+                binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+            ]);
+            index += std::mem::size_of::<StringIndex>();
+            let type_tag = unsafe {
+                std::ptr::read(binary.as_ptr().add(index) as *const u8)
+            };
+            let tag = type_tag.into();
+            members.push(Member {
+                name,
+                type_tag: tag
+            });
+            index += std::mem::size_of::<u8>();
+        }
+
+        let static_init = u64::from_le_bytes([
+            binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+            binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+        ]);
+        index += std::mem::size_of::<u64>();
+
 
         let mut bytecode_table = Vec::new();
         let bytecode_table_size = u64::from_le_bytes([
@@ -330,6 +368,8 @@ impl ClassFile {
             vtables,
             members,
             static_methods,
+            static_members,
+            static_init
             bytecode_table,
             string_table,
             signature_table
@@ -385,6 +425,15 @@ impl ClassFile {
             binary.extend_from_slice(&function.signature.to_le_bytes());
             binary.extend_from_slice(&function.bytecode.to_le_bytes());
         }
+
+        binary.extend_from_slice(&(self.static_members.len() as u64).to_le_bytes());
+        for member in self.static_members.iter() {
+            binary.extend_from_slice(&member.name.to_le_bytes());
+            binary.push(member.type_tag.as_byte())
+        }
+
+        binary.push(self.static_init);
+
         binary.extend_from_slice(&(self.bytecode_table.len() as u64).to_le_bytes());
         for bytecode in &self.bytecode_table {
             binary.extend_from_slice(&(bytecode.code.len() as u64).to_le_bytes());

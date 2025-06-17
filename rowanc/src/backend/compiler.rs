@@ -360,6 +360,7 @@ impl Compiler {
             parents,
             members,
             methods,
+            static_members,
             ..
         } = class;
 
@@ -384,7 +385,13 @@ impl Compiler {
             partial_class.add_parent(&parent.name);
         });
 
-        let (vtable, names, signatures, static_method_map, static_signatures) = self.construct_vtable(&name, &methods)?;
+        let (
+            vtable,
+            names,
+            signatures,
+            static_method_map,
+            static_signatures
+        ) = self.construct_vtable(&name, &methods)?;
 
         partial_class.add_signatures(static_signatures);
         
@@ -420,7 +427,32 @@ impl Compiler {
             partial_class.add_member(member, name);
         });
 
-        self.compile_methods(&name, &mut partial_class, methods)?;
+        let mut static_init_bytecode = Vec::new();
+
+        let class_name = name;
+        static_members.into_iter().map(|member| {
+            (member.name, Member::new(self.convert_type(&member.ty)), member.value)
+        }).enumerate()
+            .map(|(i, (name, member, value))| {
+                let ty = member.type_tag.clone();
+                partial_class.add_static_member(member, name);
+                value.map(|value| {
+                    self.compile_expression(
+                        &class_name,
+                        &mut partial_class,
+                        &value,
+                        &mut static_init_bytecode,
+                        true
+                    )?;
+                    let index = partial_class.add_string(&class_name);
+                    static_init_bytecode.push(Bytecode::SetStaticMember(index, i as u64, ty));
+                    Ok(())
+                })
+        })?;
+
+        static_init_bytecode.push(Bytecode::ReturnVoid);
+
+        self.compile_methods(&class_name, &mut partial_class, methods)?;
         
         self.classes.insert(name.to_string(), partial_class);
         
