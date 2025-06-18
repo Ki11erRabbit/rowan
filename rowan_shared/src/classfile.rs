@@ -274,7 +274,7 @@ impl ClassFile {
             index += std::mem::size_of::<u8>();
         }
 
-        let static_init = u64::from_le_bytes([
+        let static_init = i64::from_le_bytes([
             binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
             binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
         ]);
@@ -369,7 +369,7 @@ impl ClassFile {
             members,
             static_methods,
             static_members,
-            static_init
+            static_init,
             bytecode_table,
             string_table,
             signature_table
@@ -432,7 +432,7 @@ impl ClassFile {
             binary.push(member.type_tag.as_byte())
         }
 
-        binary.push(self.static_init);
+        binary.extend_from_slice(&self.static_init.to_le_bytes());
 
         binary.extend_from_slice(&(self.bytecode_table.len() as u64).to_le_bytes());
         for bytecode in &self.bytecode_table {

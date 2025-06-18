@@ -431,9 +431,13 @@ impl Compiler {
 
         let class_name = name;
         static_members.into_iter().map(|member| {
-            (member.name, Member::new(self.convert_type(&member.ty)), member.value)
-        }).enumerate()
-            .map(|(i, (name, member, value))| {
+            let new_ty = self.convert_type(&member.ty);
+            (member.name, Member::new(new_ty), member.value)
+        })
+            .collect::<Vec<(Text, Member, Option<Expression>)>>()
+            .into_iter()
+            .enumerate()
+            .flat_map(|(i, (name, member, value))| {
                 let ty = member.type_tag.clone();
                 partial_class.add_static_member(member, name);
                 value.map(|value| {
@@ -443,18 +447,19 @@ impl Compiler {
                         &value,
                         &mut static_init_bytecode,
                         true
-                    )?;
-                    let index = partial_class.add_string(&class_name);
-                    static_init_bytecode.push(Bytecode::SetStaticMember(index, i as u64, ty));
-                    Ok(())
+                    ).map(|_| {
+                        let index = partial_class.add_string(&class_name);
+                        static_init_bytecode.push(Bytecode::SetStaticMember(index, i as u64, ty));
+                        Ok::<(), CompilerError>(())
+                    })
                 })
-        })?;
+        }).collect::<Result<Result<(), CompilerError>, CompilerError>>()??;
 
         static_init_bytecode.push(Bytecode::ReturnVoid);
 
         self.compile_methods(&class_name, &mut partial_class, methods)?;
         
-        self.classes.insert(name.to_string(), partial_class);
+        self.classes.insert(class_name.to_string(), partial_class);
         
         Ok(())
     }
