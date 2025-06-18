@@ -291,6 +291,7 @@ impl Parameter<'_> {
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct StaticMember<'a> {
     pub visibility: Visibility,
+    pub is_const: bool,
     pub name: Text<'a>,
     pub ty: Type<'a>,
     pub value: Option<Expression<'a>>,

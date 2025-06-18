@@ -219,6 +219,7 @@ StaticMember: ClassMember<'a> = {
         ClassMember::StaticMember(
             StaticMember {
                 visibility: vis,
+                is_const: false,
                 name,
                 ty,
                 value: None,
@@ -231,13 +232,40 @@ StaticMember: ClassMember<'a> = {
         ClassMember::StaticMember(
             StaticMember {
                 visibility: vis,
+                is_const: false,
                 name,
                 ty,
                 value: Some(expr),
                 span
             }
         )
-    }
+    },
+    <start: @L> <vis:Visibility> "static" "const" <name:Identifier> ":" <ty:Type> <end: @R> => {
+            let span = Span::new(start, end);
+            ClassMember::StaticMember(
+                StaticMember {
+                    visibility: vis,
+                    is_const: true,
+                    name,
+                    ty,
+                    value: None,
+                    span
+                }
+            )
+        },
+        <start: @L> <vis:Visibility> "static" "const" <name:Identifier> ":" <ty:Type> Assign <expr:MemberExpr> <end: @R> => {
+            let span = Span::new(start, end);
+            ClassMember::StaticMember(
+                StaticMember {
+                    visibility: vis,
+                    is_const: true,
+                    name,
+                    ty,
+                    value: Some(expr),
+                    span
+                }
+            )
+        }
 };
 
 TypeList: Vec<Type<'a>> = {
