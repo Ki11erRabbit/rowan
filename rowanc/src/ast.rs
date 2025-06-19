@@ -570,18 +570,6 @@ pub enum Expression<'a> {
     },
     Return(Option<Box<Expression<'a>>>, Span),
     New(Type<'a>, Option<Box<Expression<'a>>>, Span),
-    Connect {
-        source: Box<Expression<'a>>,
-        destination: Box<Expression<'a>>,
-        signal_name: Text<'a>,
-        span: Span,
-    },
-    Disconnect {
-        source: Box<Expression<'a>>,
-        destination: Box<Expression<'a>>,
-        signal_name: Text<'a>,
-        span: Span,
-    },
     Loop {
         label: Option<Text<'a>>,
         body: Vec<Statement<'a>>,
@@ -599,7 +587,6 @@ pub enum Expression<'a> {
         typ: Type<'a>,
         span: Span,
     },
-    Emit(Text<'a>, Vec<Expression<'a>>,Span),
 }
 
 impl Expression<'_> {
@@ -679,34 +666,6 @@ impl Expression<'_> {
             left: lhs,
             right: rhs,
             span
-        }
-    }
-
-    pub fn new_connect_expression<'a>(
-        source: Box<Expression<'a>>,
-        destination: Box<Expression<'a>>,
-        signal_name: Text<'a>,
-        span: Span,
-    ) -> Expression<'a> {
-        Expression::Connect {
-            source,
-            destination,
-            signal_name,
-            span,
-        }
-    }
-
-    pub fn new_disconnect_expression<'a>(
-        source: Box<Expression<'a>>,
-        destination: Box<Expression<'a>>,
-        signal_name: Text<'a>,
-        span: Span,
-    ) -> Expression<'a> {
-        Expression::Disconnect {
-            source,
-            destination,
-            signal_name,
-            span,
         }
     }
 

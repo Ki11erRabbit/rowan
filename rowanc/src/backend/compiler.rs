@@ -1,5 +1,7 @@
 use std::{collections::HashMap, io::Write, path::{Path, PathBuf}};
+use std::cmp::Ordering;
 use either::Either;
+use itertools::Itertools;
 use rowan_shared::{bytecode::compiled::Bytecode, classfile::{Member, SignatureEntry, VTable, VTableEntry}, TypeTag};
 use rowan_shared::classfile::SignatureIndex;
 use crate::{ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator, Text}, backend::compiler_utils::Frame};
@@ -250,18 +252,18 @@ pub struct Compiler {
     scopes: Vec<Frame>,
     classes: HashMap<String, PartialClass>,
     current_block: u64,
+    method_returned: bool,
 }
 
 
 impl Compiler {
 
     pub fn new() -> Compiler {
-
-        
         Compiler {
             scopes: Vec::new(),
             classes: create_stdlib(),
             current_block: 0,
+            method_returned: false,
         }
     }
 
@@ -557,6 +559,7 @@ impl Compiler {
     pub fn compile_methods(&mut self, class_name: &str, partial_class: &mut PartialClass, methods: Vec<Method>) -> Result<(), CompilerError> {
 
         for method in methods {
+            self.method_returned = false;
             let Method {
                 name,
                 parameters,
@@ -576,7 +579,11 @@ impl Compiler {
             }
             
             
-            let bytecode = self.compile_method_body(class_name, partial_class, body)?;
+            let mut bytecode = self.compile_method_body(class_name, partial_class, body)?;
+
+            if !self.method_returned {
+                bytecode.push(Bytecode::ReturnVoid);
+            }
 
             let bytecode = bytecode.into_iter().flat_map(|code| {
                 code.into_binary()
@@ -1022,19 +1029,29 @@ impl Compiler {
                     _ => unreachable!("all calls should be via member access by this point")
                 };
 
-                let mut argument_pos: u8 = 0;
+                let new_args = args.iter()
+                    .enumerate()
+                    .sorted_by(|(_, a), (_, b)| {
+                        match (a, b) {
+                            (_, Expression::StaticCall {..}) => Ordering::Greater,
+                            (_, Expression::Call {..}) => Ordering::Greater,
+                            (Expression::StaticCall {..}, _) => Ordering::Less,
+                            (Expression::Call {..}, _) => Ordering::Less,
+                            _ => Ordering::Equal,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                let argument_pos = (new_args.len() + 1) as u8;// adding one for object
+
+                for (i, arg) in new_args {
+                    self.compile_expression(class_name, partial_class, arg, output, lhs)?;
+                    output.push(Bytecode::StoreArgument(i as u8 + 1));
+                }
                 
                 let object = self.get_variable(var).expect("There should be method calling by this point");
                 output.push(Bytecode::LoadLocal(object));
-                output.push(Bytecode::StoreArgument(argument_pos));
-                argument_pos += 1;
-
-                for arg in args {
-                    self.compile_expression(class_name, partial_class, arg, output, lhs)?;
-                    output.push(Bytecode::StoreArgument(argument_pos));
-                    argument_pos += 1;
-                }
-
+                output.push(Bytecode::StoreArgument(0));
 
                 let name = name.segments.last().unwrap();
 
@@ -1113,11 +1130,22 @@ impl Compiler {
                 }
             }
             Expression::StaticCall { name, type_args, args, .. } => {
-                let mut argument_pos: u8 = 0;
-                for arg in args {
+                let new_args = args.iter()
+                    .enumerate()
+                    .sorted_by(|(_, a), (_, b)| {
+                        match (a, b) {
+                            (_, Expression::StaticCall {..}) => Ordering::Greater,
+                            (_, Expression::Call {..}) => Ordering::Greater,
+                            (Expression::StaticCall {..}, _) => Ordering::Less,
+                            (Expression::Call {..}, _) => Ordering::Less,
+                            _ => Ordering::Equal,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                for (i, arg) in new_args {
                     self.compile_expression(class_name, partial_class, arg, output, lhs)?;
-                    output.push(Bytecode::StoreArgument(argument_pos));
-                    argument_pos += 1;
+                    output.push(Bytecode::StoreArgument(i as u8));
                 }
 
                 let method_name = name.segments.last().unwrap();
@@ -1143,8 +1171,20 @@ impl Compiler {
                 output.push(Bytecode::NewObject(string_ref));
             }
             Expression::IfExpression(if_expr, _) => {
-
                 self.compile_if_expression(class_name, partial_class, if_expr, output, lhs)?;
+            }
+            Expression::Return(value, _) => {
+                self.method_returned = true;
+                let result = value.as_ref().map(|expr| {
+                    self.compile_expression(class_name, partial_class, expr.as_ref(), output, lhs)
+                });
+
+                if let Some(result) = result {
+                    let _ = result?;
+                    output.push(Bytecode::Return)
+                } else {
+                    output.push(Bytecode::ReturnVoid)
+                }
             }
             _ => todo!("add remaining expressions")
         }

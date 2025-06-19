@@ -1146,8 +1146,6 @@ impl FunctionTranslator<'_> {
 
                     let get_virt_func_func = module.declare_func_in_func(fn_id, self.builder.func);
 
-
-
                     //println!("[translate] class_name from invoke virt: {}", class_name);
                     let sig = Context::get_method_signature(*class_name as Symbol, *method_name as Symbol);
                     
@@ -1241,6 +1239,57 @@ impl FunctionTranslator<'_> {
 
                     self.create_bail_block(module, return_type.map(|x| x.value_type), &return_value);
                 }
+                Bytecode::Return => {
+                    let normal_return_id = if let Some(id) = module.get_name("context_normal_return") {
+                        match id {
+                            FuncOrDataId::Func(id) => id,
+                            _ => unreachable!("cannot create array object from data id"),
+                        }
+                    } else {
+                        let mut new_object = module.make_signature();
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+                        let fn_id = module.declare_function("context_normal_return", Linkage::Import, &new_object).unwrap();
+                        fn_id
+                    };
+
+                    let normal_return = module.declare_func_in_func(normal_return_id, self.builder.func);
+
+                    let context_value = self.builder.use_var(self.context_var);
+
+                    let should_unwind_result = self.builder.ins()
+                        .call(normal_return, &[context_value]);
+
+                    let _ = self.builder.inst_results(should_unwind_result);
+
+                    let (return_value, _) = self.pop();
+                    self.builder.ins().return_(&[return_value]);
+                }
+                Bytecode::ReturnVoid => {
+                    let normal_return_id = if let Some(id) = module.get_name("context_normal_return") {
+                        match id {
+                            FuncOrDataId::Func(id) => id,
+                            _ => unreachable!("cannot create array object from data id"),
+                        }
+                    } else {
+                        let mut new_object = module.make_signature();
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+                        let fn_id = module.declare_function("context_normal_return", Linkage::Import, &new_object).unwrap();
+                        fn_id
+                    };
+
+                    let normal_return = module.declare_func_in_func(normal_return_id, self.builder.func);
+
+                    let context_value = self.builder.use_var(self.context_var);
+
+                    let should_unwind_result = self.builder.ins()
+                        .call(normal_return, &[context_value]);
+
+                    let _ = self.builder.inst_results(should_unwind_result);
+
+                    self.builder.ins().return_(&[]);
+                }
                 Bytecode::StartBlock(index) => {
                     let block= self.blocks[*index as usize];
                     let params = self.builder.block_params(block).to_vec();
@@ -1303,8 +1352,6 @@ impl FunctionTranslator<'_> {
                         }
                     }
 
-
-
                     self.builder.ins().brif(
                         value,
                         then_block,
@@ -1315,34 +1362,7 @@ impl FunctionTranslator<'_> {
                 }
                 x => todo!("remaining ops {:?}", x),
             }
-
         }
-
-        let normal_return_id = if let Some(id) = module.get_name("context_normal_return") {
-            match id {
-                FuncOrDataId::Func(id) => id,
-                _ => unreachable!("cannot create array object from data id"),
-            }
-        } else {
-            let mut new_object = module.make_signature();
-            new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-
-            let fn_id = module.declare_function("context_normal_return", Linkage::Import, &new_object).unwrap();
-            fn_id
-        };
-
-        let normal_return = module.declare_func_in_func(normal_return_id, self.builder.func);
-
-        let context_value = self.builder.use_var(self.context_var);
-
-        let should_unwind_result = self.builder.ins()
-            .call(normal_return, &[context_value]);
-
-        let _ = self.builder.inst_results(should_unwind_result);
-
-        self.builder.ins().return_(&[]);
-
-
         Ok(())
     }
 

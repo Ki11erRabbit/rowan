@@ -8,6 +8,7 @@ lalrpop-util = "0.22.0"
 ariadne = "0.5.0"
 either = "1.13.0"
 rowan_shared = { workspace = true }
+itertools = "0.14.0"
 
 [build-dependencies]
 lalrpop = "0.22.0"

@@ -267,12 +267,9 @@ impl TypeChecker {
     }
 
     fn check_files<'a>(&mut self, mut files: Vec<crate::ast::File<'a>>) -> Result<Vec<crate::ast::File<'a>>, TypeCheckerError> {
-
         for file in files.iter_mut() {
             self.check_file(file)?;
         }
-        
-
         Ok(files)
     }
 
@@ -289,7 +286,13 @@ impl TypeChecker {
     }
 
     fn check_class<'a>(&mut self, class: &mut crate::ast::Class<'a>) -> Result<(), TypeCheckerError> {
-        let crate::ast::Class { name, members, methods, parents, .. } = class;
+        let crate::ast::Class {
+            name,
+            members,
+            methods,
+            parents,
+            ..
+        } = class;
         let class_name = name;
         let mut class_attributes = HashMap::new();
         for member in members.iter() {
@@ -313,6 +316,7 @@ impl TypeChecker {
             let ty = TypeCheckerType::Function(argument_types, Box::new(TypeCheckerType::from(return_type.clone())));
             class_attributes.insert(name.to_string(), ClassAttribute::Method(ty));
         }
+
         
         let parents = parents.iter().map(|dec| dec.name.to_string()).collect();
 
@@ -580,6 +584,19 @@ impl TypeChecker {
                     }
                 }
             }
+            Expression::Return(value, _) => {
+                let result = value.as_mut().map(|mut value| {
+                    let ty = self.get_type(value.as_mut())?;
+                    if <&TypeCheckerType as Into<Type>>::into(return_type) != ty {
+                        todo!("report type mismatch in return value")
+                    } else {
+                        Ok(())
+                    }
+                });
+                if let Some(result) = result {
+                    _ = result?;
+                }
+            }
             _ => {}
         }
 
@@ -662,6 +679,28 @@ impl TypeChecker {
                         }
                         _ => unreachable!("something other than function")
                     };
+                    *annotation = Some(ty.clone());
+                    Ok(ty)
+                }
+            }
+            Expression::StaticCall { name, annotation, .. } => {
+                if let Some(ty)= annotation {
+                    Ok(ty.clone())
+                } else {
+                    let attribute = self.get_attribute(
+                        &name.segments[name.segments.len() - 2],
+                        &name.segments[name.segments.len() - 1]
+                    );
+                    let Some(ClassAttribute::Method(ty)) = attribute else {
+                        todo!("report missing missing attribute")
+                    };
+                    let ty = match ty {
+                        TypeCheckerType::Function(_, ret_type) => {
+                            *ret_type.clone()
+                        }
+                        _ => unreachable!("something other than function")
+                    };
+                    let ty = <TypeCheckerType as Into<Type>>::into(ty);
                     *annotation = Some(ty.clone());
                     Ok(ty)
                 }

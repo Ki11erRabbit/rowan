@@ -23,6 +23,8 @@ class Main {
             printer.println-int(arr[counter]);
             counter = counter + 1;
         }
+
+        printer.println-int(Main::return-int());
     }
 
     t: u64;
@@ -36,6 +38,10 @@ class Main {
         printer.println-int(y);
         let j: u64 = 9999999999999;
         printer.println-int(j);
+    }
+
+    fn return-int() -> u64 {
+        return 66;
     }
 
 }
