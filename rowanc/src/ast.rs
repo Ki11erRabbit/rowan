@@ -544,6 +544,10 @@ pub enum Expression<'a> {
         span: Span,
         annotation: Option<Type<'a>>,
     },
+    ClassAccess {
+        class_name: PathName<'a>,
+        span: Span,
+    },
     Closure {
         params: Vec<ClosureParameter<'a>>,
         return_type: Option<Type<'a>>,

@@ -117,6 +117,12 @@ Path: PathName<'a> = {
     },
 };
 
+PathNoInline: PathName<'a> = {
+    <start: @L> <segments:(<Identifier> "::")*> <end: @R> => {
+        PathName::new(segments, Span::new(start, end))
+    },
+};
+
 pub Visibility: Visibility = {
     <vis:("pub")?> => {
         match vis {
@@ -524,7 +530,6 @@ Statement: Statement<'a> = {
         Statement::new_assignment(lhs, rhs, Span::new(start, end))
     },
     <start: @L> <expr:Expr> <end: @R> => {
-
         Statement::Expression(expr, Span::new(start, end))
     },
     <start: @L> <label:(<Identifier> ":")?> "while" <expr:Expr> <block:Block> <end: @R> => {
@@ -575,6 +580,20 @@ MemberExpr: Expression<'a> = {
         Expression::New(id, Some(array_size), Span::new(start, end))
     },
     <call:Call> => call,
+    /*<start: @L> <path: Path> <id:Type> <end: @R> =>? {
+        let mut path = path;
+        let Type::Object(name, span) = id else {
+            return Err(ParseError::User {
+                error: "can only access object types",
+            });
+        }
+        path.segments.push(name);
+        path.span.end = span.end;
+        Ok(Expression::ClassAccess {
+            class_name: path,
+            span: Span::new(start, end),
+        })
+    },*/
 };
 
 
@@ -847,7 +866,6 @@ Pattern: Pattern<'a> = {
     },
 };
 
-// TODO: remove default literal typing
 Constant: Constant<'a> = {
     <start: @L> <int:Int_lit> <end: @R> => Constant::Integer(int, None, Span::new(start, end)),
     <start: @L> <float:Float_lit> <end: @R> => Constant::Float(float, None, Span::new(start, end)),

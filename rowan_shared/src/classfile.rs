@@ -100,7 +100,7 @@ pub struct ClassFile {
     /// Static Method VTable
     pub static_methods: StaticMethods,
     /// Static Class Members
-    pub static_members: Vec<StaticMember>,
+    pub static_members: Vec<Member>,
     /// Static Initialization Function
     pub static_init: BytecodeIndex,
     /// Where the bytecode is stored
@@ -122,7 +122,7 @@ impl ClassFile {
         vtables: Vec<VTable>,
         members: Vec<Member>,
         static_methods: StaticMethods,
-        static_members: Vec<StaticMember>,
+        static_members: Vec<Member>,
         static_init: BytecodeIndex,
         bytecode_table: Vec<BytecodeEntry>,
         string_table: Vec<StringEntry>,
@@ -267,7 +267,7 @@ impl ClassFile {
                 std::ptr::read(binary.as_ptr().add(index) as *const u8)
             };
             let tag = type_tag.into();
-            members.push(Member {
+            static_members.push(Member {
                 name,
                 type_tag: tag
             });
@@ -491,24 +491,6 @@ impl Member {
     pub fn new(type_tag: TypeTag) -> Self {
         Member {
             name: 0,
-            type_tag
-        }
-    }
-}
-
-/// Represents a static member of a class
-#[derive(PartialEq, Debug)]
-pub struct StaticMember {
-    pub is_const: bool,
-    pub name: StringIndex,
-    pub type_tag: TypeTag,
-}
-
-impl StaticMember {
-    pub fn new(is_const: bool, type_tag: TypeTag) -> Self {
-        StaticMember {
-            name: 0,
-            is_const,
             type_tag
         }
     }

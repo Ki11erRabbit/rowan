@@ -1,4 +1,3 @@
-use crate::bytecode::compiled::StringIndex;
 use crate::TypeTag;
 
 pub type BlockIdOffset = i64;

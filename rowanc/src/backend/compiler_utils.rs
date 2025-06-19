@@ -59,6 +59,33 @@ impl Frame {
     }
 }
 
+/// Represents a member of a class
+#[derive(PartialEq, Debug)]
+pub struct StaticMember {
+    pub name: StringIndex,
+    pub is_const: bool,
+    pub type_tag: TypeTag,
+}
+
+impl StaticMember {
+    pub fn new(is_const: bool, type_tag: TypeTag) -> Self {
+        StaticMember {
+            name: 0,
+            is_const,
+            type_tag
+        }
+    }
+}
+
+impl Into<Member> for StaticMember {
+    fn into(self) -> Member {
+        Member {
+            name: self.name,
+            type_tag: self.type_tag,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct PartialClass {
     name: StringIndex,
@@ -71,7 +98,7 @@ pub struct PartialClass {
     /// Static methods and their entry
     static_methods: Vec<VTableEntry>,
     /// Static members
-    static_members: Vec<Member>,
+    static_members: Vec<StaticMember>,
     /// Static member initialization function.
     /// This can be null
     static_init: BytecodeIndex,
@@ -185,7 +212,7 @@ impl PartialClass {
             self.vtables,
             self.members,
             StaticMethods::new(self.static_methods),
-            self.static_members,
+            self.static_members.into_iter().map(Into::<Member>::into).collect(),
             self.static_init,
             self.bytecode_table,
             self.string_table,
@@ -262,7 +289,7 @@ impl PartialClass {
         self.members.push(member);
     }
 
-    pub fn add_static_member<S: AsRef<str>>(&mut self, mut member: Member, member_name: S) {
+    pub fn add_static_member<S: AsRef<str>>(&mut self, mut member: StaticMember, member_name: S) {
         member.name = self.add_string(member_name);
 
         self.static_members.push(member);

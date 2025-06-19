@@ -4,7 +4,7 @@ use rowan_shared::{bytecode::compiled::Bytecode, classfile::{Member, SignatureEn
 use rowan_shared::classfile::SignatureIndex;
 use crate::{ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator, Text}, backend::compiler_utils::Frame};
 use crate::ast::IfExpression;
-use super::compiler_utils::{PartialClass, PartialClassError};
+use super::compiler_utils::{PartialClass, PartialClassError, StaticMember};
 
 
 
@@ -432,9 +432,9 @@ impl Compiler {
         let class_name = name;
         static_members.into_iter().map(|member| {
             let new_ty = self.convert_type(&member.ty);
-            (member.name, Member::new(new_ty), member.value)
+            (member.name, StaticMember::new(member.is_const, new_ty), member.value)
         })
-            .collect::<Vec<(Text, Member, Option<Expression>)>>()
+            .collect::<Vec<(Text, StaticMember, Option<Expression>)>>()
             .into_iter()
             .enumerate()
             .flat_map(|(i, (name, member, value))| {
