@@ -1029,24 +1029,14 @@ impl Compiler {
                     _ => unreachable!("all calls should be via member access by this point")
                 };
 
-                let new_args = args.iter()
-                    .enumerate()
-                    .sorted_by(|(_, a), (_, b)| {
-                        match (a, b) {
-                            (_, Expression::StaticCall {..}) => Ordering::Greater,
-                            (_, Expression::Call {..}) => Ordering::Greater,
-                            (Expression::StaticCall {..}, _) => Ordering::Less,
-                            (Expression::Call {..}, _) => Ordering::Less,
-                            _ => Ordering::Equal,
-                        }
-                    })
-                    .collect::<Vec<_>>();
-
-                let argument_pos = (new_args.len() + 1) as u8;// adding one for object
-
-                for (i, arg) in new_args {
+                for (i, arg) in args.iter().enumerate() {
                     self.compile_expression(class_name, partial_class, arg, output, lhs)?;
-                    output.push(Bytecode::StoreArgument(i as u8 + 1));
+                    self.bind_variable(format!("arg{i}"));
+                }
+
+                for i in 1..=args.len() { // 1..len for leaving space for object
+                    self.get_variable(format!("arg{}", i - 1));
+                    output.push(Bytecode::StoreArgument(i as u8));
                 }
                 
                 let object = self.get_variable(var).expect("There should be method calling by this point");
@@ -1076,7 +1066,7 @@ impl Compiler {
                     let class_symbol = partial_class.add_string(ty.as_str());
 
                     output.push(Bytecode::LoadSymbol(class_symbol));
-                    output.push(Bytecode::StoreArgument(argument_pos));
+                    output.push(Bytecode::StoreArgument(args.len() as u8));
                 }
 
                 if let Some(class) = self.classes.get(&ty.to_string()) {
@@ -1130,21 +1120,13 @@ impl Compiler {
                 }
             }
             Expression::StaticCall { name, type_args, args, .. } => {
-                let new_args = args.iter()
-                    .enumerate()
-                    .sorted_by(|(_, a), (_, b)| {
-                        match (a, b) {
-                            (_, Expression::StaticCall {..}) => Ordering::Greater,
-                            (_, Expression::Call {..}) => Ordering::Greater,
-                            (Expression::StaticCall {..}, _) => Ordering::Less,
-                            (Expression::Call {..}, _) => Ordering::Less,
-                            _ => Ordering::Equal,
-                        }
-                    })
-                    .collect::<Vec<_>>();
-
-                for (i, arg) in new_args {
+                for (i, arg) in args.iter().enumerate() {
                     self.compile_expression(class_name, partial_class, arg, output, lhs)?;
+                    self.bind_variable(format!("arg{i}"));
+                }
+
+                for i in 0..args.len() {
+                    self.get_variable(format!("arg{}", i));
                     output.push(Bytecode::StoreArgument(i as u8));
                 }
 

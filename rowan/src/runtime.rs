@@ -470,7 +470,10 @@ impl Context {
                     panic!("Lock poisoned");
                 };
 
-                compiler.compile(&function, &mut jit_controller.module).unwrap();
+                match compiler.compile(&function, &mut jit_controller.module) {
+                    Ok(_) => {}
+                    Err(e) => panic!("Compilation error:\n{}", e)
+                }
 
                 let value = function.value.read().expect("Lock poisoned");
                 match &*value {

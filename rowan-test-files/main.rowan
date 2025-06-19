@@ -25,6 +25,7 @@ class Main {
         }
 
         printer.println-int(Main::return-int());
+        printer.println-int(Main::do-thing2(Main::return-int(), Main::return-int()));
     }
 
     t: u64;
@@ -42,6 +43,10 @@ class Main {
 
     fn return-int() -> u64 {
         return 66;
+    }
+
+    fn do-thing2(i: u64, j: u64) -> u64 {
+        return i + j;
     }
 
 }

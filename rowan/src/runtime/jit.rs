@@ -1183,7 +1183,7 @@ impl FunctionTranslator<'_> {
 
                     let return_type = sig.returns.first().cloned();
                     let sig = self.builder.import_signature(sig);
-                    
+
                     let result = self.builder.ins().call_indirect(sig, method_value, &method_args);
 
                     let return_value = self.builder.inst_results(result);
@@ -1414,6 +1414,7 @@ impl FunctionTranslator<'_> {
         self.builder.inst_results(ret_result);
         self.builder.seal_block(bail_block);
         self.builder.switch_to_block(new_block);
+
         // TODO: add check to see if exception was caught and jump to the right block
     }
 }

@@ -517,6 +517,9 @@ Block: Vec<Statement<'a>> = {
         }
         v
     },
+    "{" Lb* "}" => {
+        Vec::new()
+    },
 };
 
 Statement: Statement<'a> = {
