@@ -369,7 +369,7 @@ impl Compiler {
         let Class {
             name,
             type_params,
-            parents,
+            mut parents,
             members,
             methods,
             static_members,
@@ -378,15 +378,14 @@ impl Compiler {
 
         let class_name = name;
 
-        let mut name_order = Vec::new();
-
-        for type_param in type_params.iter() {
-            name_order.push(type_param.name.to_string());
-        }
-
         if type_params.is_empty() {
             self.compile_class_inner(class_name, &parents, &methods, &members, &static_members)?;
         } else {
+            let mut name_order = Vec::new();
+            for type_param in type_params.iter() {
+                name_order.push(type_param.name.to_string());
+            }
+
             let permutations = vec![
                 TypeTag::I8,
                 TypeTag::I16,
@@ -417,9 +416,49 @@ impl Compiler {
                     };
                     modifier_string.push_str(modifier);
                 }
+
+                let mut new_parents = Vec::new();
+                println!("parent_decls: {:?}", parents);
+                for parent in parents.iter() {
+                    let mut string = parent.name.to_string();
+                    for type_arg in parent.type_args.iter() {
+                        let str_value = match type_arg {
+                            Type::I8 | Type::U8 => "8",
+                            Type::I16 | Type::I16 => "16",
+                            Type::I32 | Type::I32 => "32",
+                            Type::I64 | Type::I64 => "64",
+                            Type::F32 => "f32",
+                            Type::F64 => "f64",
+                            Type::Object(name, _) => {
+                                if self.current_type_args.contains_key(name.as_str()) {
+                                    match type_arg {
+                                        Type::I8 | Type::U8 => "8",
+                                        Type::I16 | Type::I16 => "16",
+                                        Type::I32 | Type::I32 => "32",
+                                        Type::I64 | Type::I64 => "64",
+                                        Type::F32 => "f32",
+                                        Type::F64 => "f64",
+                                        _ => "object",
+                                    }
+                                } else {
+                                    "object"
+                                }
+                            }
+                            _ => "object",
+                        };
+                        string.push_str(str_value);
+                    }
+                    new_parents.push(ParentDec {
+                        name: Text::Owned(string),
+                        type_args: Vec::new(),
+                        type_params: parent.type_params.clone(),
+                        span: parent.span,
+                    })
+                }
+
                 let name = Text::Owned(format!("{class_name}{modifier_string}"));
 
-                self.compile_class_inner(name, &parents, &methods, &members, &static_members)?;
+                self.compile_class_inner(name, &new_parents, &methods, &members, &static_members)?;
             }
         }
         
@@ -437,6 +476,7 @@ impl Compiler {
         let mut partial_class = PartialClass::new();
         partial_class.set_name(&name);
 
+        println!("parent_decls: {:?}", parents);
         let parent_vtables = parents.iter().map(|parent_name| {
             let partial_class = self.classes.get(&parent_name.name.clone().to_string()).expect("Order of files is wrong");
             let vtables = partial_class.get_vtables(&parent_name.name);

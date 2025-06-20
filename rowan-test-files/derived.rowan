@@ -1,0 +1,9 @@
+module Main;
+
+class Derived[T] extends Base::[T] {
+    @Override
+    fn thing(self) -> u64 {
+        let t: u64 = 0;
+        return t;
+    }
+}
