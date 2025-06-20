@@ -13,7 +13,9 @@ In no particular order
 * [ ] Module Paths
 * [ ] Loading of stdlib
 * [ ] Native method interface
-
+* [ ] for loops
+* [ ] incremental compilation
+* [ ] break, continue, labels on loops
 
 ## Text Editor
 In no particular order

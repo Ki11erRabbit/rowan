@@ -12,3 +12,4 @@ cranelift-native = "0.118.0"
 crossbeam-deque = "0.8.6"
 quote = "1.0.40"
 paste = "1.0.15"
+clap = { version = "4.5.40", features = ["derive"] }

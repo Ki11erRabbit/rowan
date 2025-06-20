@@ -225,16 +225,19 @@ impl ClassFile {
             let type_tag = unsafe {
                 std::ptr::read(binary.as_ptr().add(index) as *const u8)
             };
+            index += std::mem::size_of::<u8>();
             let tag = type_tag.into();
             members.push(Member {
                 name,
                 type_tag: tag
             });
-            index += std::mem::size_of::<u8>();
         }
 
-
-        index += 7; // Weird padding of 7 bytes
+        // dynamic padding for pointer alignment
+        let padding = binary[index];
+        println!("padding: {}", padding);
+        index += padding as usize + 1;
+        println!("index: {}", index);
 
         let static_methods_size = u64::from_le_bytes([
             binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
@@ -242,6 +245,7 @@ impl ClassFile {
         ]);
         index += std::mem::size_of::<u64>();
         let functions = unsafe {
+            println!("pointer: {:?} {static_methods_size}", binary.as_ptr().add(index));
             std::slice::from_raw_parts(
                 binary.as_ptr().add(index) as *const VTableEntry,
                 static_methods_size as usize
@@ -417,7 +421,17 @@ impl ClassFile {
             binary.extend_from_slice(&member.name.to_le_bytes());
             binary.push(member.type_tag.as_byte());
         }
-        binary.extend_from_slice(&[0; 7]); // Weird padding of 7 bytes
+        // Adding padding if we are not aligned
+        if binary.len() % 8 == 0 {
+            binary.push(7);
+            binary.extend_from_slice(&[0; 7]);
+        } else {
+            let factor = binary.len() / 8 % 8 - 1;
+            binary.push(factor as u8);
+            for _ in 0..(factor as usize) {
+                binary.push(0);
+            }
+        }
 
         binary.extend_from_slice(&(self.static_methods.functions.len() as u64).to_le_bytes());
         for function in &self.static_methods.functions {

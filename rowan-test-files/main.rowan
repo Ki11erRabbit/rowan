@@ -1,5 +1,7 @@
 module Main;
 
+import arraylist::ArrayList;
+
 class Main {
 
     fn main(args: [String]) {
@@ -26,9 +28,16 @@ class Main {
 
         printer.println-int(Main::return-int());
         printer.println-int(Main::do-thing2(Main::return-int(), Main::return-int()));
+
+        let list: ArrayList[u64] = ArrayList::from-array(arr);
+        counter = 0;
+        while counter < arr.len() {
+            printer.println-int(list.get(counter));
+            counter = counter + 1;
+        }
+
     }
 
-    t: u64;
 
     fn do-thing() {
         let printer: Printer = new Printer();

@@ -1,0 +1,21 @@
+module Main;
+
+class ArrayList[T] {
+    buffer: [T];
+    length: u64;
+
+    fn from-array(arr: [T]) -> ArrayList[T] {
+        let list: ArrayList[T] = new ArrayList[T]();
+        list.buffer = arr;
+        list.length = arr.len();
+        return list;
+    }
+
+    fn get(self, index: u64) -> T {
+        return self.buffer[index]
+    }
+
+    fn set(self, index: u64, value: T) {
+        self.buffer[index] = value;
+    }
+}

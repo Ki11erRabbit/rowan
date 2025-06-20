@@ -4,8 +4,8 @@ use either::Either;
 use itertools::Itertools;
 use rowan_shared::{bytecode::compiled::Bytecode, classfile::{Member, SignatureEntry, VTable, VTableEntry}, TypeTag};
 use rowan_shared::classfile::SignatureIndex;
-use crate::{ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator, Text}, backend::compiler_utils::Frame};
-use crate::ast::IfExpression;
+use crate::{ast, ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator, Text}, backend::compiler_utils::Frame};
+use crate::ast::{IfExpression, ParentDec};
 use super::compiler_utils::{PartialClass, PartialClassError, StaticMember};
 
 
@@ -253,6 +253,7 @@ pub struct Compiler {
     classes: HashMap<String, PartialClass>,
     current_block: u64,
     method_returned: bool,
+    current_type_args: HashMap<String, TypeTag>
 }
 
 
@@ -264,6 +265,7 @@ impl Compiler {
             classes: create_stdlib(),
             current_block: 0,
             method_returned: false,
+            current_type_args: HashMap::new()
         }
     }
 
@@ -328,6 +330,13 @@ impl Compiler {
         for file in files {
             let File { content, .. } = file;
 
+            let content = content.into_iter().filter(|t|{
+                match t {
+                    TopLevelStatement::Import(_) => false,
+                    TopLevelStatement::Class(_) => true,
+                }
+            });
+
             for statement in content {
                 let TopLevelStatement::Class(class) = statement else {
                     unreachable!("Non classes should have been removed by this point");
@@ -359,6 +368,7 @@ impl Compiler {
     fn compile_class(&mut self, class: Class) -> Result<(), CompilerError> {
         let Class {
             name,
+            type_params,
             parents,
             members,
             methods,
@@ -366,6 +376,64 @@ impl Compiler {
             ..
         } = class;
 
+        let class_name = name;
+
+        let mut name_order = Vec::new();
+
+        for type_param in type_params.iter() {
+            name_order.push(type_param.name.to_string());
+        }
+
+        if type_params.is_empty() {
+            self.compile_class_inner(class_name, &parents, &methods, &members, &static_members)?;
+        } else {
+            let permutations = vec![
+                TypeTag::I8,
+                TypeTag::I16,
+                TypeTag::I32,
+                TypeTag::I64,
+                TypeTag::F32,
+                TypeTag::F64,
+                TypeTag::Object,
+            ].into_iter().permutations(type_params.len()).collect::<Vec<_>>();
+
+            for permutation in permutations {
+                let mut modifier_string = String::new();
+                for (name, typ) in name_order.iter().zip(permutation.into_iter()) {
+                    if let Some(value) = self.current_type_args.get_mut(name) {
+                        *value = typ;
+                    } else {
+                        self.current_type_args.insert(name.to_string(), typ);
+                    }
+                    let modifier = match typ {
+                        TypeTag::I8 => "8",
+                        TypeTag::I16 => "16",
+                        TypeTag::I32 => "32",
+                        TypeTag::I64 => "64",
+                        TypeTag::F32 => "f32",
+                        TypeTag::F64 => "f64",
+                        TypeTag::Object => "Object",
+                        _ => unreachable!("bizarre possible type"),
+                    };
+                    modifier_string.push_str(modifier);
+                }
+                let name = Text::Owned(format!("{class_name}{modifier_string}"));
+
+                self.compile_class_inner(name, &parents, &methods, &members, &static_members)?;
+            }
+        }
+        
+        Ok(())
+    }
+
+    fn compile_class_inner(
+        &mut self,
+        name: Text,
+        parents: &Vec<ParentDec>,
+        methods: &Vec<Method>,
+        members: &Vec<ast::Member>,
+        static_members: &Vec<ast::StaticMember>,
+    ) -> Result<(), CompilerError> {
         let mut partial_class = PartialClass::new();
         partial_class.set_name(&name);
 
@@ -381,7 +449,7 @@ impl Compiler {
                 };
                 (class_name, source_class, table, names, signatures)
             }).collect::<Vec<_>>()
-            
+
         });
         parents.iter().for_each(|parent| {
             partial_class.add_parent(&parent.name);
@@ -396,9 +464,9 @@ impl Compiler {
         ) = self.construct_vtable(&name, &methods)?;
 
         partial_class.add_signatures(static_signatures);
-        
+
         partial_class.set_static_method_to_sig(static_method_map);
-        
+
         if vtable.functions.len() != 0 {
             partial_class.add_vtable(&name, vtable, &names, &signatures);
         } else {
@@ -416,7 +484,7 @@ impl Compiler {
             partial_class.add_vtable("Object", vtable.clone(), names, signatures);
             partial_class.add_parent("Object");
         }
-        
+
         for vtables in parent_vtables {
             for (class_name, _source_class, vtable, names, signatures) in vtables {
                 partial_class.add_vtable(class_name, vtable.clone(), &names, &signatures);
@@ -424,7 +492,7 @@ impl Compiler {
         }
 
         members.into_iter().map(|member| {
-            (member.name, Member::new(self.convert_type(&member.ty)))
+            (member.name.clone(), Member::new(self.convert_type(&member.ty)))
         }).for_each(|(name, member)| {
             partial_class.add_member(member, name);
         });
@@ -434,15 +502,15 @@ impl Compiler {
         let class_name = name;
         static_members.into_iter().map(|member| {
             let new_ty = self.convert_type(&member.ty);
-            (member.name, StaticMember::new(member.is_const, new_ty), member.value)
+            (&member.name, StaticMember::new(member.is_const, new_ty), &member.value)
         })
-            .collect::<Vec<(Text, StaticMember, Option<Expression>)>>()
+            .collect::<Vec<(&Text, StaticMember, &Option<Expression>)>>()
             .into_iter()
             .enumerate()
             .flat_map(|(i, (name, member, value))| {
                 let ty = member.type_tag.clone();
                 partial_class.add_static_member(member, name);
-                value.map(|value| {
+                value.as_ref().map(|value| {
                     self.compile_expression(
                         &class_name,
                         &mut partial_class,
@@ -455,14 +523,14 @@ impl Compiler {
                         Ok::<(), CompilerError>(())
                     })
                 })
-        }).collect::<Result<Result<(), CompilerError>, CompilerError>>()??;
+            }).collect::<Result<Result<(), CompilerError>, CompilerError>>()??;
 
         static_init_bytecode.push(Bytecode::ReturnVoid);
 
         self.compile_methods(&class_name, &mut partial_class, methods)?;
-        
+
         self.classes.insert(class_name.to_string(), partial_class);
-        
+
         Ok(())
     }
 
@@ -547,7 +615,10 @@ impl Compiler {
             Type::F32 => TypeTag::F32,
             Type::F64 => TypeTag::F64,
             Type::Array(_, _) => TypeTag::Object,
-            Type::Object(_, _) => TypeTag::Object,
+            Type::Object(text, _) => {
+                let tag = self.current_type_args.get(text.as_str()).unwrap_or(&TypeTag::Object);
+                *tag
+            },
             Type::TypeArg(_, _, _) => TypeTag::Object,
             Type::Tuple(_, _) => TypeTag::Object,
             Type::Function(_, _, _) => TypeTag::Object,
@@ -556,7 +627,7 @@ impl Compiler {
     }
 
 
-    pub fn compile_methods(&mut self, class_name: &str, partial_class: &mut PartialClass, methods: Vec<Method>) -> Result<(), CompilerError> {
+    pub fn compile_methods(&mut self, class_name: &str, partial_class: &mut PartialClass, methods: &Vec<Method>) -> Result<(), CompilerError> {
 
         for method in methods {
             self.method_returned = false;
@@ -620,12 +691,12 @@ impl Compiler {
         }
     }
 
-    fn compile_method_body(&mut self, class_name: &str, partial_class: &mut PartialClass, body: Vec<Statement>) -> Result<Vec<Bytecode>, CompilerError> {
+    fn compile_method_body(&mut self, class_name: &str, partial_class: &mut PartialClass, body: &Vec<Statement>) -> Result<Vec<Bytecode>, CompilerError> {
         let mut output = Vec::new();
         //output.push(Bytecode::StartBlock(block));
         //output.push(Bytecode::Goto(1));
         self.current_block = 0;
-        self.compile_block(class_name, partial_class, &body, &mut output)?;
+        self.compile_block(class_name, partial_class, body, &mut output)?;
         //println!("Bytecode output: {:#?}", output);
 
         Ok(output)
@@ -981,7 +1052,7 @@ impl Compiler {
                         }
 
                     }
-                    (l, x, r) => todo!("binary operator {:?} {:?} {:?}", l, x, r),
+                    (l, x, r) => todo!("binary operator  ({:?}:{:?}) {:?} ({:?}: {:?})", left, l, x, right, r),
                 }
                 
             }
@@ -1022,6 +1093,25 @@ impl Compiler {
                             }
                             Expression::This(_) => {
                                 (field, Text::Borrowed(class_name), Text::Borrowed("self"))
+                            }
+                            Expression::Variable(var, Some(Type::TypeArg(obj, args, _)), _) => {
+                                let Type::Object(ty, _) = obj.as_ref() else {
+                                    unreachable!("type arg should contain an object");
+                                };
+                                let mut ty_name = ty.to_string();
+                                for arg in args {
+                                    let modifier = match arg {
+                                        Type::U8 | Type::I8 => "8",
+                                        Type::U16 | Type::I16 => "16",
+                                        Type::U32 | Type::I32 => "32",
+                                        Type::U64 | Type::I64 => "64",
+                                        Type::F32 => "f32",
+                                        Type::F64 => "f64",
+                                        _ => "Object",
+                                    };
+                                    ty_name.push_str(modifier);
+                                }
+                                (field, Text::Owned(ty_name), var.clone())
                             }
                             x => todo!("add additional sources to call from {:?}", x)
                         }
@@ -1119,7 +1209,9 @@ impl Compiler {
                     panic!("Classes are in a bad order of compiling")
                 }
             }
-            Expression::StaticCall { name, type_args, args, .. } => {
+            Expression::StaticCall { name, type_args, args, annotation, .. } => {
+                println!("static call annotation for {:?}: {:?}",name, annotation);
+
                 for (i, arg) in args.iter().enumerate() {
                     self.compile_expression(class_name, partial_class, arg, output, lhs)?;
                     self.bind_variable(format!("arg{i}"));
@@ -1132,6 +1224,28 @@ impl Compiler {
 
                 let method_name = name.segments.last().unwrap();
                 let method_class = name.segments.iter().rev().skip(1).next().unwrap();
+                let method_class = match annotation {
+                    Some(Type::TypeArg(_, args, _)) => {
+                        let mut string = method_class.to_string();
+                        for arg in args {
+                            let name_mod = match arg {
+                                Type::I8 | Type::U8 => "8",
+                                Type::I16 | Type::U16 => "16",
+                                Type::I32 | Type::U32 => "32",
+                                Type::I64 | Type::U64 => "64",
+                                Type::F32 => "f32",
+                                Type::F64 => "f64",
+                                _ => "Object",
+                            };
+                            string.push_str(name_mod);
+                        }
+                        string
+                    }
+                    _ => {
+                        method_class.to_string()
+                    }
+                };
+
                 let method_name = partial_class.add_string(method_name);
                 let method_class = partial_class.add_string(method_class);
                 
@@ -1145,6 +1259,26 @@ impl Compiler {
             Expression::New(ty, arr_size, _) => {
                 let name = match ty {
                     Type::Object(name, _) => name,
+                    Type::TypeArg(name, args, _) => {
+                        let mut name_string = String::new();
+                        let Type::Object(name, _) = name.as_ref() else {
+                            unreachable!("only objects can be in a type arg")
+                        };
+                        name_string.push_str(name);
+                        for arg in args {
+                            let name_mod = match arg {
+                                Type::I8 | Type::U8 => "8",
+                                Type::I16 | Type::U16 => "16",
+                                Type::I32 | Type::U32 => "32",
+                                Type::I64 | Type::U64 => "64",
+                                Type::F32 => "f32",
+                                Type::F64 => "f64",
+                                _ => "Object",
+                            };
+                            name_string.push_str(name_mod);
+                        }
+                        &Text::Owned(name_string)
+                    }
                     _ => todo!("handle array new")
                 };
 
@@ -1298,10 +1432,30 @@ impl Compiler {
 
         let name = match annotation  {
             Either::Left(Type::Object(name, _)) => name,
+            Either::Left(Type::TypeArg(name, args, _)) => {
+                let mut string_name = String::new();
+                let Type::Object(name, _) = name.as_ref() else {
+                    unreachable!("Type arg should always have an object type");
+                };
+                string_name.push_str(&name);
+                for arg in args {
+                    let mod_string = match arg {
+                        Type::I8 | Type::U8 => "8",
+                        Type::I16 | Type::U16 => "16",
+                        Type::I32 | Type::U32 => "32",
+                        Type::I64 | Type::U64 => "64",
+                        Type::F32 => "f32",
+                        Type::F64 => "f64",
+                        _ => "Object",
+                    };
+                    string_name.push_str(mod_string);
+                }
+                Text::Owned(string_name)
+            }
             Either::Right(()) => {
                 Text::Borrowed(class_name)
             }
-            _ => todo!("report error about method output not being an object"),
+            _ => todo!("report error about method output not being an object: {:?} {:?}", object, field),
         };
 
         let class = self.classes.get(name.as_str()).unwrap_or(partial_class);

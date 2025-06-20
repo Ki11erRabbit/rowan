@@ -225,6 +225,7 @@ impl Class<'_> {
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct ParentDec<'a> {
     pub name: Text<'a>,
+    pub type_args: Vec<Type<'a>>,
     pub type_params: Vec<TypeParameter<'a>>,
     pub span: Span,
 }
@@ -375,15 +376,6 @@ pub enum Constraint<'a> {
     Extends(Vec<Type<'a>>, Span),
     //TODO: add trait bounds
 }
-
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Signal<'a> {
-    pub name: Text<'a>,
-    pub is_static: bool,
-    pub parameters: Vec<Type<'a>>,
-    pub span: Span,
-}
-
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Statement<'a> {

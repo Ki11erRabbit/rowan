@@ -25,6 +25,7 @@ fn create_stdlib<'a>() -> HashMap<String, (Vec<String>, HashMap<String, ClassAtt
 
     let mut array_attributes = HashMap::new();
     array_attributes.insert("len".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::U64))));
+    array_attributes.insert("downcast-contents".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::Object(String::from(""))))));
 
     info.insert("Array".to_string(), (vec![String::from("Object")], array_attributes));
     
@@ -238,6 +239,41 @@ impl TypeChecker {
                     self.compare_object(name1, name2)
                 }
             }
+            (
+                TypeCheckerType::TypeArg(obj1, params1),
+                TypeCheckerType::TypeArg(obj2, params2)
+            ) => {
+                if !self.compare_types(obj1, obj2) {
+                    return false;
+                }
+                if params1.len() != params2.len() {
+                    return false;
+                }
+                for (param1, param2) in params1.iter().zip(params2.iter()) {
+                    if !self.compare_types(param1, param2) {
+                        return false;
+                    }
+                }
+                true
+            }
+            (TypeCheckerType::Object(name), _) => {
+                if self.class_information.contains_key(name) {
+                    // Here the class exists so we know that the other type can't equal an object
+                    false
+                } else {
+                    // Here the class doesn't exist. This means we are likely a generic type, and therefore always equal
+                    true
+                }
+            }
+            (_, TypeCheckerType::Object(name)) => {
+                if self.class_information.contains_key(name) {
+                    // Here the class exists so we know that the other type can't equal an object
+                    false
+                } else {
+                    // Here the class doesn't exist. This means we are likely a generic type, and therefore always equal
+                    true
+                }
+            }
             _ => false,
         }
     }
@@ -306,7 +342,7 @@ impl TypeChecker {
             for parameter in parameters {
                 match parameter {
                     crate::ast::Parameter::This(_, _) => {
-                        argument_types.push(TypeCheckerType::Object(class_name.to_string()));
+                        //argument_types.push(TypeCheckerType::Object(class_name.to_string()));
                     }
                     crate::ast::Parameter::Pattern { ty, .. } => {
                         argument_types.push(TypeCheckerType::from(ty.clone()));
@@ -354,7 +390,8 @@ impl TypeChecker {
         use crate::ast::Pattern;
         match (pattern, ty) {
             (Pattern::Variable(name, _,_), ty) => {
-                self.insert_var(name, TypeCheckerType::from(ty))
+                let ty = TypeCheckerType::from(ty);
+                self.insert_var(name, ty);
             }
             (Pattern::Tuple(names, _), Type::Tuple(tys, _)) => {
                 for (name, ty) in names.iter().zip(tys.iter()) {
@@ -407,7 +444,6 @@ impl TypeChecker {
 
     fn check_expr<'a>(&mut self, return_type: &TypeCheckerType, expr: &mut crate::ast::Expression<'a>) -> Result<(), TypeCheckerError> {
         use crate::ast::{Expression, BinaryOperator, UnaryOperator};
-
         match expr {
             Expression::IfExpression(expr, _) => {
                 // TODO: check if if expression return values are the same
@@ -548,6 +584,7 @@ impl TypeChecker {
             }
             Expression::Call { name, type_args: _, args, .. } => {
                 self.check_expr(return_type, name)?;
+                //println!("{:?}", name);
                 let method = self.get_type(name)?;
 
                 for (i, arg) in args.iter_mut().enumerate() {
@@ -558,6 +595,7 @@ impl TypeChecker {
                         Type::Function(arg_types, ..) => {
                             if i < arg_types.len() {
                                 let expected_ty = &arg_types[i];
+                                //println!("left: {:?}\nright: {:?}", arg_ty, expected_ty);
                                 if !self.compare_types(&TypeCheckerType::from(&arg_ty), &TypeCheckerType::from(expected_ty)) {
                                     todo!("report type mismatch for argument {} in method call {:?} ({:?}, {:?})", i, name, arg_ty, expected_ty);
                                 }
@@ -569,10 +607,71 @@ impl TypeChecker {
                         _ => unreachable!("expected method to be a function type but got {:?}", method),
                     }
                 }
-                
             }
-            Expression::MemberAccess { object, field, .. } => {
+            Expression::StaticCall { name, type_args: _, args, .. } => {
+                let class_name = &name.segments[name.segments.len() - 2];
+                let method_name = &name.segments[name.segments.len() - 1];
+
+                let (_, attributes) = self.class_information.get(class_name.as_str())
+                    .expect("class missing or not loaded");
+
+                let ClassAttribute::Method(method) = attributes.get(method_name.as_str())
+                    .expect("method missing or not loaded") else {
+                    todo!("report attribute not a method")
+                };
+
+                let method = method.clone();
+
+                for (i, arg) in args.iter_mut().enumerate() {
+                    // check each argument in the call
+                    self.check_expr(return_type, arg)?;
+                    let arg_ty = self.get_type(arg)?;
+                    match &method {
+                        TypeCheckerType::Function(arg_types, _) => {
+                            if i < arg_types.len() {
+                                let expected_ty = &arg_types[i];
+                                //println!("left: {:?}\nright: {:?}", arg_ty, expected_ty);
+                                if !self.compare_types(&TypeCheckerType::from(&arg_ty), expected_ty) {
+                                    todo!("report type mismatch for argument {} in method call {:?} ({:?}, {:?})", i, name, arg_ty, expected_ty);
+                                }
+                            } else {
+                                todo!("report too many arguments in method call");
+                            }
+
+                        }
+                        _ => unreachable!("expected method to be a function type but got {:?}", method),
+                    }
+                }
+
+            }
+            Expression::MemberAccess { object, field, annotation, .. } => {
                 self.check_expr(return_type, object)?;
+                let ty = self.get_type(object.as_mut())?;
+                let name = match ty {
+                    Type::Object(name, _) => name,
+                    Type::TypeArg(obj, _, _) => {
+                        let Type::Object(name, _) = obj.as_ref() else {
+                            unreachable!("type arg should always be an object")
+                        };
+                        name.clone()
+                    }
+                    _ => todo!("member access is incomplete"),
+                };
+                let class_name = name;
+                let member_name = &field.segments[field.segments.len() - 1];
+
+                let (_, attributes) = self.class_information.get(class_name.as_str())
+                    .expect("class missing or not loaded");
+
+
+                let member = match attributes.get(member_name.as_str()) {
+                    Some(ClassAttribute::Method(method)) => method,
+                    Some(ClassAttribute::Member(member)) => member,
+                    None => todo!("member access is incomplete"),
+                };
+
+                *annotation = Some(member.into());
+
             }
             Expression::Literal(Literal::Array(body, typ, _)) => {
                 for body in body {
@@ -586,6 +685,7 @@ impl TypeChecker {
             }
             Expression::Return(value, _) => {
                 let result = value.as_mut().map(|mut value| {
+                    self.annotate_expr(&return_type.into(), value.as_mut())?;
                     let ty = self.get_type(value.as_mut())?;
                     if <&TypeCheckerType as Into<Type>>::into(return_type) != ty {
                         todo!("report type mismatch in return value")
@@ -645,6 +745,7 @@ impl TypeChecker {
             Expression::Variable(name, annotation, _) => {
                 if let Some(ty) = self.lookup_var(&name) {
                     *annotation = Some(ty.into());
+                    //println!("annotation: {:?}", annotation);
                     Ok(ty.into())
                 } else {
                     todo!("report unbound variable {}", name);
@@ -705,7 +806,7 @@ impl TypeChecker {
                     Ok(ty)
                 }
             }
-            Expression::MemberAccess { object, field, .. } => {
+            Expression::MemberAccess { object, field, annotation, .. } => {
                 match object.as_mut() {
                     Expression::Variable(name,ty, _) => {
                         let var_ty = self.lookup_var(name) // lookup the type of the variable
@@ -717,9 +818,11 @@ impl TypeChecker {
                             TypeCheckerType::Object(name) => {
                                 match self.get_attribute(name.to_string(), field.to_string()) {
                                     Some(ClassAttribute::Member(ty)) => {
+                                        *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
                                     }
                                     Some(ClassAttribute::Method(ty)) => {
+                                        *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
                                     }
                                     _ => {
@@ -733,9 +836,11 @@ impl TypeChecker {
                                     TypeCheckerType::Object(name) => {
                                         match self.get_attribute(name.to_string(), field.to_string()) {
                                             Some(ClassAttribute::Member(ty)) => {
+                                                *annotation = Some(ty.into());
                                                 Ok(ty.clone().into())
                                             }
                                             Some(ClassAttribute::Method(ty)) => {
+                                                *annotation = Some(ty.into());
                                                 Ok(ty.clone().into())
                                             }
                                             _ => {
@@ -750,9 +855,11 @@ impl TypeChecker {
                             TypeCheckerType::Array(ty) => {
                                 match self.get_attribute(String::from("Array"), field.to_string()) {
                                     Some(ClassAttribute::Member(ty)) => {
+                                        *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
                                     }
                                     Some(ClassAttribute::Method(ty)) => {
+                                        *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
                                     }
                                     _ => {
@@ -770,18 +877,22 @@ impl TypeChecker {
                             TypeCheckerType::Object(name) => {
                                 match self.get_attribute(name.to_string(), field.to_string()) {
                                     Some(ClassAttribute::Member(ty)) => {
+                                        *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
                                     }
                                     Some(ClassAttribute::Method(ty)) => {
+                                        *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
                                     }
                                     _ => {
                                         // TODO: change this to look at base classes
                                         match self.get_attribute(String::from("Object"), field.to_string()) {
                                             Some(ClassAttribute::Member(ty)) => {
+                                                *annotation = Some(ty.into());
                                                 Ok(ty.clone().into())
                                             }
                                             Some(ClassAttribute::Method(ty)) => {
+                                                *annotation = Some(ty.into());
                                                 Ok(ty.clone().into())
                                             }
                                             _ => {
@@ -798,9 +909,11 @@ impl TypeChecker {
                                     TypeCheckerType::Object(name) => {
                                         match self.get_attribute(name.to_string(), field.to_string()) {
                                             Some(ClassAttribute::Member(ty)) => {
+                                                *annotation = Some(ty.into());
                                                 Ok(ty.clone().into())
                                             }
                                             Some(ClassAttribute::Method(ty)) => {
+                                                *annotation = Some(ty.into());
                                                 Ok(ty.clone().into())
                                             }
                                             _ => {
@@ -815,9 +928,11 @@ impl TypeChecker {
                             TypeCheckerType::Array(ty) => {
                                 match self.get_attribute(String::from("Array"), field.to_string()) {
                                     Some(ClassAttribute::Member(ty)) => {
+                                        *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
                                     }
                                     Some(ClassAttribute::Method(ty)) => {
+                                        *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
                                     }
                                     _ => {
@@ -956,6 +1071,13 @@ impl TypeChecker {
                 self.annotate_expr(ty, left.as_mut())?;
                 self.annotate_expr(ty, right.as_mut())?;
             }
+            (_, Expression::BinaryOperation {
+                operator: BinaryOperator::Index, left, right, .. }) => {
+                let ty = self.get_type(left.as_mut())?;
+                self.annotate_expr(&ty, left.as_mut())?;
+                let ty = self.get_type(right.as_mut())?;
+                self.annotate_expr(&ty, right.as_mut())?;
+            }
             (ty, Expression::Parenthesized(expr, _)) => {
                 self.annotate_expr(ty, expr.as_mut())?;
             }
@@ -965,6 +1087,22 @@ impl TypeChecker {
                 match access_ty {
                     Type::Function(_, ret_ty, _) => {
                         if !self.compare_types(&TypeCheckerType::from(ty), &TypeCheckerType::from(ret_ty.as_ref())) {
+                            todo!("report type mismatch")
+                        }
+                    }
+                    _ => todo!("report not a function")
+                }
+                *annotation = Some(ty.clone());
+            }
+            (ty, Expression::StaticCall { name, annotation, ..}) => {
+                let (_, attributes) = self.class_information.get(name.segments[name.segments.len() - 2].as_str()).unwrap();
+                let ClassAttribute::Method(access_ty) = attributes.get(name.segments.last().unwrap().as_str()).unwrap() else {
+                    unreachable!("report missing method");
+                };
+
+                match access_ty {
+                    TypeCheckerType::Function(_, ret_ty) => {
+                        if !self.compare_types(&TypeCheckerType::from(ty), ret_ty.as_ref()) {
                             todo!("report type mismatch")
                         }
                     }

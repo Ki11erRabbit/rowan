@@ -102,7 +102,7 @@ extern {
 
 
 pub File: File<'a> = {
-    "module" <p:Path> <id:Identifier> <pEnd: @L> Lb <decs:(Lb* <Decl> Lb)*> Lb* => {
+    "module" <p:Path> <id:Identifier> <pEnd: @L> Lb <decs:(Lb* <Decl>)*> Lb? => {
         let mut p = p;
         p.segments.push(id);
         p.span.end = pEnd;
@@ -189,10 +189,23 @@ ParentDec: ParentDec<'a> = {
         };
         ParentDec {
             name,
+            type_args: Vec::new(),
             type_params,
             span: Span::new(start, end),
         }
     },
+    <start: @L> <name:Identifier> <type_args:TypeArgList> <type_params:TypeParamList?> <end: @R> => {
+            let type_params = match type_params {
+                Some(tp) => tp,
+                None => Vec::new(),
+            };
+            ParentDec {
+                name,
+                type_args,
+                type_params,
+                span: Span::new(start, end),
+            }
+        },
 };
 
 ClassMembers: Vec<ClassMember<'a>> = {
@@ -346,7 +359,7 @@ Annotation: Annotation<'a> = {
     },
 };
 
-pub ParamList: Vec<Parameter<'a>> = {
+ParamList: Vec<Parameter<'a>> = {
     "(" <param:Param> <params:("," <Param>)*> ")" => {
         let mut v = vec![param];
         for p in params.into_iter() {
@@ -361,7 +374,7 @@ pub ParamList: Vec<Parameter<'a>> = {
 
 
 
-pub Param: Parameter<'a> = {
+Param: Parameter<'a> = {
     <start: @L> <name:Pattern> ":" <ty:Type> <end: @R> => {
         Parameter::new_pattern(name, ty, Span::new(start, end))
     },
@@ -374,7 +387,8 @@ pub Param: Parameter<'a> = {
     },
 };
 
-pub ReturnType: Type<'a> = {
+#[inline]
+ReturnType: Type<'a> = {
     <ty:("->" <Type>)?> => {
         match ty {
             Some(t) => t,
@@ -383,9 +397,7 @@ pub ReturnType: Type<'a> = {
     },
 };
 
-
-
-pub TypeParamList: Vec<TypeParameter<'a>> = {
+TypeParamList: Vec<TypeParameter<'a>> = {
     "[" <param:TypeParam> <params:("," <TypeParam>)*> "]" => {
         let mut v = vec![param];
         for p in params.into_iter() {
@@ -399,13 +411,13 @@ pub TypeParamList: Vec<TypeParameter<'a>> = {
 
 };
 
-
-pub TypeParam: TypeParameter<'a> = {
+TypeParam: TypeParameter<'a> = {
     <start: @L> <name:Identifier> <end: @R> => TypeParameter::new(name, Vec::new(), Span::new(start, end)),
     <start: @L> <name:Identifier> ":" <cons:Constraints> <end: @R> => {
         TypeParameter::new(name, cons, Span::new(start, end))
-    },
+    }
 };
+
 
 Constraints: Vec<Constraint<'a>> = {
     <cons:Constraint> <conss:(Lb <Constraint>)*> => {
@@ -459,7 +471,7 @@ Type: Type<'a> = {
     <ty:BaseType> => ty,
     <ty:ObjectType> => ty,
     <ty:ArrayType> => ty,
-    <start: @L> <ty:ObjectType> AngleOpen <arg:Type> <args:("," <Type>)*> AngleClose <end: @R> => {
+    <start: @L> <ty:ObjectType> "[" <arg:Type> <args:("," <Type>)*> "]" <end: @R> => {
         let mut types = vec![arg];
         for t in args.into_iter() {
             types.push(t);
@@ -578,7 +590,7 @@ MemberExpr: Expression<'a> = {
     <start: @L> "new" <id:Type> "(" ")" <end: @R> => {
         Expression::New(id, None, Span::new(start, end))
     },
-    <start: @L> "new" <id:Type> <array_size:("[" <Expr> "]")> <end: @R> => {
+    <start: @L> "new" "[" <id:Type> Lb <array_size:Expr> "]" <end: @R> => {
         let array_size = Box::new(array_size);
         Expression::New(id, Some(array_size), Span::new(start, end))
     },

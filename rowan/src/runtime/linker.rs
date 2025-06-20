@@ -396,12 +396,12 @@ pub fn link_class_files(
                                 unreachable!("Expected name symbol to be a string reference");
                             };
 
-                            let name = &string_table[*name_index];
-                            let cranelift_sig = jit_controller.create_signature(&base_signature[1..], &base_signature[0]);
-                            let func_id = jit_controller.declare_function(name, &cranelift_sig).expect("Failed to declare function");
-
                             let value = match derived_bytecode {
                                 MethodLocation::Bytecode(bytecode) => {
+                                    let name = &string_table[*name_index];
+                                    let cranelift_sig = jit_controller.create_signature(&base_signature[1..], &base_signature[0]);
+                                    let func_id = jit_controller.declare_function(name, &cranelift_sig).expect("Failed to declare function");
+
                                     let bytecode = link_bytecode(class, &bytecode, string_map, class_map, string_table, symbol_table);
                                     let value = FunctionValue::Bytecode(bytecode, func_id, cranelift_sig);
                                     Arc::new(RwLock::new(value))
@@ -745,6 +745,8 @@ fn link_bytecode(
             }
             compiled::Bytecode::NewObject(index) => {
                 let class_str = class_file.index_string_table(index);
+                println!("class_str: {class_str}");
+                println!("class_map: {:?}", class_map);
                 let symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet"); 
 
                 output.push(linked::Bytecode::NewObject(symbol as u64));
@@ -815,6 +817,7 @@ fn link_bytecode(
             }
             compiled::Bytecode::InvokeStatic(class_index, method_index) => {
                 let class_str = class_file.index_string_table(class_index);
+                println!("class_str: {}", class_str);
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let method_str = class_file.index_string_table(method_index);
@@ -867,7 +870,7 @@ fn link_bytecode(
                     let symbol = symbol_table.add_string(index);
                     symbol
                 };
-                
+
                 output.push(linked::Bytecode::GetStaticMember(class_symbol as u64, member_index, type_tag));
             }
             compiled::Bytecode::SetStaticMember(class_index, member_index, type_tag) => {

@@ -13,9 +13,13 @@ fn main() {
         return
     }
 
-    let mut file = std::fs::File::open(&args[1]).unwrap();
-    let mut output = Vec::new();
-    file.read_to_end(&mut output).unwrap();
+    let classes = args[1..].iter().map(|f| {
+        println!("{}", f);
+        let mut file = std::fs::File::open(f).unwrap();
+        let mut output = Vec::new();
+        file.read_to_end(&mut output).unwrap();
+        ClassFile::new(&output)
+    }).collect::<Vec<_>>();
 
     let vm_classes = vec![
         stdlib::generate_object_class(),
@@ -41,9 +45,6 @@ fn main() {
 
     Context::link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map, &mut string_map);
 
-    let class = ClassFile::new(&output);
-
-    let classes = vec![class];
 
     let (main_symbol, main_method_symbol) = Context::link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map);
     
