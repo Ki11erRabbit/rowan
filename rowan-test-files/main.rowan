@@ -31,7 +31,7 @@ class Main {
 
         let list: ArrayList[u64] = ArrayList::from-array(arr);
         counter = 0;
-        while counter < arr.len() {
+        while counter < list.len() {
             printer.println-int(list.get(counter));
             counter = counter + 1;
         }

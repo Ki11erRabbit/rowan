@@ -233,9 +233,9 @@ fn create_stdlib() -> HashMap<String, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("ArrayObject", vtable, &names, &signatures);
+    array.add_vtable("Arrayobject", vtable, &names, &signatures);
     array.make_not_printable();
-    classes.insert(String::from("ArrayObject"), array);
+    classes.insert(String::from("Arrayobject"), array);
     
     classes
 }
@@ -412,7 +412,7 @@ impl Compiler {
                         TypeTag::I64 => "64",
                         TypeTag::F32 => "f32",
                         TypeTag::F64 => "f64",
-                        TypeTag::Object => "Object",
+                        TypeTag::Object => "object",
                         _ => unreachable!("bizarre possible type"),
                     };
                     modifier_string.push_str(modifier);
@@ -1085,7 +1085,22 @@ impl Compiler {
                                     Type::U16 | Type::I16 => Text::Borrowed("Array16"),
                                     Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
                                     Type::U64 | Type::I64 => Text::Borrowed("Array64"),
-                                    Type::Object(_, _) | Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                                    Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                                    Type::Object(ty, _) => {
+                                        if self.classes.contains_key(ty.as_str()) {
+                                            Text::Borrowed("Arrayobject")
+                                        } else {
+                                            match self.current_type_args.get(ty.as_str()).unwrap() {
+                                                TypeTag::I8 | TypeTag::U8 => Text::Borrowed("Array8"),
+                                                TypeTag::I16 | TypeTag::U16 => Text::Borrowed("Array16"),
+                                                TypeTag::I32 | TypeTag::U32 => Text::Borrowed("Array32"),
+                                                TypeTag::I64 | TypeTag::U64 => Text::Borrowed("Array64"),
+                                                TypeTag::F32 => Text::Borrowed("Arrayf32"),
+                                                TypeTag::F64 => Text::Borrowed("Arrayf64"),
+                                                _ => Text::Borrowed("Arrayobject"),
+                                            }
+                                        }
+                                    }
                                     Type::F32 => Text::Borrowed("Arrayf32"),
                                     Type::F64 => Text::Borrowed("Arrayf64"),
                                 };
@@ -1107,7 +1122,22 @@ impl Compiler {
                                         Type::U64 | Type::I64 => "64",
                                         Type::F32 => "f32",
                                         Type::F64 => "f64",
-                                        _ => "Object",
+                                        Type::Object(ty, _) => {
+                                            if self.classes.contains_key(ty.as_str()) {
+                                                "object"
+                                            } else {
+                                                match self.current_type_args.get(ty.as_str()).unwrap() {
+                                                    TypeTag::I8 | TypeTag::U8 => "8",
+                                                    TypeTag::I16 | TypeTag::U16 => "16",
+                                                    TypeTag::I32 | TypeTag::U32 => "32",
+                                                    TypeTag::I64 | TypeTag::U64 => "64",
+                                                    TypeTag::F32 => "f32",
+                                                    TypeTag::F64 => "f64",
+                                                    _ => "object",
+                                                }
+                                            }
+                                        }
+                                        _ => "object",
                                     };
                                     ty_name.push_str(modifier);
                                 }
@@ -1134,6 +1164,7 @@ impl Compiler {
                 output.push(Bytecode::StoreArgument(0));
 
                 let name = name.segments.last().unwrap();
+                println!("name: {name}");
 
                 if name.as_str() == "downcast" || name.as_str() == "downcast-contents" {
                     assert_eq!(type_args.len(), 1, "Downcast only takes one type argument");
@@ -1144,9 +1175,24 @@ impl Compiler {
                                 Type::U16 | Type::I16 => Text::Borrowed("Array16"),
                                 Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
                                 Type::U64 | Type::I64 => Text::Borrowed("Array64"),
-                                Type::Object(_, _) | Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                                Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
                                 Type::F32 => Text::Borrowed("Arrayf32"),
                                 Type::F64 => Text::Borrowed("Arrayf64"),
+                                Type::Object(ty, _) => {
+                                    if self.classes.contains_key(ty.as_str()) {
+                                        Text::Borrowed("Arrayobject")
+                                    } else {
+                                        match self.current_type_args.get(ty.as_str()).unwrap() {
+                                            TypeTag::I8 | TypeTag::U8 => Text::Borrowed("Array8"),
+                                            TypeTag::I16 | TypeTag::U16 => Text::Borrowed("Array16"),
+                                            TypeTag::I32 | TypeTag::U32 => Text::Borrowed("Array32"),
+                                            TypeTag::I64 | TypeTag::U64 => Text::Borrowed("Array64"),
+                                            TypeTag::F32 => Text::Borrowed("Arrayf32"),
+                                            TypeTag::F64 => Text::Borrowed("Arrayf64"),
+                                            _ => Text::Borrowed("Arrayobject"),
+                                        }
+                                    }
+                                }
                             }
                         }
                         Type::Object(name, _) => name.clone(),
@@ -1158,6 +1204,8 @@ impl Compiler {
                     output.push(Bytecode::LoadSymbol(class_symbol));
                     output.push(Bytecode::StoreArgument(args.len() as u8));
                 }
+
+                println!("ty: {}", ty.to_string());
 
                 if let Some(class) = self.classes.get(&ty.to_string()) {
                     //println!("{:#?}", class);
@@ -1203,7 +1251,6 @@ impl Compiler {
                     let method_name = method_name.to_string();
                     let method_name = partial_class.add_string(method_name);
 
-
                     output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
                 } else {
                     panic!("Classes are in a bad order of compiling")
@@ -1235,7 +1282,22 @@ impl Compiler {
                                 Type::I64 | Type::U64 => "64",
                                 Type::F32 => "f32",
                                 Type::F64 => "f64",
-                                _ => "Object",
+                                Type::Object(ty, _) => {
+                                    if self.classes.contains_key(ty.as_str()) {
+                                        "object"
+                                    } else {
+                                        match self.current_type_args.get(ty.as_str()).unwrap() {
+                                            TypeTag::I8 | TypeTag::U8 => "8",
+                                            TypeTag::I16 | TypeTag::U16 => "16",
+                                            TypeTag::I32 | TypeTag::U32 => "32",
+                                            TypeTag::I64 | TypeTag::U64 => "64",
+                                            TypeTag::F32 => "f32",
+                                            TypeTag::F64 => "f64",
+                                            _ => "object",
+                                        }
+                                    }
+                                }
+                                _ => "object",
                             };
                             string.push_str(name_mod);
                         }
@@ -1273,7 +1335,22 @@ impl Compiler {
                                 Type::I64 | Type::U64 => "64",
                                 Type::F32 => "f32",
                                 Type::F64 => "f64",
-                                _ => "Object",
+                                Type::Object(ty, _) => {
+                                    if self.classes.contains_key(ty.as_str()) {
+                                        "object"
+                                    } else {
+                                        match self.current_type_args.get(ty.as_str()).unwrap() {
+                                            TypeTag::I8 | TypeTag::U8 => "8",
+                                            TypeTag::I16 | TypeTag::U16 => "16",
+                                            TypeTag::I32 | TypeTag::U32 => "32",
+                                            TypeTag::I64 | TypeTag::U64 => "64",
+                                            TypeTag::F32 => "f32",
+                                            TypeTag::F64 => "f64",
+                                            _ => "object",
+                                        }
+                                    }
+                                }
+                                _ => "object",
                             };
                             name_string.push_str(name_mod);
                         }
@@ -1446,7 +1523,7 @@ impl Compiler {
                         Type::I64 | Type::U64 => "64",
                         Type::F32 => "f32",
                         Type::F64 => "f64",
-                        _ => "Object",
+                        _ => "object",
                     };
                     string_name.push_str(mod_string);
                 }

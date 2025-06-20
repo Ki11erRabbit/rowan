@@ -426,7 +426,8 @@ impl ClassFile {
             binary.push(7);
             binary.extend_from_slice(&[0; 7]);
         } else {
-            let factor = binary.len() / 8 % 8 - 1;
+            let factor = (8 - (binary.len() % 8)) % 8 - 1;
+            println!("remainder: {}", (8 - (binary.len() % 8)) % 8);
             binary.push(factor as u8);
             for _ in 0..(factor as usize) {
                 binary.push(0);

@@ -18,4 +18,8 @@ class ArrayList[T] {
     fn set(self, index: u64, value: T) {
         self.buffer[index] = value;
     }
+
+    fn len(self) -> u64 {
+        return self.length;
+    }
 }
