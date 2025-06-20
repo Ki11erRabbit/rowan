@@ -108,6 +108,7 @@ impl MakeObject<Symbol> for ContextHelper {
         }
 
         let data_size = class.get_member_size();
+        println!("data_size: {}", data_size);
 
         let object = Object::new(class_symbol, parents.into_boxed_slice(), data_size);
 

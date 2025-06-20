@@ -30,6 +30,8 @@ class Main {
         printer.println-int(Main::do-thing2(Main::return-int(), Main::return-int()));
 
         let list: ArrayList[u64] = ArrayList::from-array(arr);
+        let test: u64 = 77;
+        let result: u64 = list.get(test);
         counter = 0;
         while counter < list.len() {
             printer.println-int(list.get(counter));

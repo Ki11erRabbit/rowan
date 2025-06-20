@@ -6,7 +6,6 @@ use super::{Context, Reference, Symbol};
 pub struct Object {
     pub class: Symbol,
     pub parent_objects: Box<[Reference]>,
-    pub children: Vec<Reference>,
     pub custom_drop: Option<fn(&mut Object)>,
     //data: [u8]
 }
@@ -17,10 +16,12 @@ impl Object {
         use std::alloc::*;
 
         let layout = Layout::new::<Object>();
+        println!("layout size: {}", layout.size());
         let data_layout = Layout::array::<u8>(data_size).expect("Wrong layout or too big");
 
         let (whole_layout, _) = layout.extend(data_layout).expect("Wrong layout or too big");
-        let pointer = unsafe { alloc(whole_layout) };
+        println!("size: {}", whole_layout.size());
+        let pointer = unsafe { alloc(whole_layout.pad_to_align()) };
 
         if pointer.is_null() {
             eprintln!("Out of memory in object allocate");
@@ -31,7 +32,6 @@ impl Object {
             std::ptr::write(pointer, Object {
                 class,
                 parent_objects: parents,
-                children: Vec::new(),
                 custom_drop: None,
             });
         }
@@ -43,7 +43,6 @@ impl Object {
         unsafe {
             // Dropping boxed and vec members from pointer
             drop(ptr.read().parent_objects);
-            drop(ptr.read().children);
             let self_ptr = ptr.as_mut().unwrap();
             if let Some(func) = self_ptr.custom_drop {
                 func(self_ptr);
@@ -71,11 +70,17 @@ impl Object {
     
     pub unsafe fn set<T: Sized>(&mut self, offset: usize, value: T) {
         let mut pointer = self as *mut Self as *mut u8;
+        let mut pointer_start = pointer as usize;
+        println!("\npointer: {:p}", pointer);
         unsafe {
             pointer = pointer.add(size_of::<Object>());
+            println!("pointer: {:p}", pointer);
             pointer = pointer.add(offset);
+            println!("pointer: {:p}", pointer);
             std::ptr::write(pointer as *mut T, value);
         }
+        let pointer_end = pointer as usize + size_of::<T>();
+        println!("pointer size: {}", pointer_end - pointer_start);
     }
     
     pub fn get_safe<T: Sized>(&self, mut offset: usize) -> Option<T> {
@@ -114,6 +119,8 @@ impl Object {
         if offset != 0 {
             return None;
         }
+
+        println!("pointer offset {pointer_offset}");
 
         unsafe {
             self.set(pointer_offset, value);
