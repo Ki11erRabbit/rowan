@@ -1,6 +1,6 @@
 module Main;
 
-import arraylist::ArrayList;
+import std::collections::ArrayList;
 
 class Main {
 

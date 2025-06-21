@@ -1,4 +1,6 @@
 use std::cmp::Ordering;
+use std::path::Path;
+use clap::Parser;
 use crate::ast::TopLevelStatement;
 
 pub mod backend;
@@ -6,23 +8,26 @@ pub mod parser;
 pub mod ast;
 pub mod typechecker;
 
-fn main() {
-    let args = std::env::args().collect::<Vec<String>>();
+#[derive(Parser, Debug)]
+pub struct Args {
+    #[arg()]
+    pub directory: String,
 
-    if args.len() < 2 {
-        return
-    }
+    #[arg(short, long)]
+    pub stdlib_path: String,
+}
 
-    let location = &args[1];
-    let mut files = Vec::new();
-    
-    for file in std::fs::read_dir(location).unwrap() {
-        let entry = file.unwrap();
-
-        let contents = std::fs::read_to_string(entry.path()).unwrap();
-
-        let name_path = entry.path().to_str().unwrap().to_string();
-        let path = name_path.split("/").skip(1).map(|x|{
+fn explore_directories<P: AsRef<Path>>(path: P, files: &mut Vec<(String, Vec<String>, String)>) {
+    let mut dirs_to_explore = Vec::new();
+    for entry in std::fs::read_dir(path).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_dir() {
+            dirs_to_explore.push(entry.path());
+            continue;
+        }
+        let content = std::fs::read_to_string(entry.path()).unwrap();
+        let name = entry.file_name().to_str().unwrap().to_string();
+        let path = name.split("/").skip(1).map(|x|{
             if x.contains(".rowan") {
                 x.replace(".rowan", "").to_string()
             } else {
@@ -30,8 +35,22 @@ fn main() {
             }
         }).collect::<Vec<String>>();
 
-        files.push((name_path, path, contents));
+        files.push((name, path, content));
     }
+    for dir in dirs_to_explore {
+        explore_directories(dir, files);
+    }
+}
+
+fn main() {
+
+    let args = Args::parse();
+
+    let mut files = Vec::new();
+
+    explore_directories(&args.stdlib_path, &mut files);
+
+    explore_directories(&args.directory, &mut files);
 
 
 

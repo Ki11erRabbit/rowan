@@ -563,6 +563,7 @@ TermExpr: Expression<'a> = {
     <start: @L> <id:Identifier> <end: @R> => {
         Expression::Variable(id, None, Span::new(start, end))
     },
+    <start: @L> "(" <expr:Expr> ")" <end: @R> => Expression::Parenthesized(Box::new(expr), Span::new(start, end)),
     <lit:Literal> => Expression::Literal(lit),
     <start: @L> Minus <expr:TermExpr> <end: @R> => {
         let expr = Box::new(expr);
@@ -819,7 +820,6 @@ Expr: Expression<'a> = {
     <start: @L> "return" <expr:Expr> <end: @R> => {
         Expression::Return(Some(Box::new(expr)), Span::new(start, end))
     },
-    <start: @L> "(" <expr:Expr> ")" <end: @R> => Expression::Parenthesized(Box::new(expr), Span::new(start, end)),
     <lambda:Closure> => lambda,
     <start: @L> <label:(<Identifier> ":")?> "loop" <block:Block> <end: @R> => {
         Expression::new_loop(label, block, Span::new(start, end))

@@ -2,7 +2,7 @@ use std::{borrow::BorrowMut, collections::HashMap};
 
 use either::Either;
 
-use crate::ast::{BinaryOperator, Literal, Span, Type};
+use crate::ast::{BinaryOperator, Expression, Literal, Span, Text, Type};
 
 fn create_stdlib<'a>() -> HashMap<String, (Vec<String>, HashMap<String, ClassAttribute>)> {
     let mut info = HashMap::new();
@@ -806,6 +806,83 @@ impl TypeChecker {
                     Ok(ty)
                 }
             }
+            Expression::MemberAccess { .. } => {
+                self.get_type_member_access(expr)
+            }
+            Expression::BinaryOperation { operator: BinaryOperator::Add, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Sub, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Mul, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Div, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Mod, left, right, .. } => {
+                let lhs = self.get_type(left.as_mut());
+                let rhs = self.get_type(right.as_mut());
+
+                match (lhs, rhs) {
+                    (Ok(ty), Err(_)) => {
+                        self.annotate_expr(&ty, right.as_mut())?;
+                    }
+                    (Err(_), Ok(ty)) => {
+                        self.annotate_expr(&ty, left.as_mut())?;
+                    }
+                    (Err(e), Err(_)) => {
+                        return Err(e);
+                    }
+                    _ => {}
+                }
+
+                let lhs = self.get_type(left.as_mut())?;
+                let rhs = self.get_type(right.as_mut())?;
+
+                match (lhs, rhs) {
+                    (Type::F32, _) | (_, Type::F32) => {
+                        Ok(Type::F32)
+                    }
+                    (Type::F64, _) | (_, Type::F64) => {
+                        Ok(Type::F64)
+                    }
+                    (lhs, rhs) => {
+                        if lhs != rhs {
+                            todo!("Report mismatch type")
+                        }
+                        Ok(lhs)
+                    }
+                }
+            }
+            Expression::BinaryOperation { operator: BinaryOperator::Eq, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Ne, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Lt, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Le, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Gt, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Ge, .. } => {
+                Ok(Type::U8)
+            }
+            Expression::BinaryOperation { operator: BinaryOperator::And, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Or, .. }=> {
+                Ok(Type::U8)
+            }
+            Expression::Literal(Literal::Array(_, ty, _)) => {
+                if let Some(ty) = ty {
+                    Ok(Type::Array(Box::new(ty.clone()), Span::new(0, 0)))
+                } else {
+                    todo!("report lack of array type")
+                }
+            }
+            Expression::BinaryOperation { operator: BinaryOperator::Index, left, .. } => {
+                match self.get_type(left.as_mut())? {
+                    Type::Array(ty, _) => {
+                        Ok(*ty.clone())
+                    }
+                    _ => {
+                        todo!("add in trait support so we can index other things than just arrays")
+                    }
+                }
+            }
+            x => todo!("finish get_type: {:?}", x),
+        }
+    }
+
+    fn get_type_member_access<'a>(&self, expr: &mut crate::ast::Expression<'a>) -> Result<Type<'a>, TypeCheckerError> {
+        match expr {
             Expression::MemberAccess { object, field, annotation, .. } => {
                 match object.as_mut() {
                     Expression::Variable(name,ty, _) => {
@@ -900,7 +977,7 @@ impl TypeChecker {
                                                 todo!("report unknown member access")
                                             }
                                         }
-                                        
+
                                     }
                                 }
                             }
@@ -944,62 +1021,35 @@ impl TypeChecker {
                             _ => todo!("report member access on non-object type"),
                         }
                     }
-                    _ => todo!("report member access on non-variable expression"),
-                }
-            }
-            Expression::BinaryOperation { operator: BinaryOperator::Add, left, right, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Sub, left, right, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Mul, left, right, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Div, left, right, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Mod, left, right, .. } => {
-                let lhs = self.get_type(left.as_mut())?;
-                let rhs = self.get_type(right.as_mut())?;
-
-                match (lhs, rhs) {
-                    (Type::F32, _) | (_, Type::F32) => {
-                        Ok(Type::F32)
-                    }
-                    (Type::F64, _) | (_, Type::F64) => {
-                        Ok(Type::F64)
-                    }
-                    (lhs, rhs) => {
-                        if lhs != rhs {
-                            todo!("Report mismatch type")
+                    Expression::MemberAccess {..} => {
+                        let ty = self.get_type_member_access(object.as_mut())?;
+                        let name = match ty {
+                            Type::Object(name, _) => name,
+                            Type::Array(ty, _) => {
+                                Text::Borrowed("Array")
+                            },
+                            _ => unreachable!("Only object types can have type parameters"),
+                        };
+                        match self.get_attribute(name.to_string(), field.to_string()) {
+                            Some(ClassAttribute::Member(ty)) => {
+                                *annotation = Some(ty.into());
+                                Ok(ty.clone().into())
+                            }
+                            Some(ClassAttribute::Method(ty)) => {
+                                *annotation = Some(ty.into());
+                                Ok(ty.clone().into())
+                            }
+                            _ => {
+                                eprintln!("Failed to find attribute {} in class {}", field.to_string(), name.to_string());
+                                todo!("report unknown member access")
+                            }
                         }
-                        Ok(lhs)
-                    }
+
+                    },
+                    x => todo!("report member access on non-variable expression: {:?}", x),
                 }
             }
-            Expression::BinaryOperation { operator: BinaryOperator::Eq, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Ne, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Lt, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Le, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Gt, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Ge, .. } => {
-                Ok(Type::U8)
-            }
-            Expression::BinaryOperation { operator: BinaryOperator::And, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Or, .. }=> {
-                Ok(Type::U8)
-            }
-            Expression::Literal(Literal::Array(_, ty, _)) => {
-                if let Some(ty) = ty {
-                    Ok(Type::Array(Box::new(ty.clone()), Span::new(0, 0)))
-                } else {
-                    todo!("report lack of array type")
-                }
-            }
-            Expression::BinaryOperation { operator: BinaryOperator::Index, left, .. } => {
-                match self.get_type(left.as_mut())? {
-                    Type::Array(ty, _) => {
-                        Ok(*ty.clone())
-                    }
-                    _ => {
-                        todo!("add in trait support so we can index other things than just arrays")
-                    }
-                }
-            }
-            x => todo!("finish get_type: {:?}", x),
+            x =>  self.get_type(x),
         }
     }
     
@@ -1066,8 +1116,26 @@ impl TypeChecker {
                 }
                 *annotation = Some(*ty.clone());
             }
-            (ty, Expression::BinaryOperation {
-                operator: BinaryOperator::Add, left, right, .. }) => {
+            (
+                ty, Expression::BinaryOperation {
+                operator: BinaryOperator::Add, left, right, .. }
+            ) |
+            (
+                ty, Expression::BinaryOperation {
+                operator: BinaryOperator::Sub, left, right, .. }
+            ) |
+            (
+                ty, Expression::BinaryOperation {
+                operator: BinaryOperator::Mul, left, right, .. }
+            ) |
+            (
+                ty, Expression::BinaryOperation {
+                operator: BinaryOperator::Div, left, right, .. }
+            ) |
+            (
+                ty, Expression::BinaryOperation {
+                operator: BinaryOperator::Mod, left, right, .. }
+            ) => {
                 self.annotate_expr(ty, left.as_mut())?;
                 self.annotate_expr(ty, right.as_mut())?;
             }
@@ -1081,7 +1149,8 @@ impl TypeChecker {
             (ty, Expression::Parenthesized(expr, _)) => {
                 self.annotate_expr(ty, expr.as_mut())?;
             }
-            (ty, Expression::Call { name, annotation, ..}) => {
+            (ty, Expression::Call { name, annotation, span, ..}) => {
+                println!("name: {:?}", name);
                 let access_ty = self.get_type(name.as_mut())?;
 
                 match access_ty {
@@ -1090,7 +1159,7 @@ impl TypeChecker {
                             todo!("report type mismatch")
                         }
                     }
-                    _ => todo!("report not a function")
+                    x => todo!("report not a function: {:?} spanning: {:?}", x, span)
                 }
                 *annotation = Some(ty.clone());
             }
@@ -1110,7 +1179,12 @@ impl TypeChecker {
                 }
                 *annotation = Some(ty.clone());
             }
-            (_, Expression::BinaryOperation { operator: BinaryOperator::Lt, left, right, .. }) => {
+            (_, Expression::BinaryOperation { operator: BinaryOperator::Lt, left, right, .. })
+            | (_, Expression::BinaryOperation { operator: BinaryOperator::Gt, left, right, .. })
+            | (_, Expression::BinaryOperation { operator: BinaryOperator::Le, left, right, .. })
+            | (_, Expression::BinaryOperation { operator: BinaryOperator::Ge, left, right, .. })
+            | (_, Expression::BinaryOperation { operator: BinaryOperator::Eq, left, right, .. })
+            | (_, Expression::BinaryOperation { operator: BinaryOperator::Ne, left, right, .. }) => {
                 let lhs = self.get_type(left.as_mut())?;
                 self.annotate_expr(&lhs, right.as_mut())?;
             }

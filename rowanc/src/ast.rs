@@ -728,7 +728,11 @@ impl Expression<'_> {
             Expression::Variable(_, ty, _) => {
                 ty.clone().map(|t| Either::Left(t))
             }
-            Expression::BinaryOperation { operator: BinaryOperator::Add, left,  .. } => {
+            Expression::BinaryOperation { operator: BinaryOperator::Add, left,  .. } |
+            Expression::BinaryOperation { operator: BinaryOperator::Sub, left,  .. } |
+            Expression::BinaryOperation { operator: BinaryOperator::Mul, left,  .. } |
+            Expression::BinaryOperation { operator: BinaryOperator::Div, left,  .. } |
+            Expression::BinaryOperation { operator: BinaryOperator::Mod, left,  .. } => {
                 left.get_type()
             }
             Expression::Call {annotation, ..} => {
@@ -740,35 +744,10 @@ impl Expression<'_> {
             } => {
                 annotation.clone().map(|t| Either::Left(t))
             }
+            Expression::Parenthesized(expr, _) => expr.get_type(),
             x => todo!("Expression::get_type {:?}", x),
         }
     }
-
-    /*pub fn set_type(&mut self, ty: Type) {
-        match self {
-            Expression::Literal(Literal::Constant(Constant::Bool(_, _))) => {}
-            Expression::Literal(Literal::Constant(Constant::Character(_, _))) => {}
-            Expression::Literal(Literal::Constant(Constant::Integer(_, annotation, _))) => {
-                *annotation = Some(ty);
-            }
-            Expression::Literal(Literal::Constant(Constant::Float(_, annotation, _))) => {
-                *annotation = Some(ty);
-            }
-            Expression::Literal(Literal::Constant(Constant::String(_, _))) => {}
-            Expression::Literal(Literal::Void(_)) => {}
-            Expression::BinaryOperation { .. } => {}
-            Expression::Variable(_, annotation, _) => {
-                *annotation = Some(ty);
-            }
-            Expression::Literal(Literal::Tuple(_, annotation, _)) => {
-                *annotation = Some(ty);
-            }
-            Expression::Literal(Literal::Array(_, annotation, _)) => {
-                *annotation = Some(ty);
-            }
-            x => todo!("setting type for expression {:?}", x),
-        }
-    }*/
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]

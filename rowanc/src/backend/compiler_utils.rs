@@ -143,6 +143,7 @@ impl PartialClass {
     }
 
     pub fn get_vtable(&self, method_name: impl AsRef<str>) -> Result<&VTable, PartialClassError> {
+        println!("{}: {:?}", self.get_class_name(), self.method_to_class);
         let class_names = self.method_to_class.get(method_name.as_ref()).ok_or(PartialClassError::ClassNotNotFound(method_name.as_ref().to_string()))?;
         if class_names.len() > 1 {
             return Err(PartialClassError::Ambiguity);

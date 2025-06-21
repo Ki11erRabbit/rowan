@@ -5,7 +5,7 @@ use itertools::Itertools;
 use rowan_shared::{bytecode::compiled::Bytecode, classfile::{Member, SignatureEntry, VTable, VTableEntry}, TypeTag};
 use rowan_shared::classfile::SignatureIndex;
 use crate::{ast, ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator, Text}, backend::compiler_utils::Frame};
-use crate::ast::{IfExpression, ParentDec};
+use crate::ast::{IfExpression, ParentDec, PathName};
 use super::compiler_utils::{PartialClass, PartialClassError, StaticMember};
 
 
@@ -427,7 +427,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn create_new_parents(&mut self, parents: &Vec<ParentDec>) -> Vec<ParentDec> {
+    fn create_new_parents<'a>(&mut self, parents: &'a Vec<ParentDec<'a>>) -> Vec<ParentDec<'a>> {
         parents.into_iter().map(|parent| {
             let mut string = parent.name.to_string();
             for type_arg in parent.type_args.iter() {
@@ -935,7 +935,11 @@ impl Compiler {
                                         let value = value.parse::<i64>().expect("malformed i64");
                                         output.push(Bytecode::LoadI64(value));
                                     }
-                                    _ => unreachable!("integer literal")
+                                    None => {
+                                        let value = value.parse::<i32>().expect("malformed i32");
+                                        output.push(Bytecode::LoadI32(value));
+                                    }
+                                    x => unreachable!("integer literal {:?}", x)
                                 }
                             }
                         }
@@ -1091,9 +1095,8 @@ impl Compiler {
                         } else {
                             output.push(Bytecode::ArrayGet(type_tag));
                         }
-
                     }
-                    (l, x, r) => todo!("binary operator  ({:?}:{:?}) {:?} ({:?}: {:?})", left, l, x, right, r),
+                    (l, op, r) => todo!("binary operator {:?}: ({:?}: {:?}) ({:?}: {:?}) spanned: {:?}", op, left, l, right, r, span),
                 }
                 
             }
@@ -1114,188 +1117,7 @@ impl Compiler {
                 self.compile_expression(class_name, partial_class, expr.as_ref(), output, lhs)?;
             }
             Expression::Call { name, type_args, args, .. } => {
-                let (name, ty, var) = match name.as_ref() {
-                    Expression::MemberAccess { object, field, span, .. } => {
-                        match object.as_ref() {
-                            Expression::Variable(var, Some(Type::Object(ty, _)), _) => {
-                                (field, ty.clone(), var.clone())
-                            }
-                            Expression::Variable(var, Some(Type::Array(ty, _)), _) => {
-                                let ty = match ty.as_ref() {
-                                    Type::U8 | Type::I8 => Text::Borrowed("Array8"),
-                                    Type::U16 | Type::I16 => Text::Borrowed("Array16"),
-                                    Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
-                                    Type::U64 | Type::I64 => Text::Borrowed("Array64"),
-                                    Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
-                                    Type::Object(ty, _) => {
-                                        if self.classes.contains_key(ty.as_str()) {
-                                            Text::Borrowed("Arrayobject")
-                                        } else {
-                                            match self.current_type_args.get(ty.as_str()).unwrap() {
-                                                TypeTag::I8 | TypeTag::U8 => Text::Borrowed("Array8"),
-                                                TypeTag::I16 | TypeTag::U16 => Text::Borrowed("Array16"),
-                                                TypeTag::I32 | TypeTag::U32 => Text::Borrowed("Array32"),
-                                                TypeTag::I64 | TypeTag::U64 => Text::Borrowed("Array64"),
-                                                TypeTag::F32 => Text::Borrowed("Arrayf32"),
-                                                TypeTag::F64 => Text::Borrowed("Arrayf64"),
-                                                _ => Text::Borrowed("Arrayobject"),
-                                            }
-                                        }
-                                    }
-                                    Type::F32 => Text::Borrowed("Arrayf32"),
-                                    Type::F64 => Text::Borrowed("Arrayf64"),
-                                };
-                                (field, ty, var.clone())
-                            }
-                            Expression::This(_) => {
-                                (field, Text::Borrowed(class_name), Text::Borrowed("self"))
-                            }
-                            Expression::Variable(var, Some(Type::TypeArg(obj, args, _)), _) => {
-                                let Type::Object(ty, _) = obj.as_ref() else {
-                                    unreachable!("type arg should contain an object");
-                                };
-                                let mut ty_name = ty.to_string();
-                                for arg in args {
-                                    let modifier = match arg {
-                                        Type::U8 | Type::I8 => "8",
-                                        Type::U16 | Type::I16 => "16",
-                                        Type::U32 | Type::I32 => "32",
-                                        Type::U64 | Type::I64 => "64",
-                                        Type::F32 => "f32",
-                                        Type::F64 => "f64",
-                                        Type::Object(ty, _) => {
-                                            if self.classes.contains_key(ty.as_str()) {
-                                                "object"
-                                            } else {
-                                                match self.current_type_args.get(ty.as_str()).unwrap() {
-                                                    TypeTag::I8 | TypeTag::U8 => "8",
-                                                    TypeTag::I16 | TypeTag::U16 => "16",
-                                                    TypeTag::I32 | TypeTag::U32 => "32",
-                                                    TypeTag::I64 | TypeTag::U64 => "64",
-                                                    TypeTag::F32 => "f32",
-                                                    TypeTag::F64 => "f64",
-                                                    _ => "object",
-                                                }
-                                            }
-                                        }
-                                        _ => "object",
-                                    };
-                                    ty_name.push_str(modifier);
-                                }
-                                (field, Text::Owned(ty_name), var.clone())
-                            }
-                            x => todo!("add additional sources to call from {:?}", x)
-                        }
-                    }
-                    _ => unreachable!("all calls should be via member access by this point")
-                };
-
-                for (i, arg) in args.iter().enumerate() {
-                    self.compile_expression(class_name, partial_class, arg, output, lhs)?;
-                    self.bind_variable(format!("arg{i}"));
-                }
-
-                for i in 1..=args.len() { // 1..len for leaving space for object
-                    self.get_variable(format!("arg{}", i - 1));
-                    output.push(Bytecode::StoreArgument(i as u8));
-                }
-                
-                let object = self.get_variable(var).expect("There should be method calling by this point");
-                output.push(Bytecode::LoadLocal(object));
-                output.push(Bytecode::StoreArgument(0));
-
-                let name = name.segments.last().unwrap();
-                println!("name: {name}");
-
-                if name.as_str() == "downcast" || name.as_str() == "downcast-contents" {
-                    assert_eq!(type_args.len(), 1, "Downcast only takes one type argument");
-                    let ty = match type_args.first().unwrap() {
-                        Type::Array(ty, _) => {
-                            match ty.as_ref() {
-                                Type::U8 | Type::I8 => Text::Borrowed("Array8"),
-                                Type::U16 | Type::I16 => Text::Borrowed("Array16"),
-                                Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
-                                Type::U64 | Type::I64 => Text::Borrowed("Array64"),
-                                Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
-                                Type::F32 => Text::Borrowed("Arrayf32"),
-                                Type::F64 => Text::Borrowed("Arrayf64"),
-                                Type::Object(ty, _) => {
-                                    if self.classes.contains_key(ty.as_str()) {
-                                        Text::Borrowed("Arrayobject")
-                                    } else {
-                                        match self.current_type_args.get(ty.as_str()).unwrap() {
-                                            TypeTag::I8 | TypeTag::U8 => Text::Borrowed("Array8"),
-                                            TypeTag::I16 | TypeTag::U16 => Text::Borrowed("Array16"),
-                                            TypeTag::I32 | TypeTag::U32 => Text::Borrowed("Array32"),
-                                            TypeTag::I64 | TypeTag::U64 => Text::Borrowed("Array64"),
-                                            TypeTag::F32 => Text::Borrowed("Arrayf32"),
-                                            TypeTag::F64 => Text::Borrowed("Arrayf64"),
-                                            _ => Text::Borrowed("Arrayobject"),
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Type::Object(name, _) => name.clone(),
-                        _ => unreachable!("downcast can only take type arguments that are Objects or Arrays, not Tuples or primitives like integers and floats"),
-                    };
-
-                    let class_symbol = partial_class.add_string(ty.as_str());
-
-                    output.push(Bytecode::LoadSymbol(class_symbol));
-                    output.push(Bytecode::StoreArgument(args.len() as u8));
-                }
-
-                println!("ty: {}", ty.to_string());
-
-                if let Some(class) = self.classes.get(&ty.to_string()) {
-                    //println!("{:#?}", class);
-                    let vtable = class.get_vtable(name).expect("add proper handling of missing vtable");
-                    let method_entry = class.get_method_entry(name).expect("add proper handling of missing method");
-
-                    //println!("{}", class.index_string_table(vtable.class_name));
-
-                    let class_name = class.index_string_table(vtable.class_name);
-                    let vtable_class_name = partial_class.add_string(class_name);
-
-                    let source_class = if vtable.sub_class_name == 0 {
-                        0
-                    } else {
-                        let class_name = class.index_string_table(vtable.sub_class_name);
-                        partial_class.add_string(class_name)
-                    };
-
-                    let method_name = class.index_string_table(method_entry.name);
-                    let method_name = partial_class.add_string(method_name);
-
-
-                    output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
-                } else if ty.as_str() == class_name {
-                    let vtable = partial_class.get_vtable(name).expect("add proper handling of missing vtable").clone();
-                    let method_entry = partial_class.get_method_entry(name).expect("add proper handling of missing method");
-
-                    //println!("{}", partial_class.index_string_table(vtable.class_name));
-
-                    let class_name = partial_class.index_string_table(vtable.class_name);
-                    let class_name = class_name.to_string();
-                    let vtable_class_name = partial_class.add_string(class_name);
-
-                    let source_class = if vtable.sub_class_name == 0 {
-                        0
-                    } else {
-                        let class_name = partial_class.index_string_table(vtable.sub_class_name);
-                        let class_name = class_name.to_string();
-                        partial_class.add_string(class_name)
-                    };
-
-                    let method_name = partial_class.index_string_table(method_entry.name);
-                    let method_name = method_name.to_string();
-                    let method_name = partial_class.add_string(method_name);
-
-                    output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
-                } else {
-                    panic!("Classes are in a bad order of compiling")
-                }
+                self.compile_call_expression(class_name, partial_class, expr, output, lhs)?;
             }
             Expression::StaticCall { name, type_args, args, annotation, .. } => {
                 println!("static call annotation for {:?}: {:?}",name, annotation);
@@ -1603,5 +1425,294 @@ impl Compiler {
         Ok(Some(Box::new(move |output: &mut Vec<Bytecode>| {
             output.push(Bytecode::SetField(class_name, parent_name, offset, type_tag));
         })))
+    }
+
+    fn compile_call_expression<'a>(
+        &mut self,
+        class_name: &'a str,
+        partial_class: &mut PartialClass,
+        expr: &'a Expression<'a>,
+        output: &mut Vec<Bytecode>,
+        lhs : bool,
+    ) -> Result<(), CompilerError> {
+        let Expression::Call { name, type_args, args, span, .. } = expr else {
+            unreachable!("We have already checked for expr being a Call");
+        };
+        let (name, ty) = 'setup_args: loop {
+            let (name, ty, var): (&PathName, Text, Text) = match name.as_ref() {
+                Expression::MemberAccess { object, field, .. } => {
+                    match object.as_ref() {
+                        Expression::Variable(var, Some(Type::Object(ty, _)), _) => {
+                            (field, ty.clone(), var.clone())
+                        }
+                        Expression::Variable(var, Some(Type::Array(ty, _)), _) => {
+                            let ty = match ty.as_ref() {
+                                Type::U8 | Type::I8 => Text::Borrowed("Array8"),
+                                Type::U16 | Type::I16 => Text::Borrowed("Array16"),
+                                Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
+                                Type::U64 | Type::I64 => Text::Borrowed("Array64"),
+                                Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                                Type::Object(ty, _) => {
+                                    if self.classes.contains_key(ty.as_str()) {
+                                        Text::Borrowed("Arrayobject")
+                                    } else {
+                                        match self.current_type_args.get(ty.as_str()).unwrap() {
+                                            TypeTag::I8 | TypeTag::U8 => Text::Borrowed("Array8"),
+                                            TypeTag::I16 | TypeTag::U16 => Text::Borrowed("Array16"),
+                                            TypeTag::I32 | TypeTag::U32 => Text::Borrowed("Array32"),
+                                            TypeTag::I64 | TypeTag::U64 => Text::Borrowed("Array64"),
+                                            TypeTag::F32 => Text::Borrowed("Arrayf32"),
+                                            TypeTag::F64 => Text::Borrowed("Arrayf64"),
+                                            _ => Text::Borrowed("Arrayobject"),
+                                        }
+                                    }
+                                }
+                                Type::F32 => Text::Borrowed("Arrayf32"),
+                                Type::F64 => Text::Borrowed("Arrayf64"),
+                            };
+                            (field, ty, var.clone())
+                        }
+                        Expression::This(_) => {
+                            (field, Text::Borrowed(class_name), Text::Borrowed("self"))
+                        }
+                        Expression::Variable(var, Some(Type::TypeArg(obj, args, _)), _) => {
+                            let Type::Object(ty, _) = obj.as_ref() else {
+                                unreachable!("type arg should contain an object");
+                            };
+                            let mut ty_name = ty.to_string();
+                            for arg in args {
+                                let modifier = match arg {
+                                    Type::U8 | Type::I8 => "8",
+                                    Type::U16 | Type::I16 => "16",
+                                    Type::U32 | Type::I32 => "32",
+                                    Type::U64 | Type::I64 => "64",
+                                    Type::F32 => "f32",
+                                    Type::F64 => "f64",
+                                    Type::Object(ty, _) => {
+                                        if self.classes.contains_key(ty.as_str()) {
+                                            "object"
+                                        } else {
+                                            match self.current_type_args.get(ty.as_str()).unwrap() {
+                                                TypeTag::I8 | TypeTag::U8 => "8",
+                                                TypeTag::I16 | TypeTag::U16 => "16",
+                                                TypeTag::I32 | TypeTag::U32 => "32",
+                                                TypeTag::I64 | TypeTag::U64 => "64",
+                                                TypeTag::F32 => "f32",
+                                                TypeTag::F64 => "f64",
+                                                _ => "object",
+                                            }
+                                        }
+                                    }
+                                    _ => "object",
+                                };
+                                ty_name.push_str(modifier);
+                            }
+                            (field, Text::Owned(ty_name), var.clone())
+                        }
+                        Expression::MemberAccess { annotation, .. } => {
+                            self.compile_expression(class_name, partial_class, object.as_ref(), output, lhs)?;
+                            for (i, arg) in args.iter().enumerate() {
+                                self.compile_expression(class_name, partial_class, arg, output, lhs)?;
+                                self.bind_variable(format!("arg{i}"));
+                            }
+
+                            for i in 1..=args.len() { // 1..len for leaving space for object
+                                self.get_variable(format!("arg{}", i - 1));
+                                output.push(Bytecode::StoreArgument(i as u8));
+                            }
+
+                            output.push(Bytecode::StoreArgument(0));
+
+                            let annotation = match annotation.as_ref() {
+                                Some(Type::Object(name, _)) => {
+                                    name.clone()
+                                }
+                                Some(Type::Array(ty, _)) => {
+                                    let ty = match ty.as_ref() {
+                                        Type::U8 | Type::I8 => Text::Borrowed("Array8"),
+                                        Type::U16 | Type::I16 => Text::Borrowed("Array16"),
+                                        Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
+                                        Type::U64 | Type::I64 => Text::Borrowed("Array64"),
+                                        Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                                        Type::Object(ty, _) => {
+                                            if self.classes.contains_key(ty.as_str()) {
+                                                Text::Borrowed("Arrayobject")
+                                            } else {
+                                                match self.current_type_args.get(ty.as_str()).unwrap() {
+                                                    TypeTag::I8 | TypeTag::U8 => Text::Borrowed("Array8"),
+                                                    TypeTag::I16 | TypeTag::U16 => Text::Borrowed("Array16"),
+                                                    TypeTag::I32 | TypeTag::U32 => Text::Borrowed("Array32"),
+                                                    TypeTag::I64 | TypeTag::U64 => Text::Borrowed("Array64"),
+                                                    TypeTag::F32 => Text::Borrowed("Arrayf32"),
+                                                    TypeTag::F64 => Text::Borrowed("Arrayf64"),
+                                                    _ => Text::Borrowed("Arrayobject"),
+                                                }
+                                            }
+                                        }
+                                        Type::F32 => Text::Borrowed("Arrayf32"),
+                                        Type::F64 => Text::Borrowed("Arrayf64"),
+                                    };
+                                    ty
+                                }
+                                Some(Type::TypeArg(obj, args, _)) => {
+                                    let Type::Object(ty, _) = obj.as_ref() else {
+                                        unreachable!("type arg should contain an object");
+                                    };
+                                    let mut ty_name = ty.to_string();
+                                    for arg in args {
+                                        let modifier = match arg {
+                                            Type::U8 | Type::I8 => "8",
+                                            Type::U16 | Type::I16 => "16",
+                                            Type::U32 | Type::I32 => "32",
+                                            Type::U64 | Type::I64 => "64",
+                                            Type::F32 => "f32",
+                                            Type::F64 => "f64",
+                                            Type::Object(ty, _) => {
+                                                if self.classes.contains_key(ty.as_str()) {
+                                                    "object"
+                                                } else {
+                                                    match self.current_type_args.get(ty.as_str()).unwrap() {
+                                                        TypeTag::I8 | TypeTag::U8 => "8",
+                                                        TypeTag::I16 | TypeTag::U16 => "16",
+                                                        TypeTag::I32 | TypeTag::U32 => "32",
+                                                        TypeTag::I64 | TypeTag::U64 => "64",
+                                                        TypeTag::F32 => "f32",
+                                                        TypeTag::F64 => "f64",
+                                                        _ => "object",
+                                                    }
+                                                }
+                                            }
+                                            _ => "object",
+                                        };
+                                        ty_name.push_str(modifier);
+                                    }
+                                    Text::Owned(ty_name)
+                                }
+                                _ => unreachable!("type arg should contain an object"),
+                            };
+
+                            println!("nested field: {field}, annotation: {annotation}");
+
+                            break 'setup_args (field, annotation);
+                        }
+                        x => todo!("add additional sources to call from {:?}", x)
+                    }
+                }
+                _ => unreachable!("all calls should be via member access by this point")
+            };
+
+            for (i, arg) in args.iter().enumerate() {
+                self.compile_expression(class_name, partial_class, arg, output, lhs)?;
+                self.bind_variable(format!("arg{i}"));
+            }
+
+            for i in 1..=args.len() { // 1..len for leaving space for object
+                self.get_variable(format!("arg{}", i - 1));
+                output.push(Bytecode::StoreArgument(i as u8));
+            }
+
+            let object = self.get_variable(var).expect("There should be method calling by this point");
+            output.push(Bytecode::LoadLocal(object));
+            output.push(Bytecode::StoreArgument(0));
+            break (name, ty);
+        };
+
+        let name = name.segments.last().unwrap();
+        println!("name: {name}");
+
+        if name.as_str() == "downcast" || name.as_str() == "downcast-contents" {
+            assert_eq!(type_args.len(), 1, "Downcast only takes one type argument");
+            let ty = match type_args.first().unwrap() {
+                Type::Array(ty, _) => {
+                    match ty.as_ref() {
+                        Type::U8 | Type::I8 => Text::Borrowed("Array8"),
+                        Type::U16 | Type::I16 => Text::Borrowed("Array16"),
+                        Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
+                        Type::U64 | Type::I64 => Text::Borrowed("Array64"),
+                        Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                        Type::F32 => Text::Borrowed("Arrayf32"),
+                        Type::F64 => Text::Borrowed("Arrayf64"),
+                        Type::Object(ty, _) => {
+                            if self.classes.contains_key(ty.as_str()) {
+                                Text::Borrowed("Arrayobject")
+                            } else {
+                                match self.current_type_args.get(ty.as_str()).unwrap() {
+                                    TypeTag::I8 | TypeTag::U8 => Text::Borrowed("Array8"),
+                                    TypeTag::I16 | TypeTag::U16 => Text::Borrowed("Array16"),
+                                    TypeTag::I32 | TypeTag::U32 => Text::Borrowed("Array32"),
+                                    TypeTag::I64 | TypeTag::U64 => Text::Borrowed("Array64"),
+                                    TypeTag::F32 => Text::Borrowed("Arrayf32"),
+                                    TypeTag::F64 => Text::Borrowed("Arrayf64"),
+                                    _ => Text::Borrowed("Arrayobject"),
+                                }
+                            }
+                        }
+                    }
+                }
+                Type::Object(name, _) => name.clone(),
+                _ => unreachable!("downcast can only take type arguments that are Objects or Arrays, not Tuples or primitives like integers and floats"),
+            };
+
+            let class_symbol = partial_class.add_string(ty.as_str());
+
+            output.push(Bytecode::LoadSymbol(class_symbol));
+            output.push(Bytecode::StoreArgument(args.len() as u8));
+        }
+
+        println!("ty: {} {:?}", ty.to_string(), span);
+
+
+        if ty.as_str() == class_name {
+            let vtable = partial_class.get_vtable(name).expect("add proper handling of missing vtable").clone();
+            let method_entry = partial_class.get_method_entry(name).expect("add proper handling of missing method");
+
+            //println!("{}", partial_class.index_string_table(vtable.class_name));
+
+            let class_name = partial_class.index_string_table(vtable.class_name);
+            let class_name = class_name.to_string();
+            let vtable_class_name = partial_class.add_string(class_name);
+
+            let source_class = if vtable.sub_class_name == 0 {
+                0
+            } else {
+                let class_name = partial_class.index_string_table(vtable.sub_class_name);
+                let class_name = class_name.to_string();
+                partial_class.add_string(class_name)
+            };
+
+            let method_name = partial_class.index_string_table(method_entry.name);
+            let method_name = method_name.to_string();
+            let method_name = partial_class.add_string(method_name);
+
+            output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
+        }
+        else if let Some(class) = self.classes.get(&ty.to_string()) {
+            //println!("{:#?}", class);
+            let class_name = class.get_class_name();
+            println!("class name: {class_name}");
+            let vtable = class.get_vtable(name).expect("add proper handling of missing vtable");
+            let method_entry = class.get_method_entry(name).expect("add proper handling of missing method");
+
+            //println!("{}", class.index_string_table(vtable.class_name));
+
+            let class_name = class.index_string_table(vtable.class_name);
+            let vtable_class_name = partial_class.add_string(class_name);
+
+            let source_class = if vtable.sub_class_name == 0 {
+                0
+            } else {
+                let class_name = class.index_string_table(vtable.sub_class_name);
+                partial_class.add_string(class_name)
+            };
+
+            let method_name = class.index_string_table(method_entry.name);
+            let method_name = partial_class.add_string(method_name);
+
+
+            output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
+        } else {
+            panic!("Classes are in a bad order of compiling")
+        }
+        Ok(())
     }
 }

@@ -1,0 +1,85 @@
+module std::collections;
+
+class ArrayList[T] {
+    buffer: [T];
+    length: u64;
+
+    pub fn create() -> ArrayList[T] {
+        let list: ArrayList[T] = new ArrayList[T]();
+        list.buffer = new [T; 0];
+        return list;
+    }
+
+    pub fn from-array(arr: [T]) -> ArrayList[T] {
+        let list: ArrayList[T] = new ArrayList[T]();
+        let buff: [T] = new [T; arr.len()];
+        let i: u64 = 0;
+        while i < arr.len() {
+            buff[i] = arr[i];
+            i = i + 1;
+        }
+        list.buffer = buff;
+        list.length = arr.len();
+        return list;
+    }
+
+    pub fn len(self) -> u64 {
+        return self.length;
+    }
+
+    pub fn capacity(self) -> u64 {
+        return self.buffer.len();
+    }
+
+    pub fn get(self, index: u64) -> T {
+        return self.buffer[index];
+    }
+
+    pub fn set(self, index: u64, value: T) {
+        self.buffer[index] = value;
+    }
+
+    pub fn resize(self, size: u64) {
+        let new-buff: [T] = new [T; size];
+
+        let length: u64 = 0;
+        if size > self.capacity() {
+            length = self.length;
+        } else {
+            length = size;
+        }
+
+        let i: u64 = 0;
+        while i < length {
+            new-buff[i] = self.buffer[i];
+            i = i + 1;
+        }
+
+        self.buffer = new-buff;
+    }
+
+    fn resize-if-needed(self, amount-needed: u64) {
+        if amount-needed > (self.capacity() - self.len()) {
+            let factor: u64 = self.capacity() * 2;
+            if factor == 0 {
+                factor = 1;
+            }
+            self.resize(factor)
+        }
+    }
+
+    pub fn push(self, value: T) {
+        let size: u64 = 1;
+        self.resize-if-needed(size);
+
+        self.buffer[self.length] = value;
+        self.length = self.length + 1;
+    }
+
+    pub fn pop(self) -> T {
+        // TODO: throw index out of bounds error if too small
+        let out: T = self.buffer[self.length - 1];
+        self.length = self.length - 1;
+        return out;
+    }
+}
