@@ -360,8 +360,6 @@ impl Compiler {
                 
             }
         }
-
-
         Ok(())
     }
 
@@ -369,7 +367,7 @@ impl Compiler {
         let Class {
             name,
             type_params,
-            mut parents,
+            parents,
             members,
             methods,
             static_members,
@@ -379,7 +377,8 @@ impl Compiler {
         let class_name = name;
 
         if type_params.is_empty() {
-            self.compile_class_inner(class_name, &parents, &methods, &members, &static_members)?;
+            let new_parents = self.create_new_parents(&parents);
+            self.compile_class_inner(class_name, &new_parents, &methods, &members, &static_members)?;
         } else {
             let mut name_order = Vec::new();
             for type_param in type_params.iter() {
@@ -417,44 +416,7 @@ impl Compiler {
                     modifier_string.push_str(modifier);
                 }
 
-                let mut new_parents = Vec::new();
-                println!("parent_decls: {:?}", parents);
-                for parent in parents.iter() {
-                    let mut string = parent.name.to_string();
-                    for type_arg in parent.type_args.iter() {
-                        let str_value = match type_arg {
-                            Type::I8 | Type::U8 => "8",
-                            Type::I16 | Type::I16 => "16",
-                            Type::I32 | Type::I32 => "32",
-                            Type::I64 | Type::I64 => "64",
-                            Type::F32 => "f32",
-                            Type::F64 => "f64",
-                            Type::Object(name, _) => {
-                                if self.current_type_args.contains_key(name.as_str()) {
-                                    match type_arg {
-                                        Type::I8 | Type::U8 => "8",
-                                        Type::I16 | Type::I16 => "16",
-                                        Type::I32 | Type::I32 => "32",
-                                        Type::I64 | Type::I64 => "64",
-                                        Type::F32 => "f32",
-                                        Type::F64 => "f64",
-                                        _ => "object",
-                                    }
-                                } else {
-                                    "object"
-                                }
-                            }
-                            _ => "object",
-                        };
-                        string.push_str(str_value);
-                    }
-                    new_parents.push(ParentDec {
-                        name: Text::Owned(string),
-                        type_args: Vec::new(),
-                        type_params: parent.type_params.clone(),
-                        span: parent.span,
-                    })
-                }
+                let new_parents = self.create_new_parents(&parents);
 
                 let name = Text::Owned(format!("{class_name}{modifier_string}"));
 
@@ -463,6 +425,45 @@ impl Compiler {
         }
         
         Ok(())
+    }
+
+    fn create_new_parents(&mut self, parents: &Vec<ParentDec>) -> Vec<ParentDec> {
+        parents.into_iter().map(|parent| {
+            let mut string = parent.name.to_string();
+            for type_arg in parent.type_args.iter() {
+                let str_value = match type_arg {
+                    Type::I8 | Type::U8 => "8",
+                    Type::I16 | Type::I16 => "16",
+                    Type::I32 | Type::I32 => "32",
+                    Type::I64 | Type::I64 => "64",
+                    Type::F32 => "f32",
+                    Type::F64 => "f64",
+                    Type::Object(name, _) => {
+                        if self.current_type_args.contains_key(name.as_str()) {
+                            match type_arg {
+                                Type::I8 | Type::U8 => "8",
+                                Type::I16 | Type::I16 => "16",
+                                Type::I32 | Type::I32 => "32",
+                                Type::I64 | Type::I64 => "64",
+                                Type::F32 => "f32",
+                                Type::F64 => "f64",
+                                _ => "object",
+                            }
+                        } else {
+                            "object"
+                        }
+                    }
+                    _ => "object",
+                };
+                string.push_str(str_value);
+            }
+            ParentDec {
+                name: Text::Owned(string),
+                type_args: Vec::new(),
+                type_params: parent.type_params.clone(),
+                span: parent.span,
+            }
+        }).collect()
     }
 
     fn compile_class_inner(

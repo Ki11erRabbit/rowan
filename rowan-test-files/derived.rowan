@@ -1,6 +1,6 @@
 module Main;
 
-class Derived[T] extends Base::[T] {
+class Derived extends Base::[u64] {
     @Override
     fn thing(self) -> u64 {
         let t: u64 = 0;
