@@ -1,10 +1,11 @@
 use std::{borrow::BorrowMut, collections::HashMap};
-
+use std::cmp::Ordering;
+use std::collections::HashSet;
 use either::Either;
-
+use itertools::Itertools;
 use crate::ast::{BinaryOperator, Expression, Literal, Span, Text, Type};
 
-fn create_stdlib<'a>() -> HashMap<String, (Vec<String>, HashMap<String, ClassAttribute>)> {
+fn create_stdlib<'a>() -> HashMap<Vec<String>, (Vec<String>, HashMap<String, ClassAttribute>)> {
     let mut info = HashMap::new();
     let mut object_attributes = HashMap::new();
     object_attributes.insert("tick".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::F64], Box::new(TypeCheckerType::Void))));
@@ -16,18 +17,18 @@ fn create_stdlib<'a>() -> HashMap<String, (Vec<String>, HashMap<String, ClassAtt
     object_attributes.insert("add-child-at".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::Object(String::from("Object")), TypeCheckerType::U64], Box::new(TypeCheckerType::Void))));
     object_attributes.insert("child-died".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64, TypeCheckerType::Object(String::from("Object"))], Box::new(TypeCheckerType::Void))));
 
-    info.insert("Object".to_string(), (Vec::new(), object_attributes));
+    info.insert(vec!["Object".to_string()], (Vec::new(), object_attributes));
 
     let mut printer_attributes = HashMap::new();
     printer_attributes.insert("println-int".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64], Box::new(TypeCheckerType::Void))));
 
-    info.insert("Printer".to_string(), (vec![String::from("Object")], printer_attributes));
+    info.insert(vec!["Printer".to_string()], (vec![String::from("Object")], printer_attributes));
 
     let mut array_attributes = HashMap::new();
     array_attributes.insert("len".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::U64))));
     array_attributes.insert("downcast-contents".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::Object(String::from(""))))));
 
-    info.insert("Array".to_string(), (vec![String::from("Object")], array_attributes));
+    info.insert(vec!["Array".to_string()], (vec![String::from("Object")], array_attributes));
     
     info
 }
@@ -168,9 +169,11 @@ impl Frame {
 }
 
 pub struct TypeChecker {
-    class_information: HashMap<String, (Vec<String>, HashMap<String, ClassAttribute>)>,
+    class_information: HashMap<Vec<String>, (Vec<String>, HashMap<String, ClassAttribute>)>,
     scopes: Vec<Frame>,
-    current_class: String,
+    current_class: Vec<String>,
+    active_paths: HashMap<String, Vec<String>>,
+    active_module: Vec<String>,
 }
 
 
@@ -179,7 +182,9 @@ impl TypeChecker {
         TypeChecker {
             class_information: create_stdlib(),
             scopes: Vec::new(),
-            current_class: String::new(),
+            current_class: Vec::new(),
+            active_paths: HashMap::new(),
+            active_module: Vec::new(),
         }
     }
 
@@ -207,11 +212,28 @@ impl TypeChecker {
         }
     }
 
-    fn get_attribute<S: AsRef<str>>(&self, class: S, attribute: S) -> Option<&ClassAttribute> {
-        self.class_information.get(class.as_ref()).and_then(|attributes| {
+    fn get_attribute<S: AsRef<str>>(&self, class: &[String], attribute: S) -> Option<&ClassAttribute> {
+        if class.is_empty() {
+            return None
+        }
+        self.class_information.get(class).and_then(|attributes| {
             let out = attributes.1.get(attribute.as_ref());
             out
         })
+    }
+
+    fn attach_module_if_needed(&self, class: String) -> Vec<String> {
+        let path = self.active_paths.get(&class);
+        if let Some(path) = path {
+            let module = path.clone();
+            module
+        } else if self.class_information.get(&vec![class.clone()]).is_some() {
+            return vec![class]
+        } else {
+            let mut module = self.active_module.clone();
+            module.push(class);
+            module
+        }
     }
     
     fn compare_types(&self, left: &TypeCheckerType, right: &TypeCheckerType) -> bool {
@@ -257,6 +279,8 @@ impl TypeChecker {
                 true
             }
             (TypeCheckerType::Object(name), _) => {
+                let default = &Vec::new();
+                let name = self.active_paths.get(name).unwrap_or(default);
                 if self.class_information.contains_key(name) {
                     // Here the class exists so we know that the other type can't equal an object
                     false
@@ -266,6 +290,8 @@ impl TypeChecker {
                 }
             }
             (_, TypeCheckerType::Object(name)) => {
+                let default = &Vec::new();
+                let name = self.active_paths.get(name).unwrap_or(default);
                 if self.class_information.contains_key(name) {
                     // Here the class exists so we know that the other type can't equal an object
                     false
@@ -284,12 +310,14 @@ impl TypeChecker {
         } else if left == right {
             true
         } else {
-            for right_parents in self.class_information.get(right).unwrap().0.iter() {
+            let right_path = self.active_paths.get(right).unwrap();
+            for right_parents in self.class_information.get(right_path).unwrap().0.iter() {
                 if self.compare_object(left, right_parents) {
                     return true;
                 }
             }
-            for left_parent in self.class_information.get(left).unwrap().0.iter() {
+            let left_path = self.active_paths.get(left).unwrap();
+            for left_parent in self.class_information.get(left_path).unwrap().0.iter() {
                 if self.compare_object(right, left_parent) {
                     return true;
                 }
@@ -305,23 +333,41 @@ impl TypeChecker {
     fn check_files<'a>(&mut self, mut files: Vec<crate::ast::File<'a>>) -> Result<Vec<crate::ast::File<'a>>, TypeCheckerError> {
         for file in files.iter_mut() {
             self.check_file(file)?;
+            self.active_paths.clear();
         }
         Ok(files)
     }
 
     fn check_file<'a>(&mut self, file: &mut crate::ast::File<'a>) -> Result<(), TypeCheckerError> {
+        let module: Vec<String> = file.path.segments.iter().map(ToString::to_string).collect();
+        file.content.sort_by(|a, b| {
+            match (a, b) {
+                (crate::ast::TopLevelStatement::Class(_), crate::ast::TopLevelStatement::Import(_)) => {
+                    Ordering::Greater
+                }
+                (crate::ast::TopLevelStatement::Import(_), crate::ast::TopLevelStatement::Class(_)) => {
+                    Ordering::Less
+                }
+                _ => Ordering::Equal,
+            }
+        });
+        self.active_module = module.clone();
         for content in file.content.iter_mut() {
             match content {
                 crate::ast::TopLevelStatement::Class(class) => {
-                    self.check_class(class)?;
+                    self.check_class(class, &module)?;
                 }
-                _ => {}
+                crate::ast::TopLevelStatement::Import(import) => {
+                    let path_terminator = import.path.segments.last().unwrap().to_string();
+                    let path = import.path.segments.iter().map(ToString::to_string).collect::<Vec<_>>();
+                    self.active_paths.insert(path_terminator, path);
+                }
             }
         }
         Ok(())
     }
 
-    fn check_class<'a>(&mut self, class: &mut crate::ast::Class<'a>) -> Result<(), TypeCheckerError> {
+    fn check_class<'a>(&mut self, class: &mut crate::ast::Class<'a>, module: &Vec<String>) -> Result<(), TypeCheckerError> {
         let crate::ast::Class {
             name,
             members,
@@ -355,10 +401,12 @@ impl TypeChecker {
 
         
         let parents = parents.iter().map(|dec| dec.name.to_string()).collect();
+        let mut module = module.clone();
+        module.push(class_name.to_string());
 
-        self.class_information.insert(class_name.to_string(), (parents, class_attributes));
+        self.class_information.insert(module.clone(), (parents, class_attributes));
 
-        self.current_class = class_name.to_string();
+        self.current_class = module;
         for method in methods.iter_mut() {
             self.check_method(method)?
         }
@@ -609,10 +657,23 @@ impl TypeChecker {
                 }
             }
             Expression::StaticCall { name, type_args: _, args, .. } => {
-                let class_name = &name.segments[name.segments.len() - 2];
+                println!("name: {:?}", name.segments);
+                let class_name = if self.active_paths.contains_key(name.segments[0].as_str()) {
+                    let mut active_path = self.active_paths.get(name.segments[0].as_str()).unwrap().clone();
+                    active_path.extend(
+                        name.segments[1..name.segments.len() - 1].iter()
+                        .map(ToString::to_string)
+                    );
+                    active_path
+                } else {
+                    name.segments[..name.segments.len() - 1].iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                };
+                println!("Class Name: {:?}", class_name);
                 let method_name = &name.segments[name.segments.len() - 1];
 
-                let (_, attributes) = self.class_information.get(class_name.as_str())
+                let (_, attributes) = self.class_information.get(&class_name)
                     .expect("class missing or not loaded");
 
                 let ClassAttribute::Method(method) = attributes.get(method_name.as_str())
@@ -658,9 +719,15 @@ impl TypeChecker {
                     _ => todo!("member access is incomplete"),
                 };
                 let class_name = name;
+                println!("{}", class_name);
+                let path = self.attach_module_if_needed(class_name.to_string());
+                if path.len() == 0 {
+                    todo!("report missing import");
+                }
+
                 let member_name = &field.segments[field.segments.len() - 1];
 
-                let (_, attributes) = self.class_information.get(class_name.as_str())
+                let (_, attributes) = self.class_information.get(&path)
                     .expect("class missing or not loaded");
 
 
@@ -752,7 +819,8 @@ impl TypeChecker {
                 }
             }
             Expression::This(_) => {
-                Ok(TypeCheckerType::Object(self.current_class.clone()).into())
+
+                Ok(TypeCheckerType::Object(self.current_class.last().unwrap().clone()).into())
             }
             Expression::As { source, typ, .. } => {
                 let _source_ty = self.get_type(source.as_mut())?;
@@ -788,12 +856,26 @@ impl TypeChecker {
                 if let Some(ty)= annotation {
                     Ok(ty.clone())
                 } else {
+                    let class_name = if self.active_paths.contains_key(name.segments[0].as_str()) {
+                        let mut active_path = self.active_paths.get(name.segments[0].as_str()).unwrap().clone();
+                        active_path.extend(
+                            name.segments[1..name.segments.len() - 1].iter()
+                                .map(ToString::to_string)
+                        );
+                        active_path
+                    } else {
+                        name.segments[..name.segments.len() - 1].iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                    };
+
+
                     let attribute = self.get_attribute(
-                        &name.segments[name.segments.len() - 2],
+                        &class_name,
                         &name.segments[name.segments.len() - 1]
                     );
                     let Some(ClassAttribute::Method(ty)) = attribute else {
-                        todo!("report missing missing attribute")
+                        todo!("report missing attribute")
                     };
                     let ty = match ty {
                         TypeCheckerType::Function(_, ret_type) => {
@@ -893,7 +975,7 @@ impl TypeChecker {
                         *ty = Some(var_ty.into()); // annotate the type of the variable
                         match var_ty {
                             TypeCheckerType::Object(name) => {
-                                match self.get_attribute(name.to_string(), field.to_string()) {
+                                match self.get_attribute(&[name.to_string()], field.to_string()) {
                                     Some(ClassAttribute::Member(ty)) => {
                                         *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
@@ -911,7 +993,11 @@ impl TypeChecker {
                             TypeCheckerType::TypeArg(obj, args) => {
                                 match obj.as_ref() {
                                     TypeCheckerType::Object(name) => {
-                                        match self.get_attribute(name.to_string(), field.to_string()) {
+                                        println!("name {name}");
+                                        let path = self.attach_module_if_needed(name.to_string());
+                                        println!("path {path:?}");
+
+                                        match self.get_attribute(&path, field.to_string()) {
                                             Some(ClassAttribute::Member(ty)) => {
                                                 *annotation = Some(ty.into());
                                                 Ok(ty.clone().into())
@@ -930,7 +1016,9 @@ impl TypeChecker {
                                 }
                             }
                             TypeCheckerType::Array(ty) => {
-                                match self.get_attribute(String::from("Array"), field.to_string()) {
+                                let path = self.attach_module_if_needed(String::from("Array"));
+
+                                match self.get_attribute(&path, field.to_string()) {
                                     Some(ClassAttribute::Member(ty)) => {
                                         *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
@@ -949,10 +1037,18 @@ impl TypeChecker {
                         }
                     }
                     Expression::This(_) => {
-                        let var_ty = TypeCheckerType::Object(self.current_class.clone());
-                        match var_ty {
-                            TypeCheckerType::Object(name) => {
-                                match self.get_attribute(name.to_string(), field.to_string()) {
+                        match self.get_attribute(&self.current_class, field.to_string()) {
+                            Some(ClassAttribute::Member(ty)) => {
+                                *annotation = Some(ty.into());
+                                Ok(ty.clone().into())
+                            }
+                            Some(ClassAttribute::Method(ty)) => {
+                                *annotation = Some(ty.into());
+                                Ok(ty.clone().into())
+                            }
+                            _ => {
+                                // TODO: change this to look at base classes
+                                match self.get_attribute(&[String::from("Object")], field.to_string()) {
                                     Some(ClassAttribute::Member(ty)) => {
                                         *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
@@ -962,63 +1058,12 @@ impl TypeChecker {
                                         Ok(ty.clone().into())
                                     }
                                     _ => {
-                                        // TODO: change this to look at base classes
-                                        match self.get_attribute(String::from("Object"), field.to_string()) {
-                                            Some(ClassAttribute::Member(ty)) => {
-                                                *annotation = Some(ty.into());
-                                                Ok(ty.clone().into())
-                                            }
-                                            Some(ClassAttribute::Method(ty)) => {
-                                                *annotation = Some(ty.into());
-                                                Ok(ty.clone().into())
-                                            }
-                                            _ => {
-                                                eprintln!("Failed to find attribute {} in class {}", field.to_string(), name);
-                                                todo!("report unknown member access")
-                                            }
-                                        }
-
-                                    }
-                                }
-                            }
-                            TypeCheckerType::TypeArg(obj, args) => {
-                                match obj.as_ref() {
-                                    TypeCheckerType::Object(name) => {
-                                        match self.get_attribute(name.to_string(), field.to_string()) {
-                                            Some(ClassAttribute::Member(ty)) => {
-                                                *annotation = Some(ty.into());
-                                                Ok(ty.clone().into())
-                                            }
-                                            Some(ClassAttribute::Method(ty)) => {
-                                                *annotation = Some(ty.into());
-                                                Ok(ty.clone().into())
-                                            }
-                                            _ => {
-                                                eprintln!("Failed to find attribute {} in class {}", field.to_string(), name);
-                                                todo!("report unknown member access")
-                                            }
-                                        }
-                                    }
-                                    _ => unreachable!("Only object types can have type parameters")
-                                }
-                            }
-                            TypeCheckerType::Array(ty) => {
-                                match self.get_attribute(String::from("Array"), field.to_string()) {
-                                    Some(ClassAttribute::Member(ty)) => {
-                                        *annotation = Some(ty.into());
-                                        Ok(ty.clone().into())
-                                    }
-                                    Some(ClassAttribute::Method(ty)) => {
-                                        *annotation = Some(ty.into());
-                                        Ok(ty.clone().into())
-                                    }
-                                    _ => {
-                                        eprintln!("Failed to find attribute {} in class Array", field.to_string());
+                                        eprintln!("Failed to find attribute {} in class {:?}", field.to_string(), self.current_class);
                                         todo!("report unknown member access")
                                     }
                                 }
+
                             }
-                            _ => todo!("report member access on non-object type"),
                         }
                     }
                     Expression::MemberAccess {..} => {
@@ -1030,7 +1075,7 @@ impl TypeChecker {
                             },
                             _ => unreachable!("Only object types can have type parameters"),
                         };
-                        match self.get_attribute(name.to_string(), field.to_string()) {
+                        match self.get_attribute(&[name.to_string()], field.to_string()) {
                             Some(ClassAttribute::Member(ty)) => {
                                 *annotation = Some(ty.into());
                                 Ok(ty.clone().into())
@@ -1164,7 +1209,20 @@ impl TypeChecker {
                 *annotation = Some(ty.clone());
             }
             (ty, Expression::StaticCall { name, annotation, ..}) => {
-                let (_, attributes) = self.class_information.get(name.segments[name.segments.len() - 2].as_str()).unwrap();
+                println!("name: {:?}", name);
+                let path = if self.active_paths.contains_key(name.segments[0].as_str()) {
+                    let mut path = self.active_paths.get(name.segments[0].as_str()).unwrap().clone();
+                    path.extend(name.segments[1..name.segments.len() - 1].iter().map(ToString::to_string));
+                    path
+                } else {
+                    name.segments[..name.segments.len() - 1].iter().map(ToString::to_string).collect()
+                };
+                println!("path: {:?}", path);
+                for key in self.class_information.keys() {
+                    println!("key: {:?}\nValue: {:?}",key, self.class_information[key]);
+                }
+
+                let (_, attributes) = self.class_information.get(&path).unwrap();
                 let ClassAttribute::Method(access_ty) = attributes.get(name.segments.last().unwrap().as_str()).unwrap() else {
                     unreachable!("report missing method");
                 };

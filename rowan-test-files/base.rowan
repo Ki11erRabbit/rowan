@@ -1,5 +1,3 @@
-module Main;
-
 class Base[T] {
     fn thing(self) -> u64 {
         let t: u64 = 0;

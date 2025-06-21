@@ -1,5 +1,3 @@
-module Main;
-
 class Derived extends Base::[u64] {
     @Override
     fn thing(self) -> u64 {

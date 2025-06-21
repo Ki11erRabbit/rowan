@@ -108,6 +108,10 @@ pub File: File<'a> = {
         p.span.end = pEnd;
         File::new(p, decs)
     },
+    <decs:(Lb* <Decl>)*> Lb? => {
+        let p = PathName::new(Vec::new(), Span::new(0, 0));
+        File::new(p, decs)
+    },
 };
 
 #[inline]

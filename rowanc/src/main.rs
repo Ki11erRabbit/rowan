@@ -19,6 +19,7 @@ pub struct Args {
 
 fn explore_directories<P: AsRef<Path>>(path: P, files: &mut Vec<(String, Vec<String>, String)>) {
     let mut dirs_to_explore = Vec::new();
+    let dir_path = path.as_ref().to_path_buf();
     for entry in std::fs::read_dir(path).unwrap() {
         let entry = entry.unwrap();
         if entry.file_type().unwrap().is_dir() {
@@ -27,13 +28,31 @@ fn explore_directories<P: AsRef<Path>>(path: P, files: &mut Vec<(String, Vec<Str
         }
         let content = std::fs::read_to_string(entry.path()).unwrap();
         let name = entry.file_name().to_str().unwrap().to_string();
-        let path = name.split("/").skip(1).map(|x|{
-            if x.contains(".rowan") {
-                x.replace(".rowan", "").to_string()
-            } else {
-                x.to_string()
-            }
-        }).collect::<Vec<String>>();
+        let path = dir_path.join(name.replace(".rowan", "")).into_iter()
+            .map(|p| p.to_str().unwrap().to_string())
+        .collect::<Vec<String>>();
+
+
+        files.push((name, path, content));
+    }
+    for dir in dirs_to_explore {
+        explore_directories(dir, files);
+    }
+}
+
+fn explore_directories_start<P: AsRef<Path>>(path: P, files: &mut Vec<(String, Vec<String>, String)>) {
+    let mut dirs_to_explore = Vec::new();
+    let dir_path = path.as_ref().to_path_buf();
+    for entry in std::fs::read_dir(path).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_dir() {
+            dirs_to_explore.push(entry.path());
+            continue;
+        }
+        let content = std::fs::read_to_string(entry.path()).unwrap();
+        let name = entry.file_name().to_str().unwrap().to_string();
+        let path = vec![name.replace(".rowan", "")];
+
 
         files.push((name, path, content));
     }
@@ -50,7 +69,7 @@ fn main() {
 
     explore_directories(&args.stdlib_path, &mut files);
 
-    explore_directories(&args.directory, &mut files);
+    explore_directories_start(&args.directory, &mut files);
 
 
 
@@ -83,14 +102,14 @@ fn main() {
                 }
             }
             if matching_parts > 0 {
-                return Ordering::Less
+                return Ordering::Greater
             }
         }
         return Ordering::Less
     });
 
     class_files.iter().for_each(|(path, _, _)| {
-        println!("{:?}", path);
+        println!("path: {:?}", path);
     });
 
     let class_files = class_files.into_iter().map(|(_, file, _)| file).collect();
