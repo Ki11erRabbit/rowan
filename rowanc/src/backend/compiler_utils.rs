@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use rowan_shared::{classfile::{BytecodeEntry, ClassFile, Member, SignatureEntry, SignatureIndex, StringEntry, StringIndex, VTable, VTableEntry}, TypeTag};
 use rowan_shared::classfile::{BytecodeIndex, StaticMethods};
 use crate::ast::Method;
+use crate::backend::Compiler;
 
 #[derive(Debug)]
 pub enum PartialClassError {
@@ -143,7 +144,6 @@ impl PartialClass {
     }
 
     pub fn get_vtable(&self, method_name: impl AsRef<str>) -> Result<&VTable, PartialClassError> {
-        println!("{}: {:?}", self.get_class_name(), self.method_to_class);
         let class_names = self.method_to_class.get(method_name.as_ref()).ok_or(PartialClassError::ClassNotNotFound(method_name.as_ref().to_string()))?;
         if class_names.len() > 1 {
             return Err(PartialClassError::Ambiguity);
@@ -366,9 +366,11 @@ impl PartialClass {
         out
     }
     
-    pub fn get_class_name<'a>(&'a self) -> &'a str {
+    pub fn get_class_name<'a>(&'a self) -> Vec<String> {
         let index = self.name;
-        self.index_string_table(index)
+        self.index_string_table(index).split("::")
+            .map(String::from)
+        .collect()
     }
     
     pub fn contains_field(&self, field: &str) -> bool{
@@ -382,14 +384,15 @@ impl PartialClass {
     
     pub fn find_class_with_field<'a>(
         &'a self, 
-        classes: &'a HashMap<String, PartialClass>, 
+        compiler: &'a Compiler,
         field: &str
-    ) -> Option<(&'a str, &'a str)> {
+    ) -> Option<(Vec<String>, Vec<String>)> {
         for parent in self.parents.iter() {
             let parent = self.index_string_table(*parent);
-            let parent_class = classes.get(parent).unwrap();
+            let parent = parent.split("::").map(ToString::to_string).collect::<Vec<String>>();
+            let parent_class = compiler.classes.get(&parent).unwrap();
             
-            let Some(class_name) = parent_class.find_class_with_field_helper(classes, field) else {
+            let Some(class_name) = parent_class.find_class_with_field_helper(compiler, field) else {
                 continue;
             };
             return Some((class_name, parent))
@@ -399,18 +402,23 @@ impl PartialClass {
     
     fn find_class_with_field_helper<'a>(
         &'a self,
-        classes: &'a HashMap<String, PartialClass>, 
+        compiler: &'a Compiler,
         field: &str
-    ) -> Option<&'a str> {
+    ) -> Option<Vec<String>> {
         if self.contains_field(field) {
-            return Some(self.index_string_table(self.name))
+            let class_name = self.index_string_table(self.name)
+                .split("::")
+                .map(ToString::to_string)
+            .collect::<Vec<String>>();
+            return Some(class_name)
         }
         
         for parent in self.parents.iter() {
             let parent = self.index_string_table(*parent);
-            let parent = classes.get(parent).unwrap();
+            let parent = parent.split("::").map(ToString::to_string).collect::<Vec<String>>();
+            let parent = compiler.classes.get(&parent).unwrap();
             
-            let Some(class_name) = parent.find_class_with_field_helper(classes, field) else {
+            let Some(class_name) = parent.find_class_with_field_helper(compiler, field) else {
                 continue;
             };
             

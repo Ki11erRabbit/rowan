@@ -1,3 +1,4 @@
+use std::fmt::format;
 use either::Either;
 use rowan_shared::TypeTag;
 
