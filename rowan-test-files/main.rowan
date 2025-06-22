@@ -39,6 +39,7 @@ class Main {
         }
 
         printer.println-int(Main.thing);
+        printer.println-int(counter);
     }
 
 

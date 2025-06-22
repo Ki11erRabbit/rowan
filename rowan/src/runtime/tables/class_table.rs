@@ -30,3 +30,9 @@ impl std::ops::Index<usize> for ClassTable {
         &self.table[index]
     }
 }
+
+impl std::ops::IndexMut<usize> for ClassTable {
+    fn index_mut(&mut self, index: usize) -> &mut Class {
+        &mut self.table[index]
+    }
+}

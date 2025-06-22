@@ -27,6 +27,7 @@ mod runtime;
 
 pub use runtime::Runtime;
 use runtime::Tick;
+use crate::runtime::class::{ClassMember, ClassMemberData};
 
 pub type Symbol = usize;
 
@@ -653,4 +654,256 @@ pub extern "C" fn get_static_function(context: &mut Context, class_symbol: u64, 
     let method_ptr = context.get_static_method(class_symbol, method_name);
 
     method_ptr as usize as u64
+}
+
+pub extern "C" fn get_static_member8(_context: &mut Context, class_symbol: u64, member_index: u64) -> u8 {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(class_table) = CLASS_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let class = &class_table[class_index];
+
+    match class.get_member(member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Byte(v), .. } ) => *v,
+        _ => todo!("Throw an exception")
+    }
+}
+
+pub extern "C" fn get_static_member16(_context: &mut Context, class_symbol: u64, member_index: u64) -> u16 {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(class_table) = CLASS_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let class = &class_table[class_index];
+
+    match class.get_member(member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Short(v), .. } ) => *v,
+        _ => todo!("Throw an exception")
+    }
+}
+
+pub extern "C" fn get_static_member32(_context: &mut Context, class_symbol: u64, member_index: u64) -> u32 {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(class_table) = CLASS_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let class = &class_table[class_index];
+
+    match class.get_member(member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Int(v), .. } ) => *v,
+        _ => todo!("Throw an exception")
+    }
+}
+
+pub extern "C" fn get_static_member64(_context: &mut Context, class_symbol: u64, member_index: u64) -> u64 {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(class_table) = CLASS_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let class = &class_table[class_index];
+
+    match class.get_member(member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Long(v), .. } ) => *v,
+        _ => todo!("Throw an exception")
+    }
+}
+
+pub extern "C" fn get_static_memberf32(_context: &mut Context, class_symbol: u64, member_index: u64) -> f32 {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(class_table) = CLASS_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let class = &class_table[class_index];
+
+    match class.get_member(member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Float(v), .. } ) => *v,
+        _ => todo!("Throw an exception")
+    }
+}
+
+pub extern "C" fn get_static_memberf64(_context: &mut Context, class_symbol: u64, member_index: u64) -> f64 {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(class_table) = CLASS_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let class = &class_table[class_index];
+
+    match class.get_member(member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Double(v), .. } ) => *v,
+        _ => todo!("Throw an exception")
+    }
+}
+
+pub extern "C" fn get_static_memberobject(_context: &mut Context, class_symbol: u64, member_index: u64) -> u64 {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(class_table) = CLASS_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let class = &class_table[class_index];
+
+    match class.get_member(member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Object(v), .. } ) => *v,
+        _ => todo!("Throw an exception")
+    }
+}
+
+pub extern "C" fn set_static_member8(_context: &mut Context, class_symbol: u64, member_index: u64, value: u8) {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(mut class_table) = CLASS_TABLE.write() else {
+        panic!("Lock poisoned");
+    };
+    let class = &mut class_table[class_index];
+
+    match class.get_member_mut(member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Byte(v), .. } ) => *v = value,
+        _ => todo!("Throw an exception")
+    }
+}
+
+pub extern "C" fn set_static_member16(_context: &mut Context, class_symbol: u64, member_index: u64, value: u16) {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(mut class_table) = CLASS_TABLE.write() else {
+        panic!("Lock poisoned");
+    };
+    let class = &mut class_table[class_index];
+
+    match class.get_member_mut(member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Short(v), .. } ) => *v = value,
+        _ => todo!("Throw an exception")
+    }
+}
+
+pub extern "C" fn set_static_member32(_context: &mut Context, class_symbol: u64, member_index: u64, value: u32) {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(mut class_table) = CLASS_TABLE.write() else {
+        panic!("Lock poisoned");
+    };
+    let class = &mut class_table[class_index];
+
+    match class.get_member_mut(member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Int(v), .. } ) => *v = value,
+        _ => todo!("Throw an exception")
+    }
+}
+
+pub extern "C" fn set_static_member64(_context: &mut Context, class_symbol: u64, member_index: u64, value: u64) {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(mut class_table) = CLASS_TABLE.write() else {
+        panic!("Lock poisoned");
+    };
+    let class = &mut class_table[class_index];
+
+    match class.get_member_mut(member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Long(v), .. } ) => *v = value,
+        _ => todo!("Throw an exception")
+    }
+}
+
+pub extern "C" fn set_static_memberf32(_context: &mut Context, class_symbol: u64, member_index: u64, value: f32) {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(mut class_table) = CLASS_TABLE.write() else {
+        panic!("Lock poisoned");
+    };
+    let class = &mut class_table[class_index];
+
+    match class.get_member_mut(member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Float(v), .. } ) => *v = value,
+        _ => todo!("Throw an exception")
+    }
+}
+
+pub extern "C" fn set_static_memberf64(_context: &mut Context, class_symbol: u64, member_index: u64, value: f64) {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(mut class_table) = CLASS_TABLE.write() else {
+        panic!("Lock poisoned");
+    };
+    let class = &mut class_table[class_index];
+
+    match class.get_member_mut (member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Double(v), .. } ) => *v = value,
+        _ => todo!("Throw an exception")
+    }
+}
+
+pub extern "C" fn set_static_memberobject(_context: &mut Context, class_symbol: u64, member_index: u64, value: u64) {
+    let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        panic!("Lock poisoned");
+    };
+    let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
+        panic!("class wasn't a class");
+    };
+    let Ok(mut class_table) = CLASS_TABLE.write() else {
+        panic!("Lock poisoned");
+    };
+    let class = &mut class_table[class_index];
+
+    match class.get_member_mut(member_index as usize) {
+        Some(ClassMember {  data: ClassMemberData::Object(v), .. } ) => *v = value,
+        _ => todo!("Throw an exception")
+    }
 }

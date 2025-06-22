@@ -70,6 +70,20 @@ impl Default for JITController {
         builder.symbol("memberobject_set", super::object::Object::set_object as *const u8);
         builder.symbol("memberf32_set", super::object::Object::set_f32 as *const u8);
         builder.symbol("memberf64_set", super::object::Object::set_f64 as *const u8);
+        builder.symbol("static_member8_get", super::get_static_member8 as *const u8);
+        builder.symbol("static_member16_get", super::get_static_member16 as *const u8);
+        builder.symbol("static_member32_get", super::get_static_member32 as *const u8);
+        builder.symbol("static_member64_get", super::get_static_member64 as *const u8);
+        builder.symbol("static_memberf32_get", super::get_static_memberf32 as *const u8);
+        builder.symbol("static_memberf64_get", super::get_static_memberf64 as *const u8);
+        builder.symbol("static_memberobject_get", super::get_static_memberobject as *const u8);
+        builder.symbol("static_member8_set", super::set_static_member8 as *const u8);
+        builder.symbol("static_member16_set", super::set_static_member16 as *const u8);
+        builder.symbol("static_member32_set", super::set_static_member32 as *const u8);
+        builder.symbol("static_member64_set", super::set_static_member64 as *const u8);
+        builder.symbol("static_memberf32_set", super::set_static_memberf32 as *const u8);
+        builder.symbol("static_memberf64_set", super::set_static_memberf64 as *const u8);
+        builder.symbol("static_memberobject_set", super::set_static_memberobject as *const u8);
         let mut module = JITModule::new(builder);
 
         let mut context = module.make_context();
@@ -1239,6 +1253,115 @@ impl FunctionTranslator<'_> {
                     }
 
                     self.create_bail_block(module, return_type.map(|x| x.value_type), &return_value);
+                }
+                Bytecode::GetStaticMember(class_name, index, type_tag) => {
+                    let fun_name = match type_tag {
+                        TypeTag::U8 | TypeTag::I8 => "static_member8_get",
+                        TypeTag::U16 | TypeTag::I16 => "static_member16_get",
+                        TypeTag::U32 | TypeTag::I32 => "static_member32_get",
+                        TypeTag::U64 | TypeTag::I64 => "static_member64_get",
+                        TypeTag::Object | TypeTag::Str | TypeTag::Void => "static_memberobject_get",
+                        TypeTag::F32 => "static_memberf32_get",
+                        TypeTag::F64 => "static_memberf64_get",
+                    };
+
+                    let member_get = if let Some(id) = module.get_name(fun_name) {
+                        match id {
+                            FuncOrDataId::Func(id) => id,
+                            _ => unreachable!("cannot initialize array object from data id"),
+                        }
+                    } else {
+                        let mut new_object = module.make_signature();
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+                        let ty = match type_tag {
+                            TypeTag::U8 | TypeTag::I8 => types::I8,
+                            TypeTag::U16 | TypeTag::I16 => types::I16,
+                            TypeTag::U32 | TypeTag::I32 => types::I32,
+                            TypeTag::U64 | TypeTag::I64 => types::I64,
+                            TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
+                            TypeTag::F32 => types::F32,
+                            TypeTag::F64 => types::F64,
+                        };
+                        new_object.returns.push(AbiParam::new(ty));
+
+                        let fn_id = module.declare_function(fun_name, Linkage::Import, &new_object).unwrap();
+                        fn_id
+                    };
+
+                    let context_value = self.builder.use_var(self.context_var);
+
+                    let class_symbol = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(class_name.to_le_bytes()));
+                    let index = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(index.to_le_bytes()));
+
+                    let member_get = module.declare_func_in_func(member_get, self.builder.func);
+                    let member_get = self.builder.ins().call(member_get, &[context_value, class_symbol, index, ]);
+                    let value = self.builder.inst_results(member_get)[0];
+                    // TODO: add code for handling a missing member exception
+
+                    let ty = match type_tag {
+                        TypeTag::U8 | TypeTag::I8 => types::I8,
+                        TypeTag::U16 | TypeTag::I16 => types::I16,
+                        TypeTag::U32 | TypeTag::I32 => types::I32,
+                        TypeTag::U64 | TypeTag::I64 => types::I64,
+                        TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
+                        TypeTag::F32 => types::F32,
+                        TypeTag::F64 => types::F64,
+                    };
+
+                    self.create_bail_block(module, Some(ty), &[value]);
+
+                    self.push(value, ty);
+                }
+                Bytecode::SetStaticMember(class_name, index, type_tag) => {
+                    let fun_name = match type_tag {
+                        TypeTag::U8 | TypeTag::I8 => "static_member8_set",
+                        TypeTag::U16 | TypeTag::I16 => "static_member16_set",
+                        TypeTag::U32 | TypeTag::I32 => "static_member32_set",
+                        TypeTag::U64 | TypeTag::I64 => "static_member64_set",
+                        TypeTag::Object | TypeTag::Str | TypeTag::Void => "static_memberobject_set",
+                        TypeTag::F32 => "static_memberf32_set",
+                        TypeTag::F64 => "static_memberf64_set",
+                    };
+
+                    let member_set = if let Some(id) = module.get_name(fun_name) {
+                        match id {
+                            FuncOrDataId::Func(id) => id,
+                            _ => unreachable!("cannot initialize array object from data id"),
+                        }
+                    } else {
+                        let mut new_object = module.make_signature();
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                        new_object.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+                        let ty = match type_tag {
+                            TypeTag::U8 | TypeTag::I8 => types::I8,
+                            TypeTag::U16 | TypeTag::I16 => types::I16,
+                            TypeTag::U32 | TypeTag::I32 => types::I32,
+                            TypeTag::U64 | TypeTag::I64 => types::I64,
+                            TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
+                            TypeTag::F32 => types::F32,
+                            TypeTag::F64 => types::F64,
+                        };
+                        new_object.params.push(AbiParam::new(ty));
+
+                        let fn_id = module.declare_function(fun_name, Linkage::Import, &new_object).unwrap();
+                        fn_id
+                    };
+
+                    let context_value = self.builder.use_var(self.context_var);
+                    let (value, _) = self.pop();
+
+                    let class_symbol = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(class_name.to_le_bytes()));
+                    let index = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(index.to_le_bytes()));
+
+                    let member_set = module.declare_func_in_func(member_set, self.builder.func);
+                    let _ = self.builder.ins().call(member_set, &[context_value, class_symbol, index, value]);
+
+                    self.create_bail_block(module, None, &[]);
                 }
                 Bytecode::Return => {
                     let normal_return_id = if let Some(id) = module.get_name("context_normal_return") {

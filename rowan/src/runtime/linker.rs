@@ -3,6 +3,7 @@ use std::sync::{Arc, RwLock};
 
 use rowan_shared::classfile::{self, ClassFile, VTableEntry};
 use rowan_shared::TypeTag;
+use crate::runtime::class::{ClassMember, ClassMemberData};
 use super::{class::{self, Class, MemberInfo}, jit::JITController, stdlib::{VMClass, VMMember, VMMethod, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Symbol, VTableIndex};
 
 #[derive(Debug)]
@@ -160,9 +161,9 @@ pub fn link_class_files(
         }
     }
 
-    let mut class_parts: Vec<(Symbol, Symbol, Vec<Symbol>, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, MethodLocation)>, &ClassFile, Vec<(Symbol, Option<Symbol>)>)> = Vec::new();
+    let mut class_parts: Vec<(Symbol, Symbol, Vec<Symbol>, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, MethodLocation)>, &ClassFile, Vec<(Symbol, Option<Symbol>)>, Vec<ClassMember>)> = Vec::new();
     for class in classes.iter() {
-        let ClassFile { name, parents, members, static_methods, signature_table, vtables, .. } = &class;
+        let ClassFile { name, parents, members, static_methods, signature_table, vtables, static_members, .. } = &class;
         let class_name_str = class.index_string_table(*name);
         
         let class_symbol = *class_map.get(class_name_str).unwrap();
@@ -266,13 +267,43 @@ pub fn link_class_files(
 
             vtables_to_link.push((class_name_symbol, sub_class_name_symbol));
         }
-        class_parts.push((class_symbol, class_name_symbol, parent_symbols, class_members, static_method_functions, class, vtables_to_link));
+
+        let static_members = static_members.iter()
+            .map(|m| {
+                let rowan_shared::classfile::Member { name, type_tag } = m;
+                let name_str = class.index_string_table(*name);
+                let data = match type_tag {
+                    TypeTag::U8 | TypeTag::I8 => ClassMemberData::Byte(0),
+                    TypeTag::U16 | TypeTag::I16 => ClassMemberData::Short(0),
+                    TypeTag::U32 | TypeTag::I32 => ClassMemberData::Int(0),
+                    TypeTag::U64 | TypeTag::I64 => ClassMemberData::Long(0),
+                    TypeTag::F32 => ClassMemberData::Float(0.0),
+                    TypeTag::F64 => ClassMemberData::Double(0.0),
+                    _ => ClassMemberData::Object(0),
+                };
+                let name_symbol = if let Some(symbol) = string_map.get(name_str) {
+                    *symbol
+                } else {
+                    let string_table_index = string_table.add_string(name_str);
+                    let symbol = symbol_table.add_string(string_table_index);
+                    string_map.insert(String::from(name_str), symbol);
+                    symbol
+                };
+
+                ClassMember {
+                    name: name_symbol,
+                    data,
+                }
+        }).collect::<Vec<_>>();
+
+
+        class_parts.push((class_symbol, class_name_symbol, parent_symbols, class_members, static_method_functions, class, vtables_to_link, static_members));
     }
     let mut class_parts_to_try_again;
     loop {
         class_parts_to_try_again = Vec::new();
         'outer: for class_part in class_parts {
-            let (class_symbol, class_name_symbol, parents, members, static_methods, class, vtables) = class_part;
+            let (class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members) = class_part;
             let mut vtables_to_add = Vec::new();
             // Source class is one of the parents of the derived class
             // This is used to disambiguate
@@ -290,7 +321,7 @@ pub fn link_class_files(
                     for (_,_,_,value) in base_functions {
                         if value.read().expect("lock poisoned").is_blank() {
                             // We bail if any of base has not yet been linked
-                            class_parts_to_try_again.push((class_symbol, class_name_symbol, parents, members, static_methods, class, vtables));
+                            class_parts_to_try_again.push((class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members));
                             continue 'outer;
                         }
                     }
@@ -379,7 +410,7 @@ pub fn link_class_files(
                     for (_,_,_,value) in base_functions {
                         if value.read().expect("lock is poisoned").is_blank() {
                             // We bail if any of base has not yet been linked
-                            class_parts_to_try_again.push((class_symbol, class_name_symbol, parents, members, static_methods, class, vtables));
+                            class_parts_to_try_again.push((class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members));
                             continue 'outer;
                         }
                     }
@@ -449,7 +480,7 @@ pub fn link_class_files(
             match add_parent_vtables(&mut class_vtable_mapper, &parents, class_table, symbol_table, &mut HashSet::new()) {
                 Err(_) => {
                     // We bail if any of base has not yet been linked
-                    class_parts_to_try_again.push((class_symbol, class_name_symbol, parents, members, static_methods, class, vtables));
+                    class_parts_to_try_again.push((class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members));
                     continue 'outer;
                 }
                 _ => {},
@@ -492,7 +523,7 @@ pub fn link_class_files(
             let vtable_index = vtables_table.add_vtable(vtable);
 
             // Create new class
-            let class = Class::new(class_name_symbol, parents, class_vtable_mapper, members, vtable_index);
+            let class = Class::new(class_name_symbol, parents, class_vtable_mapper, members, vtable_index, static_members);
 
             let SymbolEntry::ClassRef(class_index) = &symbol_table[class_symbol] else {
                 unreachable!("Class symbol should have been a symbol to a class");
@@ -950,14 +981,15 @@ pub fn link_vm_classes(
     class_map: &mut HashMap<String, Symbol>
 ) {
 
-    let mut class_parts: Vec<(Symbol, Vec<Symbol>, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, Arc<RwLock<FunctionValue>>)>, Vec<(Symbol, Option<Symbol>)>)> = Vec::new();
+    let mut class_parts: Vec<(Symbol, Vec<Symbol>, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, Arc<RwLock<FunctionValue>>)>, Vec<(Symbol, Option<Symbol>)>, Vec<ClassMember>)> = Vec::new();
     for class in classes {
         let VMClass {
             name,
             parents,
             vtables,
             members,
-            static_methods
+            static_methods,
+            static_members,
         } = class;
 
         let class_symbol = {
@@ -1113,7 +1145,34 @@ pub fn link_vm_classes(
 
             vtables_to_link.push((vtable_class_name_symbol, source_class_name));
         }
-        class_parts.push((class_symbol, parent_symbols, class_members, static_methods, vtables_to_link));
+
+        let static_members = static_members.into_iter()
+            .map(|m| {
+                let VMMember { name, ty } = m;
+                let name_symbol = if let Some(symbol) = string_map.get(name) {
+                    *symbol
+                } else {
+                    let index = string_table.add_static_string(name);
+                    symbol_table.add_string(index)
+                };
+
+                let data = match ty {
+                    TypeTag::U8 | TypeTag::I8 => ClassMemberData::Byte(0),
+                    TypeTag::U16 | TypeTag::I16 => ClassMemberData::Short(0),
+                    TypeTag::U32 | TypeTag::I32 => ClassMemberData::Int(0),
+                    TypeTag::U64 | TypeTag::I64 => ClassMemberData::Long(0),
+                    TypeTag::F32 => ClassMemberData::Float(0.0),
+                    TypeTag::F64 => ClassMemberData::Double(0.0),
+                    _ => ClassMemberData::Object(0),
+                };
+
+                ClassMember {
+                    name: name_symbol,
+                    data,
+                }
+            }).collect::<Vec<_>>();
+
+        class_parts.push((class_symbol, parent_symbols, class_members, static_methods, vtables_to_link, static_members));
     }
 
     let mut class_parts_to_try_again;
@@ -1121,7 +1180,7 @@ pub fn link_vm_classes(
         class_parts_to_try_again = Vec::new();
 
         'outer: for class_part in class_parts {
-            let (class_symbol, parents, members, static_methods, vtables) = class_part;
+            let (class_symbol, parents, members, static_methods, vtables, static_members) = class_part;
             let mut vtables_to_add = Vec::new();
             // Source class is one of the parents of the derived class
             // This is used to disambiguate
@@ -1194,7 +1253,7 @@ pub fn link_vm_classes(
                     for (_,_,_,value) in base_functions {
                         if value.read().expect("lock is poisoned").is_blank() {
                             // We bail if any of base has not yet been linked
-                            class_parts_to_try_again.push((class_symbol, parents, members, static_methods, vtables));
+                            class_parts_to_try_again.push((class_symbol, parents, members, static_methods, vtables, static_members));
                             continue 'outer;
                         }
                     }
@@ -1248,7 +1307,7 @@ pub fn link_vm_classes(
             match add_parent_vtables(&mut class_vtable_mapper, &parents, class_table, symbol_table, &mut HashSet::new()) {
                 Err(_) => {
                     // We bail if any of base has not yet been linked
-                    class_parts_to_try_again.push((class_symbol, parents, members, static_methods, vtables));
+                    class_parts_to_try_again.push((class_symbol, parents, members, static_methods, vtables, static_members));
                     continue 'outer;
                 }
                 _ => {},
@@ -1273,7 +1332,7 @@ pub fn link_vm_classes(
             let vtable_index = vtables_table.add_vtable(vtable);
 
             // Create new class
-            let class = Class::new(class_symbol, parents, class_vtable_mapper, members, vtable_index);
+            let class = Class::new(class_symbol, parents, class_vtable_mapper, members, vtable_index, static_members);
 
             let SymbolEntry::ClassRef(class_index) = &symbol_table[class_symbol] else {
                 unreachable!("Class symbol should have been a symbol to a class");

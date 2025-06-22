@@ -14,6 +14,7 @@ pub struct VMClass {
     pub vtables: Vec<VMVTable>,
     pub members: Vec<VMMember>,
     pub static_methods: Vec<VMMethod>,
+    pub static_members: Vec<VMMember>,
 }
 
 impl VMClass {
@@ -23,6 +24,7 @@ impl VMClass {
         vtables: Vec<VMVTable>,
         members: Vec<VMMember>,
         static_methods: Vec<VMMethod>,
+        static_members: Vec<VMMember>,
     ) -> Self {
         VMClass {
             name,
@@ -30,6 +32,7 @@ impl VMClass {
             vtables,
             members,
             static_methods,
+            static_members,
         }
     }
 }
@@ -112,7 +115,7 @@ pub fn generate_object_class() -> VMClass {
         ]
     );
 
-    VMClass::new("Object", Vec::new(), vec![vtable], Vec::new(), Vec::new())
+    VMClass::new("Object", Vec::new(), vec![vtable], Vec::new(), Vec::new(), Vec::new())
 }
 
 
@@ -156,7 +159,7 @@ pub fn generate_printer_class() -> VMClass {
         ]
     );
 
-    VMClass::new("Printer", vec!["Object"], vec![vtable], Vec::new(), Vec::new())
+    VMClass::new("Printer", vec!["Object"], vec![vtable], Vec::new(), Vec::new(), Vec::new())
 }
 
 
@@ -238,7 +241,7 @@ macro_rules! array_create_class {
                     VMMember::new("pointer", TypeTag::U64)
                 ];
 
-                VMClass::new(std::stringify!($array_name), vec!["Object"], vec![vtable], elements, Vec::new())
+                VMClass::new(std::stringify!($array_name), vec!["Object"], vec![vtable], elements, Vec::new(), Vec::new())
             }
         }
     };
@@ -426,7 +429,7 @@ pub fn generate_exception_class() -> VMClass {
         VMMember::new("stack-trace-pointer", TypeTag::U64),
     ];
 
-    VMClass::new("Exception", vec!["Object"], vec![vtable], elements, Vec::new())
+    VMClass::new("Exception", vec!["Object"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 extern "C" fn exception_init(context: &Context, this: Reference, message: Reference) {
@@ -532,7 +535,7 @@ pub fn generate_backtrace_class() -> VMClass {
         VMMember::new("column-number", TypeTag::Object),
     ];
 
-    VMClass::new("Backtrace", vec!["Object"], vec![vtable], elements, Vec::new())
+    VMClass::new("Backtrace", vec!["Object"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 extern "C" fn backtrace_init(context: &mut Context, this: Reference, function_name: Reference, line: u64, column: u64) {
@@ -582,7 +585,7 @@ pub fn generate_index_out_of_bounds_class() -> VMClass {
     let elements = vec![
     ];
 
-    VMClass::new("IndexOutOfBounds", vec!["Exception"], vec![vtable], elements, Vec::new())
+    VMClass::new("IndexOutOfBounds", vec!["Exception"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 extern "C" fn out_of_bounds_init(context: &mut Context, this: Reference, bounds: u64, index: u64) {
@@ -615,7 +618,7 @@ pub fn generate_null_pointer_class() -> VMClass {
     let elements = vec![
     ];
 
-    VMClass::new("NullPointerException", vec!["Exception"], vec![vtable], elements, Vec::new())
+    VMClass::new("NullPointerException", vec!["Exception"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 pub extern "C" fn null_pointer_init(context: &Context, this: Reference) {
@@ -671,7 +674,7 @@ pub fn generate_string_class() -> VMClass {
         VMMember::new("pointer", TypeTag::U64)
     ];
 
-    VMClass::new("String", vec!["Object"], vec![vtable], elements, Vec::new())
+    VMClass::new("String", vec!["Object"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 extern "C" fn string_len(context: &mut Context, this: Reference) -> u64 {
