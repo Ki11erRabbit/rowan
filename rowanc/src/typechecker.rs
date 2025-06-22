@@ -3,19 +3,12 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use either::Either;
 use itertools::Itertools;
-use crate::ast::{BinaryOperator, Expression, Literal, Span, Text, Type};
+use crate::ast::{BinaryOperator, Expression, Literal, PathName, Span, Text, Type};
 
 fn create_stdlib<'a>() -> HashMap<Vec<String>, (Vec<String>, HashMap<String, ClassAttribute>)> {
     let mut info = HashMap::new();
     let mut object_attributes = HashMap::new();
-    object_attributes.insert("tick".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::F64], Box::new(TypeCheckerType::Void))));
-    object_attributes.insert("ready".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::Void))));
     object_attributes.insert("downcast".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::Object(String::from("Object"))))));
-    object_attributes.insert("get-child".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64], Box::new(TypeCheckerType::Object(String::from("Object"))))));
-    object_attributes.insert("remove-child".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::Object(String::from("Object"))], Box::new(TypeCheckerType::Void))));
-    object_attributes.insert("add-child".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::Object(String::from("Object"))], Box::new(TypeCheckerType::Void))));
-    object_attributes.insert("add-child-at".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::Object(String::from("Object")), TypeCheckerType::U64], Box::new(TypeCheckerType::Void))));
-    object_attributes.insert("child-died".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64, TypeCheckerType::Object(String::from("Object"))], Box::new(TypeCheckerType::Void))));
 
     info.insert(vec!["Object".to_string()], (Vec::new(), object_attributes));
 
@@ -146,6 +139,7 @@ impl<'a, 'b> Into<Type<'a>> for &'b TypeCheckerType {
 pub enum ClassAttribute {
     Member(TypeCheckerType),
     Method(TypeCheckerType),
+    StaticMember(TypeCheckerType),
 }
 
 pub struct Frame {
@@ -373,6 +367,7 @@ impl TypeChecker {
             members,
             methods,
             parents,
+            static_members,
             ..
         } = class;
         let class_name = name;
@@ -397,6 +392,15 @@ impl TypeChecker {
             }
             let ty = TypeCheckerType::Function(argument_types, Box::new(TypeCheckerType::from(return_type.clone())));
             class_attributes.insert(name.to_string(), ClassAttribute::Method(ty));
+        }
+
+        for static_member in static_members.iter_mut() {
+            let crate::ast::StaticMember { name, ty, value, .. } = static_member;
+            if let Some(value) = value {
+                self.annotate_expr(ty, value)?;
+            }
+            let ty = TypeCheckerType::from(ty.clone());
+            class_attributes.insert(name.to_string(), ClassAttribute::StaticMember(ty));
         }
 
         
@@ -622,12 +626,21 @@ impl TypeChecker {
                     todo!("report boolean operands aren't booleans")
                 }
             }
-            Expression::Variable(name, annotation, _) => {
-                if let Some(ty) = self.lookup_var(name) {
+            Expression::Variable(name, annotation, span) => {
+                if let Some(ty) = self.lookup_var(&name) {
                     // annotate the expression with the type
                     *annotation = Some(ty.clone().into());
                 } else {
-                    todo!("report unbound variable");
+                    let path = self.attach_module_if_needed(name.to_string());
+                    if path.is_empty() {
+                        todo!("report unbound variable");
+                    }
+                    if self.class_information.contains_key(&path) {
+                        *expr = Expression::ClassAccess {
+                            class_name: PathName::new(vec![name.clone()], *span),
+                            span: *span,
+                        };
+                    }
                 }
             }
             Expression::Call { name, type_args: _, args, .. } => {
@@ -727,10 +740,10 @@ impl TypeChecker {
                 let (_, attributes) = self.class_information.get(&path)
                     .expect("class missing or not loaded");
 
-
                 let member = match attributes.get(member_name.as_str()) {
                     Some(ClassAttribute::Method(method)) => method,
                     Some(ClassAttribute::Member(member)) => member,
+                    Some(ClassAttribute::StaticMember(member)) => member,
                     None => todo!("member access is incomplete"),
                 };
 
@@ -765,6 +778,26 @@ impl TypeChecker {
                 if let Some(arr_size) = arr_size {
                     let ty = self.get_type(arr_size.as_mut())?;
 
+                }
+            }
+            Expression::ClassAccess {
+                class_name,
+                ..
+            } => {
+                let class_name = if self.active_paths.contains_key(class_name.segments[0].as_str()) {
+                    let mut active_path = self.active_paths.get(class_name.segments[0].as_str()).unwrap().clone();
+                    active_path.extend(
+                        class_name.segments[1..class_name.segments.len() - 1].iter()
+                            .map(ToString::to_string)
+                    );
+                    active_path
+                } else {
+                    class_name.segments[..class_name.segments.len() - 1].iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                };
+                if !self.class_information.contains_key(&class_name) {
+                    todo!("report missing class")
                 }
             }
             _ => {}
@@ -966,6 +999,10 @@ impl TypeChecker {
                     }
                 }
             }
+            Expression::ClassAccess { class_name, span } => {
+                let last = class_name.segments.last().unwrap();
+                Ok(Type::Object(last.clone(), *span))
+            }
             x => todo!("finish get_type: {:?}", x),
         }
     }
@@ -1096,6 +1133,9 @@ impl TypeChecker {
                         }
 
                     },
+                    Expression::ClassAccess { class_name, span } => {
+                        Ok(Type::Object(class_name.segments.last().unwrap().clone(), *span))
+                    }
                     x => todo!("report member access on non-variable expression: {:?}", x),
                 }
             }

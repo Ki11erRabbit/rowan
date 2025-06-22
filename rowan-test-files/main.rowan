@@ -2,6 +2,8 @@ import std::collections::ArrayList;
 
 class Main {
 
+    static thing: u64 = 66666666666;
+
     fn main(args: [String]) {
         let x: u64 = 4 + 4;
         let printer: Printer = new Printer();
@@ -36,6 +38,7 @@ class Main {
             counter = counter + 1;
         }
 
+        printer.println-int(Main.thing);
     }
 
 

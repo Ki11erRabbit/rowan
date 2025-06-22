@@ -127,6 +127,14 @@ PathNoInline: PathName<'a> = {
     },
 };
 
+FullPath: PathName<'a> = {
+    <start: @L> <segments:(<Identifier> "::")+> <id:Identifier> <end: @R> => {
+        let mut segments = segments;
+        segments.push(id);
+        PathName::new(segments, Span::new(start, end))
+    },
+};
+
 pub Visibility: Visibility = {
     <vis:("pub")?> => {
         match vis {
@@ -585,6 +593,16 @@ MemberExpr: Expression<'a> = {
         let mut p = path;
         p.segments.push(name);
         p.span.end = end;
+        Expression::new_member_access(obj, p, Span::new(start, end))
+    },
+    <start: @L> <class_path: FullPath> <inner_end: @R> "." <path:Path> <name:Identifier> <end: @R> => {
+        let mut p = path;
+        p.segments.push(name);
+        p.span.end = end;
+        let obj = Box::new(Expression::ClassAccess {
+            class_name: class_path,
+            span: Span::new(start, inner_end),
+        });
         Expression::new_member_access(obj, p, Span::new(start, end))
     },
     /*<start: @L> <obj:IndexExpr> "." <name:Identifier> <end: @R> => {

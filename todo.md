@@ -5,6 +5,7 @@ or the self hosted compiler can be implemented.
 ## Self Hosted Compiler
 In no particular order
 * [x] Generics
+* [ ] Generics for functions
 * [ ] Traits
 * [ ] Unions
 * [ ] Lambda Expressions

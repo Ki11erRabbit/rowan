@@ -1398,6 +1398,30 @@ impl Compiler {
             unreachable!("We have already checked for expr being a MemberAccess");
         };
 
+        match object.as_ref() {
+            Expression::ClassAccess { class_name, ..} => {
+                let class_name = if self.active_imports.contains_key(class_name.segments[0].as_str()) {
+                    let mut active_path = self.active_imports.get(class_name.segments[0].as_str()).unwrap().clone();
+                    active_path.extend(
+                        class_name.segments[1..class_name.segments.len() - 1].iter()
+                            .map(ToString::to_string)
+                    );
+                    active_path
+                } else {
+                    class_name.segments[..class_name.segments.len() - 1].iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                };
+                let path = partial_class.add_string(class_name.join("::"));
+                let class = self.classes.get(&class_name).unwrap_or(partial_class);
+                let (member_index, member_type) = class.get_static_member_offset(field.segments.last().unwrap().as_str());
+
+                output.push(Bytecode::GetStaticMember(path, member_index, member_type));
+                return Ok(());
+            }
+            _ => {}
+        }
+
         self.compile_expression(class_name, partial_class, object.as_ref(), output, false)?;
 
         let Some(annotation) = object.get_type() else {
@@ -1453,6 +1477,31 @@ impl Compiler {
         } = expr else {
             unreachable!("We have already checked for expr being a MemberAccess");
         };
+
+        match object.as_ref() {
+            Expression::ClassAccess { class_name, ..} => {
+                let class_name = if self.active_imports.contains_key(class_name.segments[0].as_str()) {
+                    let mut active_path = self.active_imports.get(class_name.segments[0].as_str()).unwrap().clone();
+                    active_path.extend(
+                        class_name.segments[1..class_name.segments.len() - 1].iter()
+                            .map(ToString::to_string)
+                    );
+                    active_path
+                } else {
+                    class_name.segments[..class_name.segments.len() - 1].iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                };
+                let path = partial_class.add_string(class_name.join("::"));
+                let class = self.classes.get(&class_name).unwrap_or(partial_class);
+                let (member_index, member_type) = class.get_static_member_offset(field.segments.last().unwrap().as_str());
+
+                return Ok(Some(Box::new(move |output: &mut Vec<Bytecode>| {
+                    output.push(Bytecode::SetStaticMember(path, member_index, member_type));
+                })));
+            }
+            _ => {}
+        }
 
         self.compile_expression(class_name, partial_class, object.as_ref(), output, false)?;
 

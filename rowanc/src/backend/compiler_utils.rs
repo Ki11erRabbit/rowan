@@ -435,4 +435,13 @@ impl PartialClass {
         }
         unreachable!("Can't find member {}", field)
     }
+
+    pub fn get_static_member_offset(&self, field: &str) -> (u64, TypeTag) {
+        for (i, member) in self.static_members.iter().enumerate() {
+            if field == self.index_string_table(member.name) {
+                return (i as u64, member.type_tag);
+            }
+        }
+        unreachable!("Can't find static member {}", field)
+    }
 }
