@@ -657,7 +657,6 @@ impl TypeChecker {
                 }
             }
             Expression::StaticCall { name, type_args: _, args, .. } => {
-                println!("name: {:?}", name.segments);
                 let class_name = if self.active_paths.contains_key(name.segments[0].as_str()) {
                     let mut active_path = self.active_paths.get(name.segments[0].as_str()).unwrap().clone();
                     active_path.extend(
@@ -670,7 +669,6 @@ impl TypeChecker {
                         .map(ToString::to_string)
                         .collect::<Vec<_>>()
                 };
-                println!("Class Name: {:?}", class_name);
                 let method_name = &name.segments[name.segments.len() - 1];
 
                 let (_, attributes) = self.class_information.get(&class_name)
@@ -719,7 +717,6 @@ impl TypeChecker {
                     _ => todo!("member access is incomplete"),
                 };
                 let class_name = name;
-                println!("{}", class_name);
                 let path = self.attach_module_if_needed(class_name.to_string());
                 if path.len() == 0 {
                     todo!("report missing import");
@@ -816,7 +813,6 @@ impl TypeChecker {
             },
             Expression::Literal(Literal::Constant(Constant::Character(_, _))) => Ok(Type::Char),
             Expression::Variable(name, annotation, _) => {
-                println!("\n get variable named: {name}\n");
                 if let Some(ty) = self.lookup_var(&name) {
                     *annotation = Some(ty.into());
                     //println!("annotation: {:?}", annotation);
@@ -1004,9 +1000,7 @@ impl TypeChecker {
                             TypeCheckerType::TypeArg(obj, args) => {
                                 match obj.as_ref() {
                                     TypeCheckerType::Object(name) => {
-                                        println!("name {name}");
                                         let path = self.attach_module_if_needed(name.to_string());
-                                        println!("path {path:?}");
 
                                         match self.get_attribute(&path, field.to_string()) {
                                             Some(ClassAttribute::Member(ty)) => {
@@ -1206,7 +1200,6 @@ impl TypeChecker {
                 self.annotate_expr(ty, expr.as_mut())?;
             }
             (ty, Expression::Call { name, annotation, span, ..}) => {
-                println!("name: {:?}", name);
                 let access_ty = self.get_type(name.as_mut())?;
 
                 match access_ty {
@@ -1220,7 +1213,6 @@ impl TypeChecker {
                 *annotation = Some(ty.clone());
             }
             (ty, Expression::StaticCall { name, annotation, ..}) => {
-                println!("name: {:?}", name);
                 let path = if self.active_paths.contains_key(name.segments[0].as_str()) {
                     let mut path = self.active_paths.get(name.segments[0].as_str()).unwrap().clone();
                     path.extend(name.segments[1..name.segments.len() - 1].iter().map(ToString::to_string));
@@ -1228,10 +1220,6 @@ impl TypeChecker {
                 } else {
                     name.segments[..name.segments.len() - 1].iter().map(ToString::to_string).collect()
                 };
-                println!("path: {:?}", path);
-                for key in self.class_information.keys() {
-                    println!("key: {:?}\nValue: {:?}",key, self.class_information[key]);
-                }
 
                 let (_, attributes) = self.class_information.get(&path).unwrap();
                 let ClassAttribute::Method(access_ty) = attributes.get(name.segments.last().unwrap().as_str()).unwrap() else {

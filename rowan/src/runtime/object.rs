@@ -16,11 +16,11 @@ impl Object {
         use std::alloc::*;
 
         let layout = Layout::new::<Object>();
-        println!("layout size: {}", layout.size());
+        //println!("layout size: {}", layout.size());
         let data_layout = Layout::array::<u8>(data_size).expect("Wrong layout or too big");
 
         let (whole_layout, _) = layout.extend(data_layout).expect("Wrong layout or too big");
-        println!("size: {}", whole_layout.size());
+        //println!("size: {}", whole_layout.size());
         let pointer = unsafe { alloc(whole_layout.pad_to_align()) };
 
         if pointer.is_null() {
@@ -70,17 +70,11 @@ impl Object {
     
     pub unsafe fn set<T: Sized>(&mut self, offset: usize, value: T) {
         let mut pointer = self as *mut Self as *mut u8;
-        let mut pointer_start = pointer as usize;
-        println!("\npointer: {:p}", pointer);
         unsafe {
             pointer = pointer.add(size_of::<Object>());
-            println!("pointer: {:p}", pointer);
             pointer = pointer.add(offset);
-            println!("pointer: {:p}", pointer);
             std::ptr::write(pointer as *mut T, value);
         }
-        let pointer_end = pointer as usize + size_of::<T>();
-        println!("pointer size: {}", pointer_end - pointer_start);
     }
     
     pub fn get_safe<T: Sized>(&self, mut offset: usize) -> Option<T> {
@@ -119,8 +113,6 @@ impl Object {
         if offset != 0 {
             return None;
         }
-
-        println!("pointer offset {pointer_offset}");
 
         unsafe {
             self.set(pointer_offset, value);

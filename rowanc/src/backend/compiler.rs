@@ -533,7 +533,6 @@ impl Compiler {
         let path_name = name.join("::");
         partial_class.set_name(&path_name);
 
-        println!("parent_decls: {:?}", parents);
         let parent_vtables = parents.iter().map(|parent_name| {
             let path = self.add_path_if_needed(parent_name.name.clone().to_string());
             let partial_class = self.classes.get(&path).expect("Order of files is wrong");
@@ -1177,11 +1176,10 @@ impl Compiler {
             Expression::Parenthesized(expr, _) => {
                 self.compile_expression(class_name, partial_class, expr.as_ref(), output, lhs)?;
             }
-            Expression::Call { name, type_args, args, .. } => {
+            Expression::Call { .. } => {
                 self.compile_call_expression(class_name, partial_class, expr, output, lhs)?;
             }
             Expression::StaticCall { name, type_args, args, annotation, .. } => {
-                println!("static call annotation for {:?}: {:?}",name, annotation);
 
                 for (i, arg) in args.iter().enumerate() {
                     self.compile_expression(class_name, partial_class, arg, output, lhs)?;
@@ -1688,7 +1686,6 @@ impl Compiler {
                                 _ => unreachable!("type arg should contain an object"),
                             };
 
-                            println!("nested field: {field}, annotation: {annotation}");
                             let annotation = self.add_path_if_needed(annotation.to_string());
 
                             break 'setup_args (field, annotation);
@@ -1716,7 +1713,6 @@ impl Compiler {
         };
 
         let name = name.segments.last().unwrap();
-        println!("name: {name}");
 
         if name.as_str() == "downcast" || name.as_str() == "downcast-contents" {
             assert_eq!(type_args.len(), 1, "Downcast only takes one type argument");
@@ -1759,12 +1755,6 @@ impl Compiler {
             output.push(Bytecode::LoadSymbol(class_symbol));
             output.push(Bytecode::StoreArgument(args.len() as u8));
         }
-
-        println!("ty: {:?} {:?}", ty, span);
-
-        println!("class_name: {class_name:?}, ty: {ty:?}");
-        println!("classes: {:#?}", self.classes.keys());
-        println!("current_imports: {:?}", self.active_imports.values());
 
         if ty == *class_name {
             let vtable = partial_class.get_vtable(name).expect("add proper handling of missing vtable").clone();

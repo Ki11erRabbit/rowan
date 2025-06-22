@@ -75,7 +75,7 @@ fn main() {
 
     let mut class_files = Vec::new();
     for (name, path, contents) in files.iter() {
-        println!("{name}");
+        //println!("{name}");
         let file = parser::parse(&name, &contents).unwrap();
         class_files.push((path, file, contents));
     }
@@ -108,9 +108,9 @@ fn main() {
         return Ordering::Less
     });
 
-    class_files.iter().for_each(|(path, _, _)| {
+    /*class_files.iter().for_each(|(path, _, _)| {
         println!("path: {:?}", path);
-    });
+    });*/
 
     let class_files = class_files.into_iter().map(|(_, file, _)| file).collect();
 

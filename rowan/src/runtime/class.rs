@@ -67,9 +67,7 @@ impl Class {
     }
     
     pub fn get_member_size(&self) -> usize {
-        println!("\nsymbol: {}", self.name);
         let out = self.members.iter().map(|member| member.get_size()).sum();
-        println!("member size: {}", out);
         out
     }
 

@@ -235,9 +235,7 @@ impl ClassFile {
 
         // dynamic padding for pointer alignment
         let padding = binary[index];
-        println!("padding: {}", padding);
         index += padding as usize + 1;
-        println!("index: {}", index);
 
         let static_methods_size = u64::from_le_bytes([
             binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
@@ -245,7 +243,6 @@ impl ClassFile {
         ]);
         index += std::mem::size_of::<u64>();
         let functions = unsafe {
-            println!("pointer: {:?} {static_methods_size}", binary.as_ptr().add(index));
             std::slice::from_raw_parts(
                 binary.as_ptr().add(index) as *const VTableEntry,
                 static_methods_size as usize
@@ -427,7 +424,6 @@ impl ClassFile {
             binary.extend_from_slice(&[0; 7]);
         } else {
             let factor = (8 - (binary.len() % 8)) % 8 - 1;
-            println!("remainder: {}", (8 - (binary.len() % 8)) % 8);
             binary.push(factor as u8);
             for _ in 0..(factor as usize) {
                 binary.push(0);

@@ -493,7 +493,7 @@ impl FunctionTranslator<'_> {
         //println!("Bytecode: {:#?}", bytecode);
 
         for bytecode in bytecode.iter() {
-            println!("{:?}", bytecode);
+            //println!("{:?}", bytecode);
             match bytecode {
                 Bytecode::Nop | Bytecode::Breakpoint => {}
                 Bytecode::LoadU8(value) => {

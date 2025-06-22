@@ -373,11 +373,7 @@ pub fn link_class_files(
                     // We also update vtables_map to hold updated function values so that we can link future vtables
 
 
-                    println!("base: {}", class_name);
-                    println!("{:?}", class_map);
-                    println!("{:?}", string_map);
                     let derived_functions = vtables_map.get(class_name).unwrap().get(&class_symbol).unwrap();
-                    println!("{:?}", vtables_map.get(class_name).unwrap());
                     let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
 
                     for (_,_,_,value) in base_functions {
@@ -749,7 +745,6 @@ fn link_bytecode(
             }
             compiled::Bytecode::NewObject(index) => {
                 let class_str = class_file.index_string_table(index);
-                println!("{class_str} {:?}", class_map);
                 let symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet"); 
 
                 output.push(linked::Bytecode::NewObject(symbol as u64));
@@ -775,8 +770,6 @@ fn link_bytecode(
             compiled::Bytecode::InvokeVirt(class_index, source_class, method_index) => {
                 let class_str = class_file.index_string_table(class_index);
                 let method_str = class_file.index_string_table(method_index);
-                println!("class_str: {class_str} {method_str}");
-                println!("class_map: {:?}", class_map);
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let source_class = if source_class != 0 {
@@ -823,7 +816,6 @@ fn link_bytecode(
             }
             compiled::Bytecode::InvokeStatic(class_index, method_index) => {
                 let class_str = class_file.index_string_table(class_index);
-                println!("class_str: {}", class_str);
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let method_str = class_file.index_string_table(method_index);

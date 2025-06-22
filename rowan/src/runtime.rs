@@ -108,8 +108,6 @@ impl MakeObject<Symbol> for ContextHelper {
         }
 
         let data_size = class.get_member_size();
-        println!("data_size: {}", data_size);
-
         let object = Object::new(class_symbol, parents.into_boxed_slice(), data_size);
 
         let Ok(mut object_table) = OBJECT_TABLE.write() else {
@@ -570,7 +568,6 @@ impl Context {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
-        println!("{class_name}");
         class_map[class_name]
     }
 
