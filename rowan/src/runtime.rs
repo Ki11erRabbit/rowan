@@ -570,6 +570,7 @@ impl Context {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
+        println!("{class_name}");
         class_map[class_name]
     }
 

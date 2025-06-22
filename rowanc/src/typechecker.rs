@@ -764,6 +764,12 @@ impl TypeChecker {
                     _ = result?;
                 }
             }
+            Expression::New(_, arr_size, _) => {
+                if let Some(arr_size) = arr_size {
+                    let ty = self.get_type(arr_size.as_mut())?;
+
+                }
+            }
             _ => {}
         }
 
@@ -810,6 +816,7 @@ impl TypeChecker {
             },
             Expression::Literal(Literal::Constant(Constant::Character(_, _))) => Ok(Type::Char),
             Expression::Variable(name, annotation, _) => {
+                println!("\n get variable named: {name}\n");
                 if let Some(ty) = self.lookup_var(&name) {
                     *annotation = Some(ty.into());
                     //println!("annotation: {:?}", annotation);
@@ -834,7 +841,11 @@ impl TypeChecker {
                 // TODO: check if source_ty can be converted binary wise to target_ty
                 Ok(target_ty)
             }
-            Expression::New(object, _, _) => {
+            Expression::New(object, arr_size, span) => {
+                if let Some(arr_size) = arr_size {
+                    self.get_type(arr_size.as_mut())?;
+                    return Ok(Type::Array(Box::new(object.clone()), span.clone()))
+                }
                 Ok(object.clone())
             }
             Expression::Call { name, annotation, .. } => {
@@ -1248,6 +1259,11 @@ impl TypeChecker {
             }
             (ty, Expression::MemberAccess { annotation, ..}) => {
                 *annotation = Some(ty.clone());
+            }
+            (_, Expression::New(_, arr_size, _)) => {
+                if let Some(arr_size) = arr_size {
+                    self.annotate_expr(&Type::U64, arr_size.as_mut())?;
+                }
             }
             _ => {}
         }

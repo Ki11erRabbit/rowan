@@ -493,6 +493,7 @@ impl FunctionTranslator<'_> {
         //println!("Bytecode: {:#?}", bytecode);
 
         for bytecode in bytecode.iter() {
+            println!("{:?}", bytecode);
             match bytecode {
                 Bytecode::Nop | Bytecode::Breakpoint => {}
                 Bytecode::LoadU8(value) => {
@@ -831,7 +832,7 @@ impl FunctionTranslator<'_> {
                             self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Array64") as i64)
                         }
                         TypeTag::Object | TypeTag::Str | TypeTag::Void => {
-                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("ArrayObject") as i64)
+                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Arrayobject") as i64)
                         }
                         TypeTag::F32 => {
                             self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Arrayf32") as i64)

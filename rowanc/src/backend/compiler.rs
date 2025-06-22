@@ -25,7 +25,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
     ];
     let vtable = VTable::new(functions);
-    object.add_vtable("Object", vtable, &names, &signatures);
+    object.add_vtable(&vec![String::from("Object")], vtable, &names, &signatures);
     object.make_not_printable();
     classes.insert(vec![String::from("Object")], object);
 
@@ -47,7 +47,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    printer.add_vtable("Printer", vtable, &names, &signatures);
+    printer.add_vtable(&vec![String::from("Printer")], vtable, &names, &signatures);
     printer.make_not_printable();
     classes.insert(vec![String::from("Printer")], printer);
 
@@ -71,7 +71,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    string.add_vtable("String", vtable, &names, &signatures);
+    string.add_vtable(&vec![String::from("String")], vtable, &names, &signatures);
     string.make_not_printable();
     classes.insert(vec![String::from("String")], string);
 
@@ -95,7 +95,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("Array8", vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Array8")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Array8")], array);
 
@@ -118,7 +118,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("Array16", vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Array16")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Array16")], array);
 
@@ -141,7 +141,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("Array32", vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Array32")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Array32")], array);
 
@@ -164,7 +164,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("Array64", vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Array64")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Array64")], array);
 
@@ -187,7 +187,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("Arrayf32", vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Arrayf32")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Arrayf32")], array);
 
@@ -210,7 +210,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("Arrayf64", vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Arrayf64")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Arrayf64")], array);
 
@@ -233,7 +233,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable("Arrayobject", vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Arrayobject")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Arrayobject")], array);
     
@@ -424,11 +424,11 @@ impl Compiler {
             ..
         } = class;
 
-        let class_name = name;
+        let class_name = self.add_path_if_needed(name.to_string());
 
         if type_params.is_empty() {
             let new_parents = self.create_new_parents(&parents);
-            self.compile_class_inner(class_name, &new_parents, &methods, &members, &static_members)?;
+            self.compile_class_inner(&class_name, &new_parents, &methods, &members, &static_members)?;
         } else {
             let mut name_order = Vec::new();
             for type_param in type_params.iter() {
@@ -468,13 +468,14 @@ impl Compiler {
 
                 let new_parents = self.create_new_parents(&parents);
 
-                self.imports_to_change.entry(class_name.to_string())
+                self.imports_to_change.entry(class_name.last().unwrap().to_string())
                     .or_insert(Vec::new())
-                    .push(format!("{class_name}{modifier_string}"));
+                    .push(format!("{}{modifier_string}", class_name.last().unwrap()));
 
-                let name = Text::Owned(format!("{class_name}{modifier_string}"));
+                let mut new_path = class_name.clone();
+                new_path.last_mut().unwrap().push_str(&modifier_string);
 
-                self.compile_class_inner(name, &new_parents, &methods, &members, &static_members)?;
+                self.compile_class_inner(&new_path, &new_parents, &methods, &members, &static_members)?;
             }
         }
         
@@ -522,23 +523,24 @@ impl Compiler {
 
     fn compile_class_inner(
         &mut self,
-        name: Text,
+        name: &Vec<String>,
         parents: &Vec<ParentDec>,
         methods: &Vec<Method>,
         members: &Vec<ast::Member>,
         static_members: &Vec<ast::StaticMember>,
     ) -> Result<(), CompilerError> {
         let mut partial_class = PartialClass::new();
-        let path_name = self.add_path_if_needed(name.to_string()).join("::");
+        let path_name = name.join("::");
         partial_class.set_name(&path_name);
 
         println!("parent_decls: {:?}", parents);
         let parent_vtables = parents.iter().map(|parent_name| {
             let path = self.add_path_if_needed(parent_name.name.clone().to_string());
             let partial_class = self.classes.get(&path).expect("Order of files is wrong");
-            let vtables = partial_class.get_vtables(&parent_name.name);
+            let vtables = partial_class.get_vtables(&path);
             vtables.into_iter().map(|(table, names, signatures)| {
-                let class_name = partial_class.index_string_table(table.class_name);
+                let class_name = partial_class.index_string_table(table.class_name).split("::")
+                    .map(|name| name.to_string()).collect::<Vec<String>>();
                 let source_class = if table.sub_class_name == 0 {
                     None
                 } else {
@@ -576,16 +578,16 @@ impl Compiler {
         if parents.len() == 0 {
             let object_class = self.classes.get(&vec!["Object".to_string()]).expect("Object not added to known classes");
 
-            let vtables = object_class.get_vtables("Object");
+            let vtables = object_class.get_vtables(&[String::from("Object")]);
             let (vtable, names, signatures) = &vtables[0];
 
-            partial_class.add_vtable("Object", vtable.clone(), names, signatures);
+            partial_class.add_vtable(&vec![String::from("Object")], vtable.clone(), names, signatures);
             partial_class.add_parent("Object");
         }
 
         for vtables in parent_vtables {
             for (class_name, _source_class, vtable, names, signatures) in vtables {
-                partial_class.add_vtable(class_name, vtable.clone(), &names, &signatures);
+                partial_class.add_vtable(&class_name, vtable.clone(), &names, &signatures);
             }
         }
 
@@ -616,7 +618,7 @@ impl Compiler {
                         &mut static_init_bytecode,
                         true
                     ).map(|_| {
-                        let index = partial_class.add_string(&class_name);
+                        let index = partial_class.add_string(&class_name.join("::"));
                         static_init_bytecode.push(Bytecode::SetStaticMember(index, i as u64, ty));
                         Ok::<(), CompilerError>(())
                     })
@@ -627,14 +629,12 @@ impl Compiler {
 
         self.compile_methods(&class_name, &mut partial_class, methods)?;
 
-        let class_name = self.add_path_if_needed(class_name.to_string());
-
-        self.classes.insert(class_name, partial_class);
+        self.classes.insert(class_name.clone(), partial_class);
 
         Ok(())
     }
 
-    fn construct_vtable(&self, class_name: &str, methods: &Vec<Method>) -> Result<(
+    fn construct_vtable(&self, class_name: &Vec<String>, methods: &Vec<Method>) -> Result<(
         VTable,
         Vec<String>,
         Vec<SignatureEntry>,
@@ -727,7 +727,7 @@ impl Compiler {
     }
 
 
-    pub fn compile_methods(&mut self, class_name: &str, partial_class: &mut PartialClass, methods: &Vec<Method>) -> Result<(), CompilerError> {
+    pub fn compile_methods(&mut self, class_name: &Vec<String>, partial_class: &mut PartialClass, methods: &Vec<Method>) -> Result<(), CompilerError> {
 
         for method in methods {
             self.method_returned = false;
@@ -765,10 +765,12 @@ impl Compiler {
             } else {
                 //println!("{}", name);
                 let vtable = partial_class.get_vtable(&name).unwrap();
-                let method_class_name = String::from(partial_class.index_string_table(vtable.class_name));
+                let method_class_name = partial_class.index_string_table(vtable.class_name).split("::")
+                    .map(|name| name.to_string())
+                    .collect::<Vec<String>>();
                 //println!("{}", method_class_name);
 
-                partial_class.attach_bytecode(method_class_name, name, bytecode).expect("Handle partial class error");
+                partial_class.attach_bytecode(&method_class_name, name, bytecode).expect("Handle partial class error");
             }
 
             self.pop_scope();
@@ -791,7 +793,7 @@ impl Compiler {
         }
     }
 
-    fn compile_method_body(&mut self, class_name: &str, partial_class: &mut PartialClass, body: &Vec<Statement>) -> Result<Vec<Bytecode>, CompilerError> {
+    fn compile_method_body(&mut self, class_name: &Vec<String>, partial_class: &mut PartialClass, body: &Vec<Statement>) -> Result<Vec<Bytecode>, CompilerError> {
         let mut output = Vec::new();
         //output.push(Bytecode::StartBlock(block));
         //output.push(Bytecode::Goto(1));
@@ -804,7 +806,7 @@ impl Compiler {
 
     fn compile_block(
         &mut self,
-        class_name: &str,
+        class_name: &Vec<String>,
         partial_class: &mut PartialClass,
         body: &Vec<Statement>,
         output: &mut Vec<Bytecode>
@@ -885,7 +887,7 @@ impl Compiler {
 
     fn compile_expression<'a>(
         &mut self,
-        class_name: &str,
+        class_name: &Vec<String>,
         partial_class: &mut PartialClass, 
         expr: &'a Expression,
         output: &mut Vec<Bytecode>,
@@ -1231,8 +1233,10 @@ impl Compiler {
                     }
                 };
 
+                let path = self.add_path_if_needed(method_class);
+
                 let method_name = partial_class.add_string(method_name);
-                let method_class = partial_class.add_string(method_class);
+                let method_class = partial_class.add_string(path.join("::"));
                 
                 output.push(Bytecode::InvokeStatic(method_class, method_name));
             }
@@ -1242,50 +1246,78 @@ impl Compiler {
                 self.compile_member_get(class_name, partial_class, expr, output)?;
             }
             Expression::New(ty, arr_size, _) => {
-                let name = match ty {
-                    Type::Object(name, _) => name,
-                    Type::TypeArg(name, args, _) => {
-                        let mut name_string = String::new();
-                        let Type::Object(name, _) = name.as_ref() else {
-                            unreachable!("only objects can be in a type arg")
-                        };
-                        name_string.push_str(name);
-                        for arg in args {
-                            let name_mod = match arg {
-                                Type::I8 | Type::U8 => "8",
-                                Type::I16 | Type::U16 => "16",
-                                Type::I32 | Type::U32 => "32",
-                                Type::I64 | Type::U64 => "64",
-                                Type::F32 => "f32",
-                                Type::F64 => "f64",
-                                Type::Object(ty, _) => {
-                                    let path = self.add_path_if_needed(ty.to_string());
-                                    if self.classes.contains_key(&path) {
-                                        "object"
-                                    } else {
-                                        match self.current_type_args.get(ty.as_str()).unwrap() {
-                                            TypeTag::I8 | TypeTag::U8 => "8",
-                                            TypeTag::I16 | TypeTag::U16 => "16",
-                                            TypeTag::I32 | TypeTag::U32 => "32",
-                                            TypeTag::I64 | TypeTag::U64 => "64",
-                                            TypeTag::F32 => "f32",
-                                            TypeTag::F64 => "f64",
-                                            _ => "object",
+                if let Some(arr_size) = arr_size {
+                    let name = match ty {
+                        Type::I8 => TypeTag::I8,
+                        Type::U8 => TypeTag::U8,
+                        Type::I16 => TypeTag::I16,
+                        Type::U16 => TypeTag::U16,
+                        Type::I32 => TypeTag::I32,
+                        Type::U32 => TypeTag::U32,
+                        Type::I64 => TypeTag::I64,
+                        Type::U64 => TypeTag::U64,
+                        Type::F32 => TypeTag::F32,
+                        Type::F64 => TypeTag::F64,
+                        Type::Object(name, _) =>  {
+                            let path = self.add_path_if_needed(name.to_string());
+                            if self.classes.contains_key(&path) {
+                                TypeTag::Object
+                            } else {
+                                *self.current_type_args.get(name.as_str()).unwrap()
+                            }
+                        },
+                        _ => TypeTag::Object,
+                    };
+                    self.compile_expression(class_name, partial_class, arr_size.as_ref(), output, lhs)?;
+                    output.push(Bytecode::CreateArray(name));
+                } else {
+                    let name = match ty {
+                        Type::Object(name, _) => name,
+                        Type::TypeArg(name, args, _) => {
+                            let mut name_string = String::new();
+                            let Type::Object(name, _) = name.as_ref() else {
+                                unreachable!("only objects can be in a type arg")
+                            };
+                            name_string.push_str(name);
+                            for arg in args {
+                                let name_mod = match arg {
+                                    Type::I8 | Type::U8 => "8",
+                                    Type::I16 | Type::U16 => "16",
+                                    Type::I32 | Type::U32 => "32",
+                                    Type::I64 | Type::U64 => "64",
+                                    Type::F32 => "f32",
+                                    Type::F64 => "f64",
+                                    Type::Object(ty, _) => {
+                                        let path = self.add_path_if_needed(ty.to_string());
+                                        if self.classes.contains_key(&path) {
+                                            "object"
+                                        } else {
+                                            match self.current_type_args.get(ty.as_str()).unwrap() {
+                                                TypeTag::I8 | TypeTag::U8 => "8",
+                                                TypeTag::I16 | TypeTag::U16 => "16",
+                                                TypeTag::I32 | TypeTag::U32 => "32",
+                                                TypeTag::I64 | TypeTag::U64 => "64",
+                                                TypeTag::F32 => "f32",
+                                                TypeTag::F64 => "f64",
+                                                _ => "object",
+                                            }
                                         }
                                     }
-                                }
-                                _ => "object",
-                            };
-                            name_string.push_str(name_mod);
+                                    _ => "object",
+                                };
+                                name_string.push_str(name_mod);
+                            }
+                            &Text::Owned(name_string)
                         }
-                        &Text::Owned(name_string)
-                    }
-                    _ => todo!("handle array new")
-                };
+                        _ => todo!("handle array new")
+                    };
 
-                let string_ref = partial_class.add_string(name);
+                    let name = self.add_path_if_needed(name.to_string());
 
-                output.push(Bytecode::NewObject(string_ref));
+                    let string_ref = partial_class.add_string(name.join("::"));
+
+                    output.push(Bytecode::NewObject(string_ref));
+                }
             }
             Expression::IfExpression(if_expr, _) => {
                 self.compile_if_expression(class_name, partial_class, if_expr, output, lhs)?;
@@ -1310,7 +1342,7 @@ impl Compiler {
 
     fn compile_if_expression(
         &mut self,
-        class_name: &str,
+        class_name: &Vec<String>,
         partial_class: &mut PartialClass,
         expr: &IfExpression,
         output: &mut Vec<Bytecode>,
@@ -1357,7 +1389,7 @@ impl Compiler {
 
     fn compile_member_get<'a>(
         &mut self,
-        class_name: &str,
+        class_name: &Vec<String>,
         partial_class: &mut PartialClass,
         expr: &'a Expression<'a>,
         output: &mut Vec<Bytecode>
@@ -1375,16 +1407,14 @@ impl Compiler {
         };
 
         let name = match annotation  {
-            Either::Left(Type::Object(name, _)) => name,
+            Either::Left(Type::Object(name, _)) => self.add_path_if_needed(name.to_string()),
             Either::Right(()) => {
-                Text::Borrowed(class_name)
+                class_name.clone()
             }
             _ => todo!("report error about method output not being an object"),
         };
 
-        let path = self.add_path_if_needed(name.to_string());
-
-        let class = match self.classes.get(&path) {
+        let class = match self.classes.get(&name) {
             Some(class) => class,
             _ => partial_class,
         };
@@ -1415,7 +1445,7 @@ impl Compiler {
 
     fn compile_member_set<'a>(
         &mut self,
-        class_name: &str,
+        class_name: &Vec<String>,
         partial_class: &mut PartialClass,
         expr: &'a Expression<'a>,
         output: &mut Vec<Bytecode>
@@ -1433,7 +1463,7 @@ impl Compiler {
         };
 
         let name = match annotation  {
-            Either::Left(Type::Object(name, _)) => name,
+            Either::Left(Type::Object(name, _)) => self.add_path_if_needed(name.to_string()),
             Either::Left(Type::TypeArg(name, args, _)) => {
                 let mut string_name = String::new();
                 let Type::Object(name, _) = name.as_ref() else {
@@ -1452,16 +1482,15 @@ impl Compiler {
                     };
                     string_name.push_str(mod_string);
                 }
-                Text::Owned(string_name)
+                self.add_path_if_needed(string_name)
             }
             Either::Right(()) => {
-                Text::Borrowed(class_name)
+                class_name.clone()
             }
             _ => todo!("report error about method output not being an object: {:?} {:?}", object, field),
         };
-        let path = self.add_path_if_needed(name.to_string());
 
-        let class = self.classes.get(&path).unwrap_or(partial_class);
+        let class = self.classes.get(&name).unwrap_or(partial_class);
         let (class_name, parent_name) = if class.contains_field(field.to_string().as_str()) {
             (class.get_class_name(), Vec::new())
         } else {
@@ -1492,7 +1521,7 @@ impl Compiler {
 
     fn compile_call_expression<'a>(
         &mut self,
-        class_name: &'a str,
+        class_name: &Vec<String>,
         partial_class: &mut PartialClass,
         expr: &'a Expression<'a>,
         output: &mut Vec<Bytecode>,
@@ -1502,11 +1531,12 @@ impl Compiler {
             unreachable!("We have already checked for expr being a Call");
         };
         let (name, ty) = 'setup_args: loop {
-            let (name, ty, var): (&PathName, Text, Text) = match name.as_ref() {
+            let (name, ty, var): (&PathName, Vec<String>, Text) = match name.as_ref() {
                 Expression::MemberAccess { object, field, .. } => {
                     match object.as_ref() {
                         Expression::Variable(var, Some(Type::Object(ty, _)), _) => {
-                            (field, ty.clone(), var.clone())
+                            let path = self.add_path_if_needed(ty.to_string());
+                            (field, path, var.clone())
                         }
                         Expression::Variable(var, Some(Type::Array(ty, _)), _) => {
                             let ty = match ty.as_ref() {
@@ -1534,10 +1564,10 @@ impl Compiler {
                                 Type::F32 => Text::Borrowed("Arrayf32"),
                                 Type::F64 => Text::Borrowed("Arrayf64"),
                             };
-                            (field, ty, var.clone())
+                            (field, vec![ty.to_string()], var.clone())
                         }
                         Expression::This(_) => {
-                            (field, Text::Borrowed(class_name), Text::Borrowed("self"))
+                            (field, class_name.clone(), Text::Borrowed("self"))
                         }
                         Expression::Variable(var, Some(Type::TypeArg(obj, args, _)), _) => {
                             let Type::Object(ty, _) = obj.as_ref() else {
@@ -1572,7 +1602,7 @@ impl Compiler {
                                 };
                                 ty_name.push_str(modifier);
                             }
-                            (field, Text::Owned(ty_name), var.clone())
+                            (field, self.add_path_if_needed(ty_name), var.clone())
                         }
                         Expression::MemberAccess { annotation, .. } => {
                             self.compile_expression(class_name, partial_class, object.as_ref(), output, lhs)?;
@@ -1659,6 +1689,7 @@ impl Compiler {
                             };
 
                             println!("nested field: {field}, annotation: {annotation}");
+                            let annotation = self.add_path_if_needed(annotation.to_string());
 
                             break 'setup_args (field, annotation);
                         }
@@ -1721,22 +1752,21 @@ impl Compiler {
                 _ => unreachable!("downcast can only take type arguments that are Objects or Arrays, not Tuples or primitives like integers and floats"),
             };
 
-            let class_symbol = partial_class.add_string(ty.as_str());
+            let path = self.add_path_if_needed(ty.to_string());
+
+            let class_symbol = partial_class.add_string(path.join("::"));
 
             output.push(Bytecode::LoadSymbol(class_symbol));
             output.push(Bytecode::StoreArgument(args.len() as u8));
         }
 
-        println!("ty: {} {:?}", ty.to_string(), span);
-
-        let ty = self.add_path_if_needed(ty.to_string());
-        let class_name = self.add_path_if_needed(class_name.to_string());
+        println!("ty: {:?} {:?}", ty, span);
 
         println!("class_name: {class_name:?}, ty: {ty:?}");
         println!("classes: {:#?}", self.classes.keys());
         println!("current_imports: {:?}", self.active_imports.values());
 
-        if ty == class_name {
+        if ty == *class_name {
             let vtable = partial_class.get_vtable(name).expect("add proper handling of missing vtable").clone();
             let method_entry = partial_class.get_method_entry(name).expect("add proper handling of missing method");
 

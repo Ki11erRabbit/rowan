@@ -749,6 +749,7 @@ fn link_bytecode(
             }
             compiled::Bytecode::NewObject(index) => {
                 let class_str = class_file.index_string_table(index);
+                println!("{class_str} {:?}", class_map);
                 let symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet"); 
 
                 output.push(linked::Bytecode::NewObject(symbol as u64));

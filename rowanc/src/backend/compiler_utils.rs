@@ -115,17 +115,17 @@ pub struct PartialClass {
     signature_table: Vec<SignatureEntry>,
     /// This maps class names to a vtable.
     /// If there are more than one index, then that means that we have two different versions of the same vtable
-    class_to_vtable: HashMap<String, Vec<usize>>,
+    class_to_vtable: HashMap<Vec<String>, Vec<usize>>,
     /// This maps a vtable index to a string with the name of the class the vtable comes from.
     /// The origin class should always be a parent of the current object
-    vtable_to_class: HashMap<usize, String>,
+    vtable_to_class: HashMap<usize, Vec<String>>,
     /// Maps method names to a vec of indices
     /// The first index is the index into the vtable table
     /// The second index is the index in the vtable itself
     method_to_function: HashMap<String, Vec<(usize, usize)>>,
     /// Maps method names to a vec of class names
     /// This is so that we can reference the class a method is coming from
-    method_to_class: HashMap<String, Vec<String>>,
+    method_to_class: HashMap<String, Vec<Vec<String>>>,
     /// Maps static method names to a method signature
     static_method_to_signature: HashMap<String, SignatureIndex>,
     /// A flag to mark the class as one to not emit a class file for
@@ -239,30 +239,30 @@ impl PartialClass {
 
     pub fn add_vtable(
         &mut self,
-        class_name: impl AsRef<str>,
+        class_name: &Vec<String>,
         mut vtable: VTable,
         names: &Vec<impl AsRef<str>>,
         signatures: &Vec<SignatureEntry>,
 
     ) {
         //println!("add_vtable1 {} {}", self.index_string_table(self.name), class_name.as_ref());
-        vtable.class_name = self.add_string(class_name.as_ref());
+        vtable.class_name = self.add_string(class_name.join("::"));
         for (i, function) in vtable.functions.iter_mut().enumerate() {
             function.name = self.add_string(names[i].as_ref());
             function.signature = self.signature_table.len() as u64;
             self.signature_table.push(signatures[i].clone());
 
             self.method_to_class.entry(String::from(names[i].as_ref()))
-                .and_modify(|v| v.push(String::from(class_name.as_ref())))
-                .or_insert(vec![String::from(class_name.as_ref())]);
+                .and_modify(|v| v.push(class_name.clone()))
+                .or_insert(vec![class_name.clone()]);
             self.method_to_function.entry(String::from(names[i].as_ref()))
                 .and_modify(|v| v.push((self.vtables.len(), i)))
                 .or_insert(vec![(self.vtables.len(), i)]);
         }
-        self.class_to_vtable.entry(class_name.as_ref().to_string())
+        self.class_to_vtable.entry(class_name.clone())
             .and_modify(|v| v.push(self.vtables.len()))
             .or_insert(vec![self.vtables.len()]);
-        self.vtable_to_class.insert(self.vtables.len(), class_name.as_ref().to_string());
+        self.vtable_to_class.insert(self.vtables.len(), class_name.clone());
         self.vtables.push(vtable);
     }
 
@@ -298,13 +298,13 @@ impl PartialClass {
 
     pub fn attach_bytecode<B: AsRef<[u8]>>(
         &mut self,
-        class_name: impl AsRef<str>,
+        class_name: &[String],
         method_name: impl AsRef<str>,
         code: B,
     ) -> PartialClassResult<()> {
         //println!("{}", class_name.as_ref());
         //println!("{:#?}", self);
-        let vtable_indices = self.class_to_vtable.get(class_name.as_ref()).unwrap();
+        let vtable_indices = self.class_to_vtable.get(class_name).unwrap();
         if vtable_indices.len() > 1 {
             return Err(PartialClassError::Ambiguity);
         }
@@ -327,12 +327,12 @@ impl PartialClass {
         Ok(())
     }
 
-    pub fn get_vtables<S: AsRef<str>>(&self, class_name: S) -> Vec<(
+    pub fn get_vtables(&self, class_name: &[String]) -> Vec<(
         VTable,
         Vec<String>,
         Vec<SignatureEntry>)> {
 
-        let vtable_indices = self.class_to_vtable.get(class_name.as_ref()).unwrap();
+        let vtable_indices = self.class_to_vtable.get(class_name).unwrap();
 
         let mut output = Vec::new();
         for vtable_index in vtable_indices {
