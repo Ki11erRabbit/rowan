@@ -4,14 +4,14 @@ or the self hosted compiler can be implemented.
 
 ## Self Hosted Compiler
 In no particular order
-* [ ] Generics
+* [x] Generics
 * [ ] Traits
 * [ ] Unions
 * [ ] Lambda Expressions
 * [ ] try/catch
 * [ ] Matching
-* [ ] Module Paths
-* [ ] Loading of stdlib
+* [x] Module Paths
+* [x] Loading of stdlib
 * [ ] Native method interface
 * [ ] for loops
 * [ ] incremental compilation
