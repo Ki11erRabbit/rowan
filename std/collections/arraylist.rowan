@@ -7,6 +7,7 @@ class ArrayList[T] {
     pub fn create() -> ArrayList[T] {
         let list: ArrayList[T] = new ArrayList[T]();
         list.buffer = new [T; 0];
+        list.length = 0;
         return list;
     }
 
