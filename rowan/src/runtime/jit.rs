@@ -184,11 +184,11 @@ impl JITCompiler {
         module: &mut JITModule,
     ) -> Result<(), String> {
 
-        let Ok(mut value) = function.value.write() else {
+        let Ok(mut value) = function.value.read() else {
             panic!("Lock poisoned");
         };
 
-        let FunctionValue::Bytecode(bytecode, id, sig) = &*value else {
+        let FunctionValue::Bytecode(bytecode, id) = &*value else {
             todo!("add error handling for non-bytecode value");
         };
 
@@ -222,7 +222,12 @@ impl JITCompiler {
 
         let code = module.get_finalized_function(*id);
 
-        let new_function_value = FunctionValue::Compiled(code as *const (), sig.clone());
+        let new_function_value = FunctionValue::Compiled(code as *const ());
+
+        drop(value);
+        let Ok(mut value) = function.value.write() else {
+            panic!("Lock poisoned");
+        };
 
         *value = new_function_value;
         
@@ -554,7 +559,7 @@ impl FunctionTranslator<'_> {
 
     pub fn translate(&mut self, bytecode: &[Bytecode], module: &mut JITModule) -> Result<(), String> {
 
-        //println!("Bytecode: {:#?}", bytecode);
+        //println!("\nBytecode: {:#?}", bytecode);
 
         for bytecode in bytecode.iter() {
             //println!("{:?}", bytecode);
@@ -1461,7 +1466,6 @@ impl FunctionTranslator<'_> {
                         .call(normal_return, &[context_value]);
 
                     let _ = self.builder.inst_results(should_unwind_result);
-
                     self.builder.ins().return_(&[]);
                 }
                 Bytecode::StartBlock(index) => {

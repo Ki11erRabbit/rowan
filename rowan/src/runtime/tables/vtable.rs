@@ -43,6 +43,7 @@ pub struct Function {
     pub value: Arc<RwLock<FunctionValue>>,
     pub arguments: Vec<TypeTag>,
     pub return_type: TypeTag,
+    pub signature: Signature,
 }
 
 impl Function {
@@ -50,13 +51,15 @@ impl Function {
         name: Symbol,
         value: Arc<RwLock<FunctionValue>>,
         arguments: Vec<TypeTag>,
-        return_type: TypeTag
+        return_type: TypeTag,
+        signature: Signature,
     ) -> Self {
         Function {
             name,
             value,
             arguments,
-            return_type
+            return_type,
+            signature,
         }
     }
 }
@@ -75,10 +78,10 @@ impl Debug for Function {
 
 #[derive(Clone)]
 pub enum FunctionValue {
-    Builtin(*const (), Signature),
-    Bytecode(Vec<Bytecode>, FuncId, Signature),
-    Compiled(*const (), Signature),
-    Native(*const (), Signature),
+    Builtin(*const ()),
+    Bytecode(Vec<Bytecode>, FuncId),
+    Compiled(*const ()),
+    Native(*const ()),
     Blank,
 }
 
@@ -94,23 +97,23 @@ impl FunctionValue {
 impl Debug for FunctionValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         match self {
-            FunctionValue::Builtin(ptr, signature) => {
+            FunctionValue::Builtin(ptr) => {
                 f.debug_struct("Builtin")
                 .field("ptr", ptr)
                     .finish()
             }
             FunctionValue::Blank => f.debug_struct("Blank").finish(),
-            FunctionValue::Compiled(ptr, signature) => {
+            FunctionValue::Compiled(ptr) => {
                 f.debug_struct("Compiled")
                 .field("ptr", ptr)
                 .finish()
             }
-            FunctionValue::Native(ptr, signature) => {
+            FunctionValue::Native(ptr) => {
                 f.debug_struct("Native")
                 .field("ptr", ptr)
                 .finish()
             }
-            FunctionValue::Bytecode(bytecode,_,  _) => {
+            FunctionValue::Bytecode(bytecode,_) => {
                 f.debug_struct("Bytecode")
                 .field("bytecode", bytecode)
                 .finish()

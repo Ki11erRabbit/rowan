@@ -254,7 +254,7 @@ impl Context {
         // The first hashmap is the class symbol which the vtable comes from.
         // The second hashmap is the class that has a custom version of the vtable
         // For example, two matching symbols means that that is the vtable of that particular class
-        vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<rowan_shared::TypeTag>, linker::MethodLocation, Arc<RwLock<FunctionValue>>)>>>,
+        vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<rowan_shared::TypeTag>, linker::MethodLocation, Arc<RwLock<FunctionValue>>, Signature)>>>,
         string_map: &mut HashMap<String, Symbol>,
     ) -> (Symbol, Symbol) {
         let Ok(mut string_table) = STRING_TABLE.write() else {
@@ -295,7 +295,7 @@ impl Context {
         // The first hashmap is the class symbol which the vtable comes from.
         // The second hashmap is the class that has a custom version of the vtable
         // For example, two matching symbols means that that is the vtable of that particular class
-        vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<rowan_shared::TypeTag>, linker::MethodLocation, Arc<RwLock<FunctionValue>>)>>>,
+        vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<rowan_shared::TypeTag>, linker::MethodLocation, Arc<RwLock<FunctionValue>>, Signature)>>>,
         string_map: &mut HashMap<String, Symbol>,
     ) {
         let Ok(mut string_table) = STRING_TABLE.write() else {
@@ -431,8 +431,8 @@ impl Context {
 
         let value = function.value.read().expect("Lock poisoned");
         match &*value {
-            FunctionValue::Builtin(ptr, _) => *ptr,
-            FunctionValue::Compiled(ptr, _) => *ptr,
+            FunctionValue::Builtin(ptr) => *ptr,
+            FunctionValue::Compiled(ptr) => *ptr,
             _ => {
                 drop(value);
                 let mut compiler = Context::create_jit_compiler();
@@ -444,7 +444,7 @@ impl Context {
 
                 let value = function.value.read().expect("Lock poisoned");
                 match &*value {
-                    FunctionValue::Compiled(ptr, _) => *ptr,
+                    FunctionValue::Compiled(ptr) => *ptr,
                     _ => panic!("Function wasn't compiled")
                 }
             }
@@ -488,8 +488,8 @@ impl Context {
 
         let value = function.value.read().expect("Lock poisoned");
         match &*value {
-            FunctionValue::Builtin(ptr, _) => *ptr,
-            FunctionValue::Compiled(ptr, _) => *ptr,
+            FunctionValue::Builtin(ptr) => *ptr,
+            FunctionValue::Compiled(ptr) => *ptr,
             _ => {
                 drop(value);
                 let mut compiler = Context::create_jit_compiler();
@@ -504,7 +504,7 @@ impl Context {
 
                 let value = function.value.read().expect("Lock poisoned");
                 match &*value {
-                    FunctionValue::Compiled(ptr, _) => *ptr,
+                    FunctionValue::Compiled(ptr) => *ptr,
                     _ => panic!("Function wasn't compiled")
                 }
             }
@@ -541,13 +541,8 @@ impl Context {
 
         let vtable = &vtables_table[vtable_index];
         let function = vtable.get_function(method_name);
-        let value = function.value.read().expect("Lock poisoned");
-        match &*value {
-            FunctionValue::Builtin(_, signature) => signature.clone(),
-            FunctionValue::Compiled(_, signature) => signature.clone(),
-            FunctionValue::Bytecode(_, _, signature) => signature.clone(),
-            _ => panic!("Method not compiled yet"),
-        }
+        function.signature.clone()
+
     }
 
     pub fn get_static_method_signature(
@@ -573,13 +568,7 @@ impl Context {
 
         let vtable = &vtables_table[vtable_index];
         let function = vtable.get_function(method_name);
-        let value = function.value.read().expect("Lock poisoned");
-        match &*value {
-            FunctionValue::Builtin(_, signature) => signature.clone(),
-            FunctionValue::Compiled(_, signature) => signature.clone(),
-            FunctionValue::Bytecode(_, _, signature) => signature.clone(),
-            _ => panic!("Method not compiled yet"),
-        }
+        function.signature.clone()
     }
 
     pub fn new_object<N>(class_name: N) -> Reference

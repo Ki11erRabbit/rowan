@@ -703,6 +703,7 @@ impl TypeChecker {
                             if i < arg_types.len() {
                                 let expected_ty = &arg_types[i];
                                 //println!("left: {:?}\nright: {:?}", arg_ty, expected_ty);
+                                self.annotate_expr(&arg_ty, arg)?;
                                 if !self.compare_types(&TypeCheckerType::from(&arg_ty), expected_ty) {
                                     todo!("report type mismatch for argument {} in method call {:?} ({:?}, {:?})", i, name, arg_ty, expected_ty);
                                 }
@@ -799,6 +800,17 @@ impl TypeChecker {
                 if !self.class_information.contains_key(&class_name) {
                     todo!("report missing class")
                 }
+            }
+            Expression::BinaryOperation { operator: BinaryOperator::Add, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Sub, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Mul, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Div, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Mod, left, right, .. } => {
+                self.check_expr(return_type, left)?;
+                let ty = self.get_type(left.as_mut())?;
+                self.annotate_expr(&ty, left.as_mut())?;
+                self.annotate_expr(&ty, right.as_mut())?;
+                self.check_expr(return_type, right)?;
             }
             _ => {}
         }

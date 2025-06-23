@@ -5,61 +5,21 @@ class Main {
     static thing: u64 = 66666666666;
 
     fn main(args: [String]) {
-        let x: u64 = 4 + 4;
         let printer: Printer = new Printer();
-        printer.println-int(x);
-        let printer: Printer = new Printer();
-        printer.println-int(x);
-        if x < 10 {
-            printer.println-int(x);
-        }
-        while x < 50 {
-            printer.println-int(x);
-            x = x + x;
-        }
-        printer.println-int(x);
-        let arr: [u64] = [1, 2 ,3, 4];
-        let counter: u64 = 0;
-        Main::do-thing();
-        while counter < arr.len() {
-            printer.println-int(arr[counter]);
-            counter = counter + 1;
-        }
-
-        printer.println-int(Main::return-int());
-        printer.println-int(Main::do-thing2(Main::return-int(), Main::return-int()));
-
-        let list: ArrayList[u64] = ArrayList::from-array(arr);
-        let test: u64 = 2;
-        let result: u64 = list.get(test);
-        counter = 0;
-        while counter < list.len() {
-            printer.println-int(list.get(counter));
-            counter = counter + 1;
-        }
-
-        printer.println-int(Main.thing);
-        printer.println-int(counter);
+        let n: u64 = 40
+        let result: u64 = Main::fib(n);
+        printer.println-int(result);
     }
 
-
-    fn do-thing() {
-        let printer: Printer = new Printer();
-        let arr: [u64] = [1, 2 ,3, 4];
-        printer.println-int(arr[0]);
-
-        let y: u64 = 11;
-        printer.println-int(y);
-        let j: u64 = 9999999999999;
-        printer.println-int(j);
-    }
-
-    fn return-int() -> u64 {
-        return 66;
-    }
-
-    fn do-thing2(i: u64, j: u64) -> u64 {
-        return i + j;
+    fn fib(n: u64) -> u64 {
+        if n < 2 {
+            return n;
+        }
+        let first: u64 = n - 1;
+        let second: u64 = n - 2;
+        let left: u64 = Main::fib(first);
+        let right: u64 = Main::fib(second);
+        return left + right;
     }
 
 }

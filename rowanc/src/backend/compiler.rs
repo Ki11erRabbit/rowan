@@ -257,6 +257,7 @@ pub struct Compiler {
     current_module: Vec<String>,
     active_imports: HashMap<String, Vec<String>>,
     imports_to_change: HashMap<String, Vec<String>>,
+    current_block_returned: bool,
 }
 
 
@@ -272,6 +273,7 @@ impl Compiler {
             current_module: Vec::new(),
             active_imports: HashMap::new(),
             imports_to_change: HashMap::new(),
+            current_block_returned: false,
         }
     }
 
@@ -1339,6 +1341,7 @@ impl Compiler {
                 } else {
                     output.push(Bytecode::ReturnVoid)
                 }
+                self.current_block_returned = true;
             }
             _ => todo!("add remaining expressions")
         }
@@ -1360,7 +1363,10 @@ impl Compiler {
                 self.increment_block();
                 self.compile_block(class_name, partial_class, then_branch, output)?;
                 self.increment_block();
-                output.push(Bytecode::Goto(1));
+                if !self.current_block_returned {
+                    output.push(Bytecode::Goto(1));
+                }
+                self.current_block_returned = false;
                 let block = self.current_block;
                 output.push(Bytecode::StartBlock(block));
             }
@@ -1372,7 +1378,10 @@ impl Compiler {
                 output.push(Bytecode::Goto(2));
                 self.increment_block();
                 self.compile_block(class_name, partial_class, else_branch, output)?;
-                output.push(Bytecode::Goto(1));
+                if !self.current_block_returned {
+                    output.push(Bytecode::Goto(1));
+                }
+                self.current_block_returned = false;
                 let block = self.current_block;
                 output.push(Bytecode::StartBlock(block));
             }
@@ -1385,7 +1394,10 @@ impl Compiler {
                 let then_block = self.current_block;
                 self.compile_if_expression(class_name, partial_class, else_branch.as_ref(), &mut temp_output, lhs)?;
                 let escape_block = self.current_block;
-                output.push(Bytecode::Goto((escape_block - then_block) as i64));
+                if !self.current_block_returned {
+                    output.push(Bytecode::Goto((escape_block - then_block) as i64));
+                }
+                self.current_block_returned = false;
                 output.extend(temp_output);
             }
         }
