@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::{LazyLock, RwLock}};
+use std::{collections::HashMap, sync::{LazyLock, /*RwLock*/}};
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
@@ -24,11 +24,13 @@ pub mod stdlib;
 pub mod linker;
 pub mod jit;
 mod runtime;
+mod rwlock;
 
 pub use runtime::Runtime;
 use runtime::Tick;
 use crate::runtime::class::{ClassMember, ClassMemberData};
 use crate::runtime::stdlib::{exception_fill_in_stack_trace, exception_print_stack_trace};
+use crate::runtime::rwlock::RwLock;
 
 pub type Symbol = usize;
 
@@ -457,13 +459,13 @@ impl Context {
         method_name: Symbol,
     ) -> *const () {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
-            panic!("Lock poisoned");
+            unreachable!("Lock poisoned");
         };
         let Ok(class_table) = CLASS_TABLE.read() else {
-            panic!("Lock poisoned");
+            unreachable!("Lock poisoned");
         };
         let Ok(string_table) = STRING_TABLE.read() else {
-            panic!("Lock poisoned");
+            unreachable!("Lock poisoned");
         };
 
         let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol] else {
@@ -480,7 +482,7 @@ impl Context {
 
         let vtable_index = class.static_methods;
         let Ok(vtables_table) = VTABLES.read() else {
-            panic!("Lock poisoned");
+            unreachable!("Lock poisoned");
         };
 
         let vtable = &vtables_table[vtable_index];
@@ -491,10 +493,9 @@ impl Context {
             FunctionValue::Builtin(ptr) => *ptr,
             FunctionValue::Compiled(ptr) => *ptr,
             _ => {
-                drop(value);
                 let mut compiler = Context::create_jit_compiler();
                 let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
-                    panic!("Lock poisoned");
+                    unreachable!("Lock poisoned");
                 };
 
                 match compiler.compile(&function, &mut jit_controller.module) {
@@ -502,7 +503,7 @@ impl Context {
                     Err(e) => panic!("Compilation error:\n{}", e)
                 }
 
-                let value = function.value.read().expect("Lock poisoned");
+                //let value = function.value.read().expect("Lock poisoned");
                 match &*value {
                     FunctionValue::Compiled(ptr) => *ptr,
                     _ => panic!("Function wasn't compiled")

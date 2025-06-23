@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, };//RwLock};
 
 use cranelift::prelude::Signature;
 use cranelift_module::FuncId;
 use rowan_shared::bytecode::linked::Bytecode;
 
 use crate::runtime::{class::TypeTag, Index, Symbol, VTableIndex};
-
+use crate::runtime::rwlock::RwLock;
 
 
 
