@@ -327,6 +327,17 @@ impl PartialClass {
         Ok(())
     }
 
+    pub fn attach_static_init_bytecode<B: AsRef<[u8]>>(
+        &mut self,
+        code: B,
+    ) -> PartialClassResult<()> {
+        self.bytecode_table.push(BytecodeEntry::new(code.as_ref()));
+        let bytecode_index = self.bytecode_table.len();
+
+        self.static_init = bytecode_index as u64 as BytecodeIndex;
+        Ok(())
+    }
+
     pub fn get_vtables(&self, class_name: &[String]) -> Vec<(
         VTable,
         Vec<String>,

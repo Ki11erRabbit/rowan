@@ -283,7 +283,57 @@ impl JITCompiler {
         Ok(())
     }
 
+    pub fn compile_bytecode(
+        &mut self,
+        code: &Vec<Bytecode>,
+        module: &mut JITModule,
+        id: FuncId,
+    ) -> Result<*const (), String> {
+        self.context.func.signature.params.push(AbiParam::new(types::I64));
+
+        let mut function_translator = FunctionTranslator::new(
+            &[],
+            runtime::class::TypeTag::Void,
+            &mut self.context,
+            &mut self.builder_context,
+        );
+
+        //println!("[JIT] Translating function");
+        function_translator.translate(code, module)?;
+        function_translator.builder.seal_all_blocks();
+        function_translator.builder.finalize();
+
+        module
+            .define_function(id, &mut self.context)
+            .map_err(|e| {
+                match e {
+                    ModuleError::Compilation(e) => {
+                        match e {
+                            CodegenError::Verifier(es) => {
+                                es.0.iter().map(|e| format!("{}", e)).collect::<Vec<String>>().join("\n")
+                            }
+                            e => {
+                                format!("{}", e)
+                            }
+                        }
+                    }
+                    e => format!("{}", e)
+                }
+            })?;
+
+
+
+        module.clear_context(&mut self.context);
+
+        module.finalize_definitions().unwrap();
+
+        let code = module.get_finalized_function(id);
+
+        Ok(code as *const ())
+    }
+
 }
+
 
 
 pub struct FunctionTranslator<'a> {

@@ -28,7 +28,7 @@ mod runtime;
 pub use runtime::Runtime;
 use runtime::Tick;
 use crate::runtime::class::{ClassMember, ClassMemberData};
-use crate::runtime::stdlib::exception_fill_in_stack_trace;
+use crate::runtime::stdlib::{exception_fill_in_stack_trace, exception_print_stack_trace};
 
 pub type Symbol = usize;
 
@@ -266,6 +266,7 @@ impl Context {
         let Ok(mut vtable_tables) = VTABLES.write() else {
             panic!("Lock poisoned");
         };
+        let mut jit_compiler = Context::create_jit_compiler();
         let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
             panic!("Lock poisoned");
         };
@@ -276,6 +277,7 @@ impl Context {
         linker::link_class_files(
             classes,
             &mut jit_controller,
+            &mut jit_compiler,
             &mut symbol_table,
             pre_class_table,
             &mut string_table,
@@ -331,16 +333,39 @@ impl Context {
         let Ok(mut class_table) = CLASS_TABLE.write() else {
             panic!("Lock poisoned");
         };
-
+        let mut init_functions = Vec::new();
         for class in pre_class_table {
             match class {
                 TableEntry::Hole => {
                     panic!("missing class");
                 }
                 TableEntry::Entry(class) => {
+                    init_functions.push(class.init_function);
                     class_table.insert_class(class);
                 }
 
+            }
+        }
+        drop(class_table);
+        for function in init_functions {
+            let mut context = Context::new();
+            function(&mut context);
+            if *context.current_exception.borrow() != 0 {
+                println!("Failed to initialize class static members");
+                let exception = context.get_exception();
+                let exception = context.get_object(exception).unwrap();
+                let exception = unsafe { exception.as_ref().unwrap() };
+                let base_exception_ref = exception.parent_objects[0];
+                let exception = context.get_object(base_exception_ref).unwrap();
+                let exception = unsafe { exception.as_ref().unwrap() };
+                let message = unsafe { exception.get::<Reference>(0) };
+                let message = context.get_object(message).unwrap();
+                let message = unsafe { message.as_ref().unwrap() };
+                let message_slice = unsafe { std::slice::from_raw_parts(message.get::<*const u8>(16), message.get(0)) };
+                let message_str = std::str::from_utf8(message_slice).unwrap();
+                println!("{message_str}");
+                exception_print_stack_trace(&mut context, base_exception_ref);
+                std::process::exit(1);
             }
         }
     }

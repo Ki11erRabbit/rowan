@@ -4,7 +4,9 @@ use std::sync::{Arc, RwLock};
 use rowan_shared::classfile::{self, ClassFile, VTableEntry};
 use rowan_shared::TypeTag;
 use crate::runtime::class::{ClassMember, ClassMemberData};
-use super::{class::{self, Class, MemberInfo}, jit::JITController, stdlib::{VMClass, VMMember, VMMethod, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Symbol, VTableIndex};
+use crate::runtime::jit::JITCompiler;
+use crate::runtime::tables::class_table::ClassTable;
+use super::{class::{self, Class, MemberInfo}, jit::JITController, stdlib::{VMClass, VMMember, VMMethod, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Context, Symbol, VTableIndex};
 
 #[derive(Debug)]
 pub enum TableEntry<T> {
@@ -25,6 +27,7 @@ pub enum MethodLocation {
 pub fn link_class_files(
     classes: Vec<ClassFile>,
     jit_controller: &mut JITController,
+    jit_compiler: &mut JITCompiler,
     symbol_table: &mut SymbolTable,
     class_table: &mut Vec<TableEntry<Class>>,
     string_table: &mut StringTable,
@@ -41,7 +44,7 @@ pub fn link_class_files(
     let mut main_method_symbol = None;
 
     for class in classes.iter() {
-        let ClassFile { name, parents, vtables, static_methods, .. } = class;
+        let ClassFile { name, parents, vtables, .. } = class;
         let name_str = class.index_string_table(*name);
         let class_symbol = if let Some(symbol) = class_map.get(name_str) {
             *symbol
@@ -161,9 +164,9 @@ pub fn link_class_files(
         }
     }
 
-    let mut class_parts: Vec<(Symbol, Symbol, Vec<Symbol>, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, MethodLocation)>, &ClassFile, Vec<(Symbol, Option<Symbol>)>, Vec<ClassMember>)> = Vec::new();
+    let mut class_parts: Vec<(&str, Symbol, Symbol, Vec<Symbol>, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, MethodLocation)>, &ClassFile, Vec<(Symbol, Option<Symbol>)>, Vec<ClassMember>, Vec<u8>)> = Vec::new();
     for class in classes.iter() {
-        let ClassFile { name, parents, members, static_methods, signature_table, vtables, static_members, .. } = &class;
+        let ClassFile { name, parents, members, static_methods, vtables, static_members, static_init, .. } = &class;
         let class_name_str = class.index_string_table(*name);
         
         let class_symbol = *class_map.get(class_name_str).unwrap();
@@ -297,13 +300,19 @@ pub fn link_class_files(
         }).collect::<Vec<_>>();
 
 
-        class_parts.push((class_symbol, class_name_symbol, parent_symbols, class_members, static_method_functions, class, vtables_to_link, static_members));
+        let static_init = if *static_init != 0 {
+            class.index_bytecode_table(*static_init).code.clone()
+        } else {
+            Vec::new()
+        };
+
+        class_parts.push((class_name_str, class_symbol, class_name_symbol, parent_symbols, class_members, static_method_functions, class, vtables_to_link, static_members, static_init));
     }
     let mut class_parts_to_try_again;
     loop {
         class_parts_to_try_again = Vec::new();
         'outer: for class_part in class_parts {
-            let (class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members) = class_part;
+            let (class_name_str, class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members, static_init) = class_part;
             let mut vtables_to_add = Vec::new();
             // Source class is one of the parents of the derived class
             // This is used to disambiguate
@@ -321,7 +330,7 @@ pub fn link_class_files(
                     for (_,_,_,value) in base_functions {
                         if value.read().expect("lock poisoned").is_blank() {
                             // We bail if any of base has not yet been linked
-                            class_parts_to_try_again.push((class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members));
+                            class_parts_to_try_again.push((class_name_str, class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members, static_init));
                             continue 'outer;
                         }
                     }
@@ -366,7 +375,7 @@ pub fn link_class_files(
 
                             let value = match bytecode {
                                 MethodLocation::Bytecode(bytecode) => {
-                                    let bytecode = link_bytecode(class, &bytecode, string_map, class_map, string_table, symbol_table);
+                                    let bytecode = link_bytecode(class, &bytecode, string_map, class_map, string_table, symbol_table, class_table);
                                     let value = FunctionValue::Bytecode(bytecode, func_id, cranelift_sig);
                                     value
                                 }
@@ -410,7 +419,7 @@ pub fn link_class_files(
                     for (_,_,_,value) in base_functions {
                         if value.read().expect("lock is poisoned").is_blank() {
                             // We bail if any of base has not yet been linked
-                            class_parts_to_try_again.push((class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members));
+                            class_parts_to_try_again.push((class_name_str, class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members, static_init));
                             continue 'outer;
                         }
                     }
@@ -433,7 +442,7 @@ pub fn link_class_files(
                                     let cranelift_sig = jit_controller.create_signature(&base_signature[1..], &base_signature[0]);
                                     let func_id = jit_controller.declare_function(name, &cranelift_sig).expect("Failed to declare function");
 
-                                    let bytecode = link_bytecode(class, &bytecode, string_map, class_map, string_table, symbol_table);
+                                    let bytecode = link_bytecode(class, &bytecode, string_map, class_map, string_table, symbol_table, class_table);
                                     let value = FunctionValue::Bytecode(bytecode, func_id, cranelift_sig);
                                     Arc::new(RwLock::new(value))
                                 }
@@ -480,7 +489,7 @@ pub fn link_class_files(
             match add_parent_vtables(&mut class_vtable_mapper, &parents, class_table, symbol_table, &mut HashSet::new()) {
                 Err(_) => {
                     // We bail if any of base has not yet been linked
-                    class_parts_to_try_again.push((class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members));
+                    class_parts_to_try_again.push((class_name_str, class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members, static_init));
                     continue 'outer;
                 }
                 _ => {},
@@ -509,7 +518,7 @@ pub fn link_class_files(
                         MethodLocation::Blank => panic!("we should be bytecode"),
                         MethodLocation::Native(_) => panic!("we should be bytecode"),
                         MethodLocation::Bytecode(code) => {
-                            let bytecode = link_bytecode(class, &code, string_map, class_map, string_table, symbol_table);
+                            let bytecode = link_bytecode(class, &code, string_map, class_map, string_table, symbol_table, class_table);
                             let value = FunctionValue::Bytecode(bytecode, func_id, cranelift_sig);
                             Arc::new(RwLock::new(value))
                         }
@@ -522,15 +531,28 @@ pub fn link_class_files(
             let vtable = VTable::new(functions, static_method_mapper);
             let vtable_index = vtables_table.add_vtable(vtable);
 
+            let static_init = if !static_init.is_empty() {
+                let bytecode = link_bytecode(&class, &static_init, string_map, class_map, string_table, symbol_table, class_table);
+
+                let cranelift_sig = jit_controller.create_signature(&[], &TypeTag::Void);
+                let func_id = jit_controller.declare_function(format!("{class_name_str}::static-init").as_str(), &cranelift_sig).expect("Failed to declare function");
+                let static_init = jit_compiler.compile_bytecode(&bytecode, &mut jit_controller.module, func_id).unwrap();
+                let static_init = unsafe { std::mem::transmute::<_, fn(&mut Context)>(static_init) };
+
+                static_init
+            } else {
+                |_: &mut Context| {}
+            };
+
+
             // Create new class
-            let class = Class::new(class_name_symbol, parents, class_vtable_mapper, members, vtable_index, static_members);
+            let class = Class::new(class_name_symbol, parents, class_vtable_mapper, members, vtable_index, static_members, static_init);
 
             let SymbolEntry::ClassRef(class_index) = &symbol_table[class_symbol] else {
                 unreachable!("Class symbol should have been a symbol to a class");
             };
 
             class_table[*class_index] = TableEntry::Entry(class);
-            
         }
         if class_parts_to_try_again.len() == 0 {
             break;
@@ -571,6 +593,7 @@ fn link_bytecode(
     class_map: &mut HashMap<String, Symbol>,
     string_table: &mut StringTable,
     symbol_table: &mut SymbolTable,
+    class_table: &mut Vec<TableEntry<Class>>,
 ) -> Vec<rowan_shared::bytecode::linked::Bytecode> {
     let mut output = Vec::new();
     let compiled_code: Vec<rowan_shared::bytecode::compiled::Bytecode> =
@@ -800,7 +823,6 @@ fn link_bytecode(
             }
             compiled::Bytecode::InvokeVirt(class_index, source_class, method_index) => {
                 let class_str = class_file.index_string_table(class_index);
-                let method_str = class_file.index_string_table(method_index);
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let source_class = if source_class != 0 {
@@ -892,11 +914,18 @@ fn link_bytecode(
             }
             compiled::Bytecode::GetStaticMember(class_index, member_index, type_tag) => {
                 let class_str = class_file.index_string_table(class_index);
-                let class_symbol = if let Some(index) = string_map.get(class_str) {
-                    *index
+                let class_symbol = if let Some(symbol) = class_map.get(class_str) {
+                    *symbol
                 } else {
-                    let index = string_table.add_string(class_str);
-                    let symbol = symbol_table.add_string(index);
+                    let string_table_index = string_table.add_string(class_str);
+                    let symbol = symbol_table.add_string(string_table_index);
+                    string_map.insert(String::from(class_str), symbol);
+
+                    let class_table_index = class_table.len();
+                    class_table.push(TableEntry::Hole);
+                    let symbol = symbol_table.add_class(class_table_index);
+
+                    class_map.insert(String::from(class_str), symbol);
                     symbol
                 };
 
@@ -904,11 +933,18 @@ fn link_bytecode(
             }
             compiled::Bytecode::SetStaticMember(class_index, member_index, type_tag) => {
                 let class_str = class_file.index_string_table(class_index);
-                let class_symbol = if let Some(index) = string_map.get(class_str) {
-                    *index
+                let class_symbol = if let Some(symbol) = class_map.get(class_str) {
+                    *symbol
                 } else {
-                    let index = string_table.add_string(class_str);
-                    let symbol = symbol_table.add_string(index);
+                    let string_table_index = string_table.add_string(class_str);
+                    let symbol = symbol_table.add_string(string_table_index);
+                    string_map.insert(String::from(class_str), symbol);
+
+                    let class_table_index = class_table.len();
+                    class_table.push(TableEntry::Hole);
+                    let symbol = symbol_table.add_class(class_table_index);
+
+                    class_map.insert(String::from(class_str), symbol);
                     symbol
                 };
 
@@ -1332,7 +1368,7 @@ pub fn link_vm_classes(
             let vtable_index = vtables_table.add_vtable(vtable);
 
             // Create new class
-            let class = Class::new(class_symbol, parents, class_vtable_mapper, members, vtable_index, static_members);
+            let class = Class::new(class_symbol, parents, class_vtable_mapper, members, vtable_index, static_members, |_| {});
 
             let SymbolEntry::ClassRef(class_index) = &symbol_table[class_symbol] else {
                 unreachable!("Class symbol should have been a symbol to a class");

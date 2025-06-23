@@ -597,6 +597,7 @@ impl Compiler {
         });
 
         let mut static_init_bytecode = Vec::new();
+        static_init_bytecode.push(Bytecode::StartBlock(0));
 
         let class_name = name;
         static_members.into_iter().map(|member| {
@@ -625,6 +626,12 @@ impl Compiler {
             }).collect::<Result<Result<(), CompilerError>, CompilerError>>()??;
 
         static_init_bytecode.push(Bytecode::ReturnVoid);
+
+        let static_init_bytecode = static_init_bytecode.into_iter().flat_map(|code| {
+            code.into_binary()
+        }).collect::<Vec<_>>();
+
+        partial_class.attach_static_init_bytecode(static_init_bytecode).expect("attaching bytecode error");
 
         self.compile_methods(&class_name, &mut partial_class, methods)?;
 
@@ -1403,12 +1410,12 @@ impl Compiler {
                 let class_name = if self.active_imports.contains_key(class_name.segments[0].as_str()) {
                     let mut active_path = self.active_imports.get(class_name.segments[0].as_str()).unwrap().clone();
                     active_path.extend(
-                        class_name.segments[1..class_name.segments.len() - 1].iter()
+                        class_name.segments[1..class_name.segments.len()].iter()
                             .map(ToString::to_string)
                     );
                     active_path
                 } else {
-                    class_name.segments[..class_name.segments.len() - 1].iter()
+                    class_name.segments[..class_name.segments.len()].iter()
                         .map(ToString::to_string)
                         .collect::<Vec<_>>()
                 };

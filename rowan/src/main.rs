@@ -73,23 +73,6 @@ fn main() {
         let message_str = std::str::from_utf8(message_slice).unwrap();
         println!("{message_str}");
         exception_print_stack_trace(&mut context, base_exception_ref);
-
-
+        std::process::exit(1);
     }
-
-    /*let main_object_ref = Context::new_object(main_symbol);
-    let Some(main_object) = context.get_object(main_object_ref) else {
-        unreachable!("should have succeeded");
-    };
-    let main_object = unsafe { main_object.as_ref().unwrap() };
-
-    println!("[Main] {}", context.get_class_name(12));
-
-    let class = context.get_class(main_object.class);
-    println!("[Main] Class: {:?}", unsafe {class.read()});
-
-    // println!("{ready_symbol}");
-    let method = context.get_method(main_object.class, 1, None, ready_symbol);
-    let method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64)>(method) };
-    method(&mut context, main_object_ref);*/
 }

@@ -64,6 +64,7 @@ pub struct Class {
     pub members: Vec<MemberInfo>,
     pub static_methods: VTableIndex,
     pub class_members: Vec<ClassMember>,
+    pub init_function: fn(&mut Context),
 }
 
 impl Class {
@@ -74,6 +75,7 @@ impl Class {
         members: Vec<MemberInfo>,
         static_methods: VTableIndex,
         class_members: Vec<ClassMember>,
+        init_function: fn(&mut Context),
     ) -> Self {
         Class {
             name,
@@ -82,6 +84,7 @@ impl Class {
             members,
             static_methods,
             class_members,
+            init_function,
         }
     }
     
