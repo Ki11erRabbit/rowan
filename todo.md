@@ -20,8 +20,6 @@ In no particular order
 
 ## Text Editor
 In no particular order
-* [ ] Statics
-* [ ] Unsafe for non send/sync statics
 * [ ] marker traits
 * [ ] static method references
 
