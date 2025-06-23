@@ -21,6 +21,7 @@ impl Object {
 
         let (whole_layout, _) = layout.extend(data_layout).expect("Wrong layout or too big");
         //println!("size: {}", whole_layout.size());
+        //println!("padded size: {}", whole_layout.pad_to_align().size());
         let pointer = unsafe { alloc(whole_layout.pad_to_align()) };
 
         if pointer.is_null() {
@@ -29,11 +30,16 @@ impl Object {
         }        
         let pointer = pointer as *mut Object;
         unsafe {
+            for i in 0..data_size {
+                let pointer = pointer.add(1) as *mut u8;
+                pointer.add(i).write(0);
+            }
             std::ptr::write(pointer, Object {
                 class,
                 parent_objects: parents,
                 custom_drop: None,
             });
+
         }
         pointer
     }
@@ -69,11 +75,22 @@ impl Object {
     }
     
     pub unsafe fn set<T: Sized>(&mut self, offset: usize, value: T) {
-        let mut pointer = self as *mut Self as *mut u8;
+        let mut pointer = self as *mut Self;
+        pointer = pointer.add(1);
+        let pointer = pointer.cast::<u8>();
         unsafe {
-            pointer = pointer.add(size_of::<Object>());
-            pointer = pointer.add(offset);
-            std::ptr::write(pointer as *mut T, value);
+
+            std::ptr::write(pointer.add(offset) as *mut T, value);
+            /*let mut old_pointer = pointer;
+            println!("writing pointer: {:p}", pointer);
+            for _ in 0..(offset / 8 + 8) {
+                for i in 0..8 {
+                    print!("\t{:x}", *old_pointer.add(i));
+                    old_pointer = old_pointer.add(8);
+                }
+                println!("");
+            }*/
+
         }
     }
     
@@ -92,7 +109,7 @@ impl Object {
         if offset != 0 {
             return None;
         }
-        
+
         unsafe {
             Some(self.get(pointer_offset))
         }

@@ -28,6 +28,7 @@ mod runtime;
 pub use runtime::Runtime;
 use runtime::Tick;
 use crate::runtime::class::{ClassMember, ClassMemberData};
+use crate::runtime::stdlib::exception_fill_in_stack_trace;
 
 pub type Symbol = usize;
 
@@ -94,7 +95,7 @@ impl MakeObject<Symbol> for ContextHelper {
         };
 
         let SymbolEntry::ClassRef(class_ref) = symbol_table[class_symbol] else {
-            panic!("class wasn't a class");
+            panic!("class wasn't a class {class_symbol}");
         };
         let Ok(class_table) = CLASS_TABLE.read() else {
             panic!("Lock poisoned");
@@ -204,7 +205,7 @@ impl Context {
     }
 
     pub fn get_current_method(&mut self) -> Reference {
-        let string_ref = new_object(59); // String Class Symbol
+        let string_ref = Self::new_object("String");
 
         stdlib::string_from_str(self, string_ref, self.function_backtrace[self.function_backtrace.len() - 1].clone());
 
@@ -215,11 +216,13 @@ impl Context {
         if *context.current_exception.borrow() == 0 {
             return 0;
         }
-        context.pop_backtrace();
         let Some(exception) = context.get_object(*context.current_exception.borrow()) else {
             unreachable!("after checking exception wasn't zero, exception was zero");
         };
         let exception = unsafe { exception.as_ref().unwrap() };
+        let parent_exception = exception.parent_objects[0];
+        exception_fill_in_stack_trace(context, parent_exception);
+        context.pop_backtrace();
         let Some(last) = context.function_backtrace.last() else {
             return 0;
         };
@@ -228,7 +231,6 @@ impl Context {
                 if *symbol == exception.class {
                     return 0;
                 }
-                let parent_exception = exception.parent_objects[0];
                 let Some(parent_exception) = context.get_object(parent_exception) else {
                     unreachable!("parents shouldn't be null");
                 };
@@ -715,7 +717,7 @@ pub extern "C" fn get_static_member64(_context: &mut Context, class_symbol: u64,
         panic!("Lock poisoned");
     };
     let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol as Symbol] else {
-        panic!("class wasn't a class");
+        panic!("class wasn't a class {class_symbol}");
     };
     let Ok(class_table) = CLASS_TABLE.read() else {
         panic!("Lock poisoned");

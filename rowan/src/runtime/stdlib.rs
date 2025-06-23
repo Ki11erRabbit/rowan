@@ -399,6 +399,17 @@ extern "C" fn array_len(context: &mut Context, this: Reference) -> u64 {
     length
 }
 
+#[repr(C)]
+struct Exception {
+    pub class: Symbol,
+    pub parent_objects: Box<[Reference]>,
+    pub custom_drop: Option<fn(&mut Object)>,
+    pub message: Reference,
+    pub stack_length: u64,
+    pub stack_capacity: u64,
+    pub stack_pointer: *mut Reference,
+}
+
 pub fn generate_exception_class() -> VMClass {
     let vtable = VMVTable::new(
         "Exception",
@@ -437,10 +448,11 @@ extern "C" fn exception_init(context: &Context, this: Reference, message: Refere
     let Some(object) = context.get_object(this) else {
         return
     };
+    let object = object as *mut Exception;
     let object = unsafe { object.as_mut().unwrap() };
-    unsafe { object.set::<u64>(0, message) };
-    unsafe { object.set::<u64>(8, 0) };
-    unsafe { object.set::<u64>(16, 4) };
+    object.message = message;
+    object.stack_length = 0;
+    object.stack_capacity = 4;
     let layout = Layout::array::<u64>(4).expect("stack-trace layout is wrong or too big");
     let pointer = unsafe { alloc(layout) };
     if pointer.is_null() {
@@ -450,19 +462,20 @@ extern "C" fn exception_init(context: &Context, this: Reference, message: Refere
     unsafe {
         std::ptr::copy_nonoverlapping::<u64>([0,0,0,0].as_ptr(), pointer as *mut u64, 4)
     }
-    unsafe { object.set::<u64>(24, pointer as u64) };
+    object.stack_pointer = pointer as *mut Reference;
 }
 
-extern "C" fn exception_fill_in_stack_trace(context: &mut Context, this: Reference) {
+pub extern "C" fn exception_fill_in_stack_trace(context: &mut Context, this: Reference) {
     let Some(object) = context.get_object(this) else {
         return
     };
+    let object = object as *mut Exception;
     let object = unsafe { object.as_mut().unwrap() };
-    let length = unsafe { object.get::<u64>(8) };
-    let mut capacity = unsafe { object.get::<u64>(16) };
-    let pointer = unsafe { object.get::<*mut u8>(24) };
+    let length = object.stack_length;
+    let mut capacity = object.stack_capacity;
+    let pointer = object.stack_pointer;
 
-    let pointer = if length == capacity {
+    let (pointer, capacity) = if length == capacity {
         use std::alloc::*;
         let layout = Layout::array::<u64>(capacity as usize * 2).expect("stack-trace layout is wrong or too big");
         let new_pointer = unsafe { alloc(layout) };
@@ -471,16 +484,17 @@ extern "C" fn exception_fill_in_stack_trace(context: &mut Context, this: Referen
             handle_alloc_error(layout);
         }
         unsafe {
-            std::ptr::copy_nonoverlapping(pointer, new_pointer, capacity as usize);
+            std::ptr::copy_nonoverlapping(pointer, new_pointer as *mut Reference, capacity as usize);
         }
         let layout = Layout::array::<u64>(capacity as usize).expect("stack-trace layout is wrong or too big");
-        unsafe { dealloc(pointer, layout) };
+        unsafe { dealloc(pointer as *mut u8, layout) };
         capacity = capacity * 2;
-        new_pointer as *mut u64
+        (new_pointer as *mut u64, capacity)
     } else {
-        pointer as *mut u64
+        (pointer as *mut u64, capacity)
     };
-    unsafe { object.set::<u64>(24, pointer as u64) };
+    object.stack_capacity = capacity;
+    object.stack_pointer = pointer;
 
     let backtrace = Context::new_object("Backtrace");
 
@@ -491,16 +505,17 @@ extern "C" fn exception_fill_in_stack_trace(context: &mut Context, this: Referen
     unsafe {
         pointer.add(length as usize).write(backtrace);
     }
-    unsafe { object.set::<u64>(8, length + 1) };
+    object.stack_length = length + 1;
 }
 
-extern "C" fn exception_print_stack_trace(context: &mut Context, this: Reference) {
+pub extern "C" fn exception_print_stack_trace(context: &mut Context, this: Reference) {
     let Some(object) = context.get_object(this) else {
         return
     };
+    let object = object as *mut Exception;
     let object = unsafe { object.as_mut().unwrap() };
-    let length = unsafe { object.get::<u64>(8) };
-    let pointer = unsafe { object.get::<*mut u64>(24) };
+    let length = object.stack_length;
+    let pointer = object.stack_pointer;
 
     unsafe {
         let slice = slice_from_raw_parts(pointer, length as usize).as_ref().unwrap();
@@ -566,7 +581,7 @@ extern "C" fn backtrace_display(context: &mut Context, this: Reference) {
     let string_slice = slice_from_raw_parts(string_pointer as *const u8, string_length as usize);
     let str = unsafe { std::str::from_utf8_unchecked(string_slice.as_ref().unwrap()) };
 
-    eprintln!("{} {}:{}", str, line, column);
+    println!("{} {}:{}", str, line, column);
 }
 
 pub fn generate_index_out_of_bounds_class() -> VMClass {
@@ -735,9 +750,10 @@ pub fn string_from_str(context: &Context, this: Reference, string: String) {
     let object = unsafe { object.as_mut().unwrap() };
     unsafe { object.set::<u64>(0, string.len() as u64) };
     unsafe { object.set::<u64>(8, string.len() as u64) };
-    let string = string.into_boxed_str();
-    let pointer = Box::into_raw(string);
-    unsafe { object.set::<*mut str>(16, pointer) };
+    let mut string_box = string.into_boxed_str();
+    let string_pointer = string_box.as_mut_ptr();
+    let _ = Box::into_raw(string_box);
+    unsafe { object.set::<*mut u8>(16, string_pointer) };
 }
 
 pub fn string_drop(object: &mut Object) {

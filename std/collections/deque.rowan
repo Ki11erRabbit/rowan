@@ -88,7 +88,7 @@ class ArrayDeque[T] {
         if self.length == 0 {
             new-tail = self.tail + 1;
         }
-        let new-head: u64 = (self.head - 1) % data.length;
+        let new-head: u64 = (self.head - 1) % self.length;
         self.buffer[self.head] = value;
         self.head = new-head;
         self.tail = new-tail;
@@ -113,7 +113,7 @@ class ArrayDeque[T] {
         if self.length == 0 {
             new-head = self.head + 1;
         }
-        let new-tail: u64 = (self.tail - 1) % data.length;
+        let new-tail: u64 = (self.tail - 1) % self.length;
         self.buffer[self.tail] = value;
         self.head = new-head;
         self.tail = new-tail;
