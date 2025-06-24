@@ -1,6 +1,6 @@
-use std::{collections::HashMap, sync::{LazyLock, /*RwLock*/}};
+use std::{collections::HashMap, sync::LazyLock};
 use std::cell::RefCell;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc,  RwLock};
 
 use class::Class;
 
@@ -13,9 +13,6 @@ use stdlib::VMClass;
 use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{FunctionValue, VTables}};
 use std::borrow::BorrowMut;
 use std::num::NonZeroU64;
-use std::sync::mpsc::{Receiver, Sender, TryRecvError};
-use crossbeam_deque::Steal;
-use crate::runtime::runtime::{AttachObject, Command};
 
 mod tables;
 pub mod class;
@@ -24,13 +21,10 @@ pub mod stdlib;
 pub mod linker;
 pub mod jit;
 mod runtime;
-mod rwlock;
 
 pub use runtime::Runtime;
-use runtime::Tick;
 use crate::runtime::class::{ClassMember, ClassMemberData};
 use crate::runtime::stdlib::{exception_fill_in_stack_trace, exception_print_stack_trace};
-use crate::runtime::rwlock::RwLock;
 
 pub type Symbol = usize;
 
@@ -179,6 +173,8 @@ pub struct Context {
     function_backtrace: Vec<String>,
     /// A map between function_backtraces and all currently registered exceptions
     registered_exceptions: HashMap<String, Vec<Symbol>>,
+    static_memo: HashMap<(Symbol, Symbol), *const ()>,
+    virtual_memo: HashMap<(Symbol, Symbol, Option<Symbol>, Symbol), *const ()>,
 }
 
 impl Context {
@@ -187,6 +183,8 @@ impl Context {
             current_exception: RefCell::new(0),
             function_backtrace: Vec::new(),
             registered_exceptions: HashMap::new(),
+            static_memo: HashMap::new(),
+            virtual_memo: HashMap::new(),
         }
     }
     
@@ -377,7 +375,6 @@ impl Context {
             panic!("Lock poisoned");
         };
         if reference == 0 {
-            drop(object_table);
             let exception = Context::new_object("NullPointerException");
             stdlib::null_pointer_init(self, exception);
             self.set_exception(exception);
@@ -403,15 +400,8 @@ impl Context {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
-        let Ok(class_table) = CLASS_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
         let Ok(string_table) = STRING_TABLE.read() else {
             panic!("Lock poisoned");
-        };
-
-        let SymbolEntry::ClassRef(object_class_index) = symbol_table[object_class_symbol] else {
-            panic!("class wasn't a class");
         };
 
         let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
@@ -420,19 +410,46 @@ impl Context {
 
         self.push_backtrace(string_table.get_string(method_name_index).to_string());
 
-        let class = &class_table[object_class_index];
-        let key = (class_symbol, source_class);
+        if let Some(method) = self.virtual_memo.get(&(object_class_symbol, class_symbol, source_class, method_name)) {
+            return *method;
+        }
 
-        let vtable_index = class.get_vtable(&key);
+
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let SymbolEntry::ClassRef(object_class_index) = symbol_table[object_class_symbol] else {
+            panic!("class wasn't a class");
+        };
+
+        let class = &class_table[object_class_index];
+        let vtable_index = if source_class.is_some() {
+            let key = (class_symbol, None);
+            if let Some(index) = class.get_vtable(&key) {
+                index
+            } else if let Some(index) = class.get_vtable(&(class_symbol, source_class)) {
+                index
+            } else {
+                panic!("unable to find vtable");
+            }
+        } else {
+            if let Some(index) = class.get_vtable(&(class_symbol, source_class)) {
+                index
+            } else {
+                panic!("unable to find vtable");
+            }
+        };
+
         let Ok(vtables_table) = VTABLES.read() else {
             panic!("Lock poisoned");
         };
 
         let vtable = &vtables_table[vtable_index];
-        let function = vtable.get_function(method_name);
+        let function = vtable.get_function(method_name).expect("unable to find function");
 
         let value = function.value.read().expect("Lock poisoned");
-        match &*value {
+        let value = match &*value {
             FunctionValue::Builtin(ptr) => *ptr,
             FunctionValue::Compiled(ptr) => *ptr,
             _ => {
@@ -450,7 +467,10 @@ impl Context {
                     _ => panic!("Function wasn't compiled")
                 }
             }
-        }
+        };
+
+        self.virtual_memo.insert((object_class_symbol, object_class_symbol, source_class, method_name), value);
+        value
     }
 
     pub fn get_static_method(
@@ -461,15 +481,9 @@ impl Context {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             unreachable!("Lock poisoned");
         };
-        let Ok(class_table) = CLASS_TABLE.read() else {
-            unreachable!("Lock poisoned");
-        };
+
         let Ok(string_table) = STRING_TABLE.read() else {
             unreachable!("Lock poisoned");
-        };
-
-        let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol] else {
-            panic!("class wasn't a class");
         };
 
         let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
@@ -478,21 +492,36 @@ impl Context {
 
         self.push_backtrace(string_table.get_string(method_name_index).to_string());
 
+        if let Some(method) = self.static_memo.get(&(class_symbol, method_name)) {
+            return *method;
+        }
+
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            unreachable!("Lock poisoned");
+        };
+
+        let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol] else {
+            panic!("class wasn't a class");
+        };
+
+
         let class = &class_table[class_index];
 
         let vtable_index = class.static_methods;
         let Ok(vtables_table) = VTABLES.read() else {
             unreachable!("Lock poisoned");
         };
+        drop(class_table);
 
         let vtable = &vtables_table[vtable_index];
-        let function = vtable.get_function(method_name);
+        let function = vtable.get_function(method_name).expect("unable to get function");
 
         let value = function.value.read().expect("Lock poisoned");
-        match &*value {
+        let value = match &*value {
             FunctionValue::Builtin(ptr) => *ptr,
             FunctionValue::Compiled(ptr) => *ptr,
             _ => {
+                drop(value);
                 let mut compiler = Context::create_jit_compiler();
                 let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
                     unreachable!("Lock poisoned");
@@ -503,14 +532,16 @@ impl Context {
                     Err(e) => panic!("Compilation error:\n{}", e)
                 }
 
-                //let value = function.value.read().expect("Lock poisoned");
+                let value = function.value.read().expect("Lock poisoned");
                 match &*value {
                     FunctionValue::Compiled(ptr) => *ptr,
                     _ => panic!("Function wasn't compiled")
                 }
             }
-        }
+        };
 
+        self.static_memo.insert((class_symbol, method_name), value);
+        value
     }
 
     pub fn create_jit_compiler() -> JITCompiler {
@@ -535,13 +566,13 @@ impl Context {
         };
 
         let class = &class_table[object_class_index];
-        let vtable_index = class.get_vtable(&(class_symbol, None));
+        let vtable_index = class.get_vtable(&(class_symbol, None)).unwrap();
         let Ok(vtables_table) = VTABLES.read() else {
             panic!("Lock poisoned");
         };
 
         let vtable = &vtables_table[vtable_index];
-        let function = vtable.get_function(method_name);
+        let function = vtable.get_function(method_name).unwrap();
         function.signature.clone()
 
     }
@@ -568,7 +599,7 @@ impl Context {
         };
 
         let vtable = &vtables_table[vtable_index];
-        let function = vtable.get_function(method_name);
+        let function = vtable.get_function(method_name).unwrap();
         function.signature.clone()
     }
 
@@ -581,9 +612,6 @@ impl Context {
 
     pub fn get_class_symbol(class_name: &str) -> Symbol {
         let Ok(mut class_map) = CLASS_MAPPER.read() else {
-            panic!("Lock poisoned");
-        };
-        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
         class_map[class_name]

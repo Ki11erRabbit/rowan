@@ -1,13 +1,11 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, /*RwLock*/};
+use std::sync::{Arc, RwLock};
 use cranelift::prelude::Signature;
 use rowan_shared::classfile::{self, ClassFile, VTableEntry};
 use rowan_shared::TypeTag;
 use crate::runtime::class::{ClassMember, ClassMemberData};
 use crate::runtime::jit::JITCompiler;
-use crate::runtime::tables::class_table::ClassTable;
 use super::{class::{self, Class, MemberInfo}, jit::JITController, stdlib::{VMClass, VMMember, VMMethod, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Context, Symbol, VTableIndex};
-use crate::runtime::rwlock::RwLock;
 
 #[derive(Debug)]
 pub enum TableEntry<T> {

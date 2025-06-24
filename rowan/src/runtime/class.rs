@@ -93,8 +93,8 @@ impl Class {
         out
     }
 
-    pub fn get_vtable(&self, sym: &(Symbol, Option<Symbol>)) -> VTableIndex {
-        *self.vtables.get(sym).unwrap()
+    pub fn get_vtable(&self, sym: &(Symbol, Option<Symbol>)) -> Option<VTableIndex> {
+        self.vtables.get(sym).map(|index| *index)
     }
 
     pub fn get_member(&self, index: usize) -> Option<&ClassMember> {

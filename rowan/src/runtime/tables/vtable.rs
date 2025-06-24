@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::{Arc, };//RwLock};
+use std::sync::{Arc, RwLock};
 
 use cranelift::prelude::Signature;
 use cranelift_module::FuncId;
 use rowan_shared::bytecode::linked::Bytecode;
 
 use crate::runtime::{class::TypeTag, Index, Symbol, VTableIndex};
-use crate::runtime::rwlock::RwLock;
 
 
 
@@ -24,11 +23,20 @@ impl VTable {
         }
     }
 
-    pub fn get_function(&self, symbol: Symbol) -> &Function {
+    pub fn get_function(&self, symbol: Symbol) -> Option<&Function> {
         //println!("[VTable] Looking for symbol: {:?}", symbol);
         //println!("[VTable] Mapper: {:?}", self.symbol_mapper);
-        let index = self.symbol_mapper.get(&symbol).unwrap();
-        &self.table[*index]
+        if self.table.len() < 10 {
+            for func in self.table.iter() {
+                if func.name == symbol {
+                    return Some(func);
+                }
+            }
+            None
+        } else {
+            let index = self.symbol_mapper.get(&symbol).unwrap();
+            Some(&self.table[*index])
+        }
     }
     pub fn get_function_mut(&mut self, symbol: Symbol) -> &mut Function {
         let index = self.symbol_mapper.get(&symbol).unwrap();
