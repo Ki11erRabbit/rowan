@@ -9,7 +9,7 @@ use jit::{JITCompiler, JITController};
 use linker::TableEntry;
 use object::Object;
 use rowan_shared::classfile::ClassFile;
-use stdlib::VMClass;
+use core::VMClass;
 use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{FunctionValue, VTables}};
 use std::borrow::BorrowMut;
 use std::num::NonZeroU64;
@@ -17,14 +17,14 @@ use std::num::NonZeroU64;
 mod tables;
 pub mod class;
 pub mod object;
-pub mod stdlib;
+pub mod core;
 pub mod linker;
 pub mod jit;
 mod runtime;
 
 pub use runtime::Runtime;
 use crate::runtime::class::{ClassMember, ClassMemberData};
-use crate::runtime::stdlib::{exception_fill_in_stack_trace, exception_print_stack_trace};
+use crate::runtime::core::{exception_fill_in_stack_trace, exception_print_stack_trace};
 
 pub type Symbol = usize;
 
@@ -207,7 +207,7 @@ impl Context {
     pub fn get_current_method(&mut self) -> Reference {
         let string_ref = Self::new_object("String");
 
-        stdlib::string_from_str(self, string_ref, self.function_backtrace[self.function_backtrace.len() - 1].clone());
+        core::string_from_str(self, string_ref, self.function_backtrace[self.function_backtrace.len() - 1].clone());
 
         string_ref
     }
@@ -376,7 +376,7 @@ impl Context {
         };
         if reference == 0 {
             let exception = Context::new_object("NullPointerException");
-            stdlib::null_pointer_init(self, exception);
+            core::null_pointer_init(self, exception);
             self.set_exception(exception);
             return None;
         }

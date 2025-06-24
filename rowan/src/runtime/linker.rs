@@ -5,7 +5,7 @@ use rowan_shared::classfile::{self, ClassFile, VTableEntry};
 use rowan_shared::TypeTag;
 use crate::runtime::class::{ClassMember, ClassMemberData};
 use crate::runtime::jit::JITCompiler;
-use super::{class::{self, Class, MemberInfo}, jit::JITController, stdlib::{VMClass, VMMember, VMMethod, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Context, Symbol, VTableIndex};
+use super::{class::{self, Class, MemberInfo}, jit::JITController, core::{VMClass, VMMember, VMMethod, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Context, Symbol, VTableIndex};
 
 #[derive(Debug)]
 pub enum TableEntry<T> {

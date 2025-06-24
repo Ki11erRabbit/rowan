@@ -255,8 +255,9 @@ macro_rules! array_create_init {
                 let Some(object) = context.get_object(this) else {
                     return
                 };
+                let object = object as *mut Array;
                 let object = unsafe { object.as_mut().unwrap() };
-                unsafe { object.set::<u64>(0, length) };
+                object.length = length;
                 let layout = Layout::array::<$ty>(length as usize).expect("Wrong layout or too big");
                 let pointer = unsafe { alloc(layout) };
                 if pointer.is_null() {
@@ -268,7 +269,7 @@ macro_rules! array_create_init {
                         std::ptr::write(pointer.add(i), 0);
                     }
                 }
-                unsafe { object.set::<u64>(8, pointer as u64) };
+                object.buffer = pointer as *mut u8;
 
                 object.custom_drop = Some([< array $variant _drop >]);
             }
@@ -283,9 +284,10 @@ macro_rules! array_create_get {
                 let Some(object) = context.get_object(this) else {
                     return 0 as $ty;
                 };
+                let object = object as *mut Array;
                 let object = unsafe { object.as_ref().expect("array get") };
-                let pointer = unsafe { object.get::<u64>(8) };
-                let length = unsafe { object.get::<u64>(0) };
+                let pointer = object.buffer;
+                let length = object.length;
                 let pointer = pointer as *mut $ty;
                 if index >= length {
                     let exception = Context::new_object("IndexOutOfBounds");
@@ -309,9 +311,10 @@ macro_rules! array_create_set {
                 let Some(object) = context.get_object(this) else {
                     return
                 };
+                let object = object as *mut Array;
                 let object = unsafe { object.as_mut().expect("array set") };
-                let pointer = unsafe { object.get::<u64>(8) };
-                let length = unsafe { object.get::<u64>(0) };
+                let pointer = object.buffer;
+                let length = object.length;
                 let pointer = pointer as *mut $ty;
                 if index >= length {
                     let exception = Context::new_object("IndexOutOfBounds");
@@ -340,8 +343,9 @@ macro_rules! array_create_drop {
         paste! {
             pub fn $fn_name(object: &mut Object) {
                 use std::alloc::*;
-                let length = unsafe { object.get::<u64>(0) };
-                let pointer = unsafe { object.get::<u64>(8) };
+                let object = unsafe { std::mem::transmute::<_, &mut Array>(object) };
+                let pointer = object.buffer;
+                let length = object.length;
                 let pointer = pointer as *mut u8;
                 unsafe {
                     let layout = Layout::array::<$ty>(length as usize).expect("Wrong layout or too big");
@@ -382,6 +386,15 @@ macro_rules! create_array_class {
     };
 }
 
+#[repr(C)]
+pub struct Array {
+    pub class: Symbol,
+    pub parent_objects: Box<[Reference]>,
+    pub custom_drop: Option<fn(&mut Object)>,
+    pub length: u64,
+    pub buffer: *mut u8,
+}
+
 create_array_class!(8, u8);
 create_array_class!(16, u16);
 create_array_class!(32, u32);
@@ -394,8 +407,9 @@ extern "C" fn array_len(context: &mut Context, this: Reference) -> u64 {
     let Some(object) = context.get_object(this) else {
         return 0
     };
+    let object = object as *mut Array;
     let object = unsafe { object.as_ref().unwrap() };
-    let length = unsafe { object.get::<u64>(0) };
+    let length = object.length;
     length
 }
 
@@ -526,6 +540,16 @@ pub extern "C" fn exception_print_stack_trace(context: &mut Context, this: Refer
     }
 }
 
+#[repr(C)]
+struct Backtrace {
+    pub class: Symbol,
+    pub parent_objects: Box<[Reference]>,
+    pub custom_drop: Option<fn(&mut Object)>,
+    pub function_name: Reference,
+    pub line_number: u64,
+    pub column_number: u64,
+}
+
 pub fn generate_backtrace_class() -> VMClass {
     let vtable = VMVTable::new(
         "Backtrace",
@@ -557,20 +581,22 @@ extern "C" fn backtrace_init(context: &mut Context, this: Reference, function_na
     let Some(object) = context.get_object(this) else {
         return
     };
+    let object = object as *mut Backtrace;
     let object = unsafe { object.as_mut().unwrap() };
-    unsafe { object.set::<u64>(0, function_name) };
-    unsafe { object.set::<u64>(8, line) };
-    unsafe { object.set::<u64>(16, column) };
+    object.function_name = function_name;
+    object.line_number = line;
+    object.column_number = column;
 }
 
 extern "C" fn backtrace_display(context: &mut Context, this: Reference) {
     let Some(object) = context.get_object(this) else {
         return
     };
+    let object = object as *mut Backtrace;
     let object = unsafe { object.as_ref().unwrap() };
-    let function_name = unsafe { object.get::<u64>(0) };
-    let line = unsafe { object.get::<u64>(8) };
-    let column = unsafe { object.get::<u64>(16) };
+    let function_name = object.function_name;
+    let line = object.line_number;
+    let column = object.column_number;
 
     let Some(string) = context.get_object(function_name) else {
         return

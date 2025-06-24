@@ -1,9 +1,9 @@
 use std::{collections::HashMap, io::Read};
 
 use rowan_shared::classfile::ClassFile;
-use runtime::{stdlib, Context};
+use runtime::{core, Context};
 use crate::runtime::{Reference, Runtime};
-use crate::runtime::stdlib::exception_print_stack_trace;
+use crate::runtime::core::exception_print_stack_trace;
 
 mod runtime;
 
@@ -23,20 +23,20 @@ fn main() {
     }).collect::<Vec<_>>();
 
     let vm_classes = vec![
-        stdlib::generate_object_class(),
-        stdlib::generate_array8_class(),
-        stdlib::generate_array16_class(),
-        stdlib::generate_array32_class(),
-        stdlib::generate_array64_class(),
-        stdlib::generate_arrayobject_class(),
-        stdlib::generate_arrayf32_class(),
-        stdlib::generate_arrayf64_class(),
-        stdlib::generate_printer_class(),
-        stdlib::generate_exception_class(),
-        stdlib::generate_backtrace_class(),
-        stdlib::generate_string_class(),
-        stdlib::generate_index_out_of_bounds_class(),
-        stdlib::generate_null_pointer_class(),
+        core::generate_object_class(),
+        core::generate_array8_class(),
+        core::generate_array16_class(),
+        core::generate_array32_class(),
+        core::generate_array64_class(),
+        core::generate_arrayobject_class(),
+        core::generate_arrayf32_class(),
+        core::generate_arrayf64_class(),
+        core::generate_printer_class(),
+        core::generate_exception_class(),
+        core::generate_backtrace_class(),
+        core::generate_string_class(),
+        core::generate_index_out_of_bounds_class(),
+        core::generate_null_pointer_class(),
     ];
 
     let mut string_map = HashMap::new();
