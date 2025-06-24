@@ -12,6 +12,7 @@ In no particular order
 * [ ] try/catch
 * [ ] Matching
 * [x] Module Paths
+* [ ] Module Paths for function names to prevent collisions
 * [x] Loading of stdlib
 * [ ] Native method interface
 * [ ] for loops

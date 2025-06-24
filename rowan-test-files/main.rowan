@@ -22,4 +22,8 @@ class Main {
         return left + right;
     }
 
+    fn from-array(arr: [u64]) {
+        let x: u64 = 0;
+    }
+
 }
