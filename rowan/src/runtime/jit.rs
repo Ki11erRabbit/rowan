@@ -10,6 +10,7 @@ use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
 use super::{tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue}}, Context, Symbol};
 use std::sync::Arc;
+use cranelift::codegen::ir::BlockArg;
 use crate::runtime;
 
 pub struct JITController {
@@ -1057,7 +1058,7 @@ impl FunctionTranslator<'_> {
                         TypeTag::F64 => types::F64,
                     };
 
-                    self.create_bail_block(module, Some(ty), &[value]);
+                    self.create_bail_block(module, Some(ty), &[BlockArg::Value(value)]);
 
                     self.push(value, ty);
                 }
@@ -1146,7 +1147,7 @@ impl FunctionTranslator<'_> {
                         TypeTag::F64 => types::F64,
                     };
 
-                    self.create_bail_block(module, Some(ty), &[value]);
+                    self.create_bail_block(module, Some(ty), &[BlockArg::Value(value)]);
 
                     self.push(value, ty);
                 }
@@ -1249,7 +1250,7 @@ impl FunctionTranslator<'_> {
                             method_name_value,
                         ]);
                     let method_value = self.builder.inst_results(method_instructions)[0];
-                    self.create_bail_block(module, Some(types::I64), &[method_value]);
+                    self.create_bail_block(module, Some(types::I64), &[BlockArg::Value(method_value)]);
 
                     let return_type = sig.returns.first().cloned();
                     let sig = self.builder.import_signature(sig);
@@ -1261,6 +1262,10 @@ impl FunctionTranslator<'_> {
                     if return_value.len() != 0 {
                         self.push(return_value[0], return_type.unwrap().value_type)
                     }
+                    let return_value = return_value.into_iter()
+                        .map(|x| x)
+                        .map(BlockArg::Value)
+                        .collect::<Vec<_>>();
 
                     self.create_bail_block(module, return_type.map(|x| x.value_type), &return_value);
                 }
@@ -1294,7 +1299,7 @@ impl FunctionTranslator<'_> {
                             method_name_value,
                         ]);
                     let method_value = self.builder.inst_results(method_instructions)[0];
-                    self.create_bail_block(module, Some(types::I64), &[method_value]);
+                    self.create_bail_block(module, Some(types::I64), &[BlockArg::Value(method_value)]);
 
                     let return_type = sig.returns.first().cloned();
                     let sig = self.builder.import_signature(sig);
@@ -1306,6 +1311,9 @@ impl FunctionTranslator<'_> {
                     if return_value.len() != 0 {
                         self.push(return_value[0], return_type.unwrap().value_type)
                     }
+                    let return_value = return_value.into_iter()
+                        .map(BlockArg::Value)
+                        .collect::<Vec<_>>();
 
                     self.create_bail_block(module, return_type.map(|x| x.value_type), &return_value);
                 }
@@ -1366,7 +1374,7 @@ impl FunctionTranslator<'_> {
                         TypeTag::F64 => types::F64,
                     };
 
-                    self.create_bail_block(module, Some(ty), &[value]);
+                    self.create_bail_block(module, Some(ty), &[BlockArg::Value(value)]);
 
                     self.push(value, ty);
                 }
@@ -1544,7 +1552,7 @@ impl FunctionTranslator<'_> {
         Ok(())
     }
 
-    fn create_bail_block(&mut self, module: &mut JITModule, return_type: Option<Type>, return_value: &[Value]) {
+    fn create_bail_block(&mut self, module: &mut JITModule, return_type: Option<Type>, return_value: &[BlockArg]) {
         let should_unwind_id = if let Some(id) = module.get_name("context_should_unwind") {
             match id {
                 FuncOrDataId::Func(id) => id,
@@ -1574,7 +1582,7 @@ impl FunctionTranslator<'_> {
         }
 
         self.builder.ins()
-            .brif(boolean, bail_block, &[], new_block, &return_value);
+            .brif(boolean, bail_block, &[], new_block, return_value);
 
         self.builder.switch_to_block(bail_block);
 

@@ -5,10 +5,10 @@ edition = "2021"
 
 [dependencies]
 rowan_shared = { workspace = true }
-cranelift = "0.118.0"
-cranelift-module = "0.118.0"
-cranelift-jit = { version = "0.118.0", features = ["selinux-fix"] }
-cranelift-native = "0.118.0"
+cranelift = "0.121.1"
+cranelift-module = "0.121.1"
+cranelift-jit = { version = "0.121.1", features = ["selinux-fix"] }
+cranelift-native = "0.121.1"
 crossbeam-deque = "0.8.6"
 quote = "1.0.40"
 paste = "1.0.15"
