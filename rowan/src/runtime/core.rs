@@ -601,9 +601,10 @@ extern "C" fn backtrace_display(context: &mut Context, this: Reference) {
     let Some(string) = context.get_object(function_name) else {
         return
     };
+    let string = string as *mut StringObject;
     let string = unsafe { string.as_ref().unwrap() };
-    let string_length = unsafe { string.get::<u64>(8) };
-    let string_pointer = unsafe { string.get::<*const u8>(16) };
+    let string_length = string.length;
+    let string_pointer = string.buffer;
     let string_slice = slice_from_raw_parts(string_pointer as *const u8, string_length as usize);
     let str = unsafe { std::str::from_utf8_unchecked(string_slice.as_ref().unwrap()) };
 
@@ -676,6 +677,16 @@ pub extern "C" fn null_pointer_init(context: &Context, this: Reference) {
     exception_init(context, base_exception, message);
 }
 
+#[repr(C)]
+struct StringObject {
+    pub class: Symbol,
+    pub parent_objects: Box<[Reference]>,
+    pub custom_drop: Option<fn(&mut Object)>,
+    pub length: u64,
+    pub capacity: u64,
+    pub buffer: *mut u8,
+}
+
 pub fn generate_string_class() -> VMClass {
     let vtable = VMVTable::new(
         "String",
@@ -722,9 +733,9 @@ extern "C" fn string_len(context: &mut Context, this: Reference) -> u64 {
     let Some(object) = context.get_object(this) else {
         return 0
     };
+    let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
-    let length = unsafe { object.get::<u64>(0) };
-    length
+    object.length
 }
 
 extern "C" fn string_load_str(context: &mut Context, this: Reference, string_ref: Reference) {
@@ -734,9 +745,10 @@ extern "C" fn string_load_str(context: &mut Context, this: Reference, string_ref
     let Some(object) = context.get_object(this) else {
         return
     };
+    let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
-    unsafe { object.set::<u64>(0, bytes.len() as u64) };
-    unsafe { object.set::<u64>(8, bytes.len() as u64) };
+    object.length = bytes.len() as u64;
+    object.capacity = bytes.len() as u64;
     let layout = Layout::array::<u8>(bytes.len()).expect("string layout is wrong or too big");
     let pointer = unsafe { alloc(layout) };
     if pointer.is_null() {
@@ -746,7 +758,7 @@ extern "C" fn string_load_str(context: &mut Context, this: Reference, string_ref
     unsafe {
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), pointer, bytes.len())
     }
-    unsafe { object.set::<u64>(16, pointer as u64) };
+    object.buffer = pointer;
 }
 
 extern "C" fn string_init(context: &mut Context, this: Reference) {
@@ -754,7 +766,10 @@ extern "C" fn string_init(context: &mut Context, this: Reference) {
     let Some(object) = context.get_object(this) else {
         return
     };
+    let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
+    object.length = 0;
+    object.capacity = 4;
     unsafe { object.set::<u64>(0, 0) };
     unsafe { object.set::<u64>(8, 4) };
     let layout = Layout::array::<u8>(4).expect("string layout is wrong or too big");
@@ -766,27 +781,27 @@ extern "C" fn string_init(context: &mut Context, this: Reference) {
     unsafe {
         std::ptr::copy_nonoverlapping(b"\0\0\0\0".as_ptr(), pointer, 4)
     }
-    unsafe { object.set::<u64>(16, pointer as u64) };
+    object.buffer = pointer;
 }
 
 pub fn string_from_str(context: &Context, this: Reference, string: String) {
     let Some(object) = context.get_object(this) else {
         return
     };
+    let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
-    unsafe { object.set::<u64>(0, string.len() as u64) };
-    unsafe { object.set::<u64>(8, string.len() as u64) };
+    object.length = string.len() as u64;
+    object.capacity = string.len() as u64;
     let mut string_box = string.into_boxed_str();
     let string_pointer = string_box.as_mut_ptr();
     let _ = Box::into_raw(string_box);
-    unsafe { object.set::<*mut u8>(16, string_pointer) };
+    object.buffer = string_pointer;
 }
 
-pub fn string_drop(object: &mut Object) {
+pub fn string_drop(object: &mut StringObject) {
     use std::alloc::*;
-    let capacity = unsafe { object.get::<u64>(8) };
-    let pointer = unsafe { object.get::<u64>(16) };
-    let pointer = pointer as *mut u8;
+    let capacity = object.capacity;
+    let pointer = object.buffer;
     unsafe {
         let layout = Layout::array::<u8>(capacity as usize).expect("Wrong layout or too big");
         dealloc(pointer, layout);
@@ -797,9 +812,10 @@ extern "C" fn string_is_char_boundary(context: &mut Context, this: Reference, in
     let Some(object) = context.get_object(this) else {
         return 0
     };
+    let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
-    let length = unsafe { object.get::<u64>(8) };
-    let pointer = unsafe { object.get::<*mut u8>(16) };
+    let length = object.length;
+    let pointer = object.buffer;
 
     if index > length {
         return 0;
@@ -824,9 +840,10 @@ extern "C" fn string_as_bytes(context: &mut Context, this: Reference) -> Referen
     let Some(object) = context.get_object(this) else {
         return 0
     };
+    let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
-    let length = unsafe { object.get::<u64>(8) };
-    let pointer = unsafe { object.get::<*mut u8>(16) };
+    let length = object.length;
+    let pointer = object.buffer;
 
     let byte_array = Context::new_object("Array8");
 
@@ -834,8 +851,9 @@ extern "C" fn string_as_bytes(context: &mut Context, this: Reference) -> Referen
     let Some(array) = context.get_object(byte_array) else {
         unreachable!("array just created is invalid")
     };
+    let array = array as *mut Array;
     let array = unsafe { array.as_ref().unwrap() };
-    let array_pointer = unsafe { array.get::<*mut u8>(8) };
+    let array_pointer = array.buffer;
 
     unsafe {
         for i in 0..length {
