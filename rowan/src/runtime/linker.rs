@@ -210,7 +210,7 @@ pub fn link_class_files(
                 symbol
             };
 
-            if name_str == "main" {
+            if name_str.ends_with("main") {
                 main_method_symbol = Some(name_symbol);
             }
 

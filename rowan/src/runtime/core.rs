@@ -104,18 +104,18 @@ impl VMSignal {
 
 pub fn generate_object_class() -> VMClass {
     let vtable = VMVTable::new(
-        "Object",
+        "core::Object",
         None,
         vec![
             VMMethod::new(
-                "downcast",
+                "core::Object::downcast",
                 object_downcast as *const (),
                 vec![TypeTag::Object, TypeTag::Object, TypeTag::U64]
                 ),
         ]
     );
 
-    VMClass::new("Object", Vec::new(), vec![vtable], Vec::new(), Vec::new(), Vec::new())
+    VMClass::new("core::Object", Vec::new(), vec![vtable], Vec::new(), Vec::new(), Vec::new())
 }
 
 
@@ -770,8 +770,6 @@ extern "C" fn string_init(context: &mut Context, this: Reference) {
     let object = unsafe { object.as_mut().unwrap() };
     object.length = 0;
     object.capacity = 4;
-    unsafe { object.set::<u64>(0, 0) };
-    unsafe { object.set::<u64>(8, 4) };
     let layout = Layout::array::<u8>(4).expect("string layout is wrong or too big");
     let pointer = unsafe { alloc(layout) };
     if pointer.is_null() {

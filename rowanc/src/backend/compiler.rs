@@ -534,6 +534,7 @@ impl Compiler {
         let mut partial_class = PartialClass::new();
         let path_name = name.join("::");
         partial_class.set_name(&path_name);
+        let class_name = name;
 
         let parent_vtables = parents.iter().map(|parent_name| {
             let path = self.add_path_if_needed(parent_name.name.clone().to_string());
@@ -564,6 +565,14 @@ impl Compiler {
             static_signatures
         ) = self.construct_vtable(&name, &methods)?;
 
+        let names = names.into_iter()
+            .map(|name| {
+                let mut class_name = class_name.clone();
+                class_name.push(name);
+                class_name.join("::")
+            })
+            .collect::<Vec<_>>();
+
         partial_class.add_signatures(static_signatures);
 
         partial_class.set_static_method_to_sig(static_method_map);
@@ -581,13 +590,19 @@ impl Compiler {
 
             let vtables = object_class.get_vtables(&[String::from("Object")]);
             let (vtable, names, signatures) = &vtables[0];
+            let names = names.iter()
+                .map(|n| format!("core::Object::{n}"))
+                .collect::<Vec<String>>();
 
-            partial_class.add_vtable(&vec![String::from("Object")], vtable.clone(), names, signatures);
-            partial_class.add_parent("Object");
+            partial_class.add_vtable(&vec![String::from("core::Object")], vtable.clone(), &names, signatures);
+            partial_class.add_parent("core::Object");
         }
 
         for vtables in parent_vtables {
             for (class_name, _source_class, vtable, names, signatures) in vtables {
+                let names = names.into_iter()
+                    .map(|n| self.add_path_if_needed(n).join("::"))
+                    .collect::<Vec<String>>();
                 partial_class.add_vtable(&class_name, vtable.clone(), &names, &signatures);
             }
         }
@@ -611,6 +626,9 @@ impl Compiler {
             .enumerate()
             .flat_map(|(i, (name, member, value))| {
                 let ty = member.type_tag.clone();
+                let mut member_name = class_name.clone();
+                member_name.push(name.to_string());
+                let name = member_name.join("::");
                 partial_class.add_static_member(member, name);
                 value.as_ref().map(|value| {
                     self.compile_expression(
@@ -694,10 +712,16 @@ impl Compiler {
             let signature_index = signatures.len() + static_signatures.len(); 
             
             if static_method {
-                static_method_to_signature.insert(name.to_string(), signature_index as SignatureIndex);
+                let mut class_name = class_name.clone();
+                class_name.push(name.to_string());
+                let name = class_name.join("::");
+                static_method_to_signature.insert(name, signature_index as SignatureIndex);
                 static_signatures.push(SignatureEntry::new(signature));
             } else {
-                names.push(name.to_string());
+                let mut class_name = class_name.clone();
+                class_name.push(name.to_string());
+                let name = class_name.join("::");
+                names.push(name);
                 entries.push(VTableEntry::default());
                 signatures.push(SignatureEntry::new(signature));
             }
@@ -769,6 +793,9 @@ impl Compiler {
             }).collect::<Vec<_>>();
 
             if is_static {
+                let mut class_name = partial_class.get_class_name();
+                class_name.push(name.to_string());
+                let name = class_name.join("::");
                 partial_class.add_static_method(name, bytecode);
             } else {
                 //println!("{}", name);
@@ -778,7 +805,11 @@ impl Compiler {
                     .collect::<Vec<String>>();
                 //println!("{}", method_class_name);
 
-                partial_class.attach_bytecode(&method_class_name, name, bytecode).expect("Handle partial class error");
+                let mut method_name = method_class_name.clone();
+                method_name.push(name.to_string());
+                let method_name = method_name.join("::");
+
+                partial_class.attach_bytecode(&method_class_name, method_name, bytecode).expect("Handle partial class error");
             }
 
             self.pop_scope();
@@ -1240,10 +1271,11 @@ impl Compiler {
                     }
                 };
 
-                let path = self.add_path_if_needed(method_class);
-
-                let method_name = partial_class.add_string(method_name);
+                let mut path = self.add_path_if_needed(method_class);
                 let method_class = partial_class.add_string(path.join("::"));
+                path.push(method_name.to_string());
+
+                let method_name = partial_class.add_string(path.join("::"));
                 
                 output.push(Bytecode::InvokeStatic(method_class, method_name));
             }
@@ -1829,6 +1861,7 @@ impl Compiler {
             let method_entry = partial_class.get_method_entry(name).expect("add proper handling of missing method");
 
             //println!("{}", partial_class.index_string_table(vtable.class_name));
+            let mut path = class_name.clone();
 
             let class_name = partial_class.index_string_table(vtable.class_name);
             let class_name = class_name.to_string();
@@ -1844,13 +1877,14 @@ impl Compiler {
 
             let method_name = partial_class.index_string_table(method_entry.name);
             let method_name = method_name.to_string();
-            let method_name = partial_class.add_string(method_name);
+            path.push(method_name);
+            let method_name = partial_class.add_string(path.join("::"));
 
             output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
         }
         else if let Some(class) = self.classes.get(&ty) {
             //println!("{:#?}", class);
-            let class_name = class.get_class_name();
+            let mut class_name_path = class.get_class_name();
             //println!("class name: {class_name}");
             let vtable = class.get_vtable(name).expect("add proper handling of missing vtable");
             let method_entry = class.get_method_entry(name).expect("add proper handling of missing method");
@@ -1868,7 +1902,8 @@ impl Compiler {
             };
 
             let method_name = class.index_string_table(method_entry.name);
-            let method_name = partial_class.add_string(method_name);
+            class_name_path.push(method_name.to_string());
+            let method_name = partial_class.add_string(class_name_path.join("::"));
 
 
             output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
