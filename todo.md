@@ -1,8 +1,9 @@
 # TODO
-Features that need to be implemented in base compiler before the text editor project
-or the self hosted compiler can be implemented.
+Features that need to be implemented in base compiler or runtime before the text editor project
+can be implemented.
 
-## Self Hosted Compiler
+
+## Text Editor
 In no particular order
 * [x] Generics
 * [ ] Generics for functions
@@ -18,14 +19,13 @@ In no particular order
 * [ ] for loops
 * [ ] incremental compilation
 * [ ] break, continue, labels on loops
-
-## Text Editor
-In no particular order
 * [ ] marker traits
 * [ ] static method references
+* [ ] Garbage Collection
+* [ ] Using Cranelift for Exception Handling
 
 
-## Other Features Not Required for Either
+## Other Features Not needed
 * [ ] partial method evaluation
 * [ ] Operator Overloading Traits
 * [ ] Higher Kinded Types
