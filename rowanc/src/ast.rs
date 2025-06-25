@@ -746,6 +746,9 @@ impl Expression<'_> {
                 annotation.clone().map(|t| Either::Left(t))
             }
             Expression::Parenthesized(expr, _) => expr.get_type(),
+            Expression::StaticCall { annotation, ..} => {
+                annotation.clone().map(|t| Either::Left(t))
+            }
             x => todo!("Expression::get_type {:?}", x),
         }
     }

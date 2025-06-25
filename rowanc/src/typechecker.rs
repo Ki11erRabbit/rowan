@@ -501,13 +501,20 @@ impl TypeChecker {
                 // TODO: check if if expression return values are the same
                 self.check_if_expr(return_type, expr)?;
             }
-            Expression::Return(None, _) => {
-                if !self.compare_types(return_type, &TypeCheckerType::Void) {
-                    todo!("report type mismatch returning void when non-void")
+            Expression::Return(value, _) => {
+                let result = value.as_mut().map(|mut value| {
+                    self.annotate_expr(&return_type.into(), value.as_mut())?;
+                    let ty = self.get_type(value.as_mut())?;
+                    if <&TypeCheckerType as Into<Type>>::into(return_type) != ty {
+                        todo!("report type mismatch in return value")
+                    } else {
+                        self.check_expr(return_type, value.as_mut())?;
+                        Ok(())
+                    }
+                });
+                if let Some(result) = result {
+                    _ = result?;
                 }
-            }
-            Expression::Return(Some(expr), _) => {
-                self.annotate_expr(&return_type.into(), expr.as_mut())?;
             }
             Expression::BinaryOperation { operator: BinaryOperator::And, left, right, .. } => {
                 let lhs = self.get_type(left)?;
@@ -581,38 +588,6 @@ impl TypeChecker {
                 match rhs {
                     Type::U64 => {}
                     _ => todo!("add support for non-array objects with indexing anything other than u64")
-                }
-            }
-            Expression::BinaryOperation { operator, left, right, .. } => {
-                // TODO: add conversion when traits are added
-                // TODO: make it so that types get upgraded if they are compatable
-
-
-                let lhs = match self.get_type(left) {
-                    Ok(ty) => Some(ty),
-                    Err(TypeCheckerError::UnableToDeduceType {..}) => None,
-                };
-                let rhs = match self.get_type(right) {
-                    Ok(ty) => Some(ty),
-                    Err(TypeCheckerError::UnableToDeduceType {..}) => None,
-                };
-
-                let (lhs, rhs) = match (lhs, rhs) {
-                    (Some(lhs), Some(rhs)) => (lhs, rhs),
-                    (Some(lhs), None) => {
-                        self.annotate_expr(&lhs, right.as_mut())?;
-                        (lhs.clone(), lhs)
-                    }
-                    (None, Some(rhs)) => {
-                        self.annotate_expr(&rhs, left.as_mut())?;
-                        (rhs.clone(), rhs)
-                    }
-                    _ => todo!("report missing type information"),
-                };
-
-
-                if lhs != rhs {
-                    todo!("report type mismatch {:?} {:?}", lhs, rhs);
                 }
             }
             Expression::UnaryOperation { operator: UnaryOperator::Neg, operand, .. } => {
@@ -761,20 +736,6 @@ impl TypeChecker {
                     }
                 }
             }
-            Expression::Return(value, _) => {
-                let result = value.as_mut().map(|mut value| {
-                    self.annotate_expr(&return_type.into(), value.as_mut())?;
-                    let ty = self.get_type(value.as_mut())?;
-                    if <&TypeCheckerType as Into<Type>>::into(return_type) != ty {
-                        todo!("report type mismatch in return value")
-                    } else {
-                        Ok(())
-                    }
-                });
-                if let Some(result) = result {
-                    _ = result?;
-                }
-            }
             Expression::New(_, arr_size, _) => {
                 if let Some(arr_size) = arr_size {
                     let ty = self.get_type(arr_size.as_mut())?;
@@ -806,6 +767,8 @@ impl TypeChecker {
             | Expression::BinaryOperation { operator: BinaryOperator::Mul, left, right, .. }
             | Expression::BinaryOperation { operator: BinaryOperator::Div, left, right, .. }
             | Expression::BinaryOperation { operator: BinaryOperator::Mod, left, right, .. } => {
+                // TODO: add conversion when traits are added
+                // TODO: make it so that types get upgraded if they are compatable
                 self.check_expr(return_type, left)?;
                 let ty = self.get_type(left.as_mut())?;
                 self.annotate_expr(&ty, left.as_mut())?;

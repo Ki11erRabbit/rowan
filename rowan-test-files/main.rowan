@@ -15,11 +15,7 @@ class Main {
         if n < 2 {
             return n;
         }
-        let first: u64 = n - 1;
-        let second: u64 = n - 2;
-        let left: u64 = Main::fib(first);
-        let right: u64 = Main::fib(second);
-        return left + right;
+        return Main::fib(n - 1) + Main::fib(n - 2);
     }
 
     fn from-array(arr: [u64]) {
