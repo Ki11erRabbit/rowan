@@ -6,7 +6,7 @@ class Main {
 
     fn main(args: [String]) {
         let printer: Printer = new Printer();
-        let n: u64 = 40
+        let n: u64 = 2
         let result: u64 = Main::fib(n);
         printer.println-int(result);
     }

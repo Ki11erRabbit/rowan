@@ -48,8 +48,9 @@ fn main() {
 
 
     let (main_symbol, main_method_symbol) = Context::link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map);
-    
+
     Context::finish_linking_classes(pre_class_table);
+    println!("String Map: {string_map:#?}");
     let mut context = Context::new();
     
     //println!("main_symbol: {}, main_method_symbol: {}", main_symbol, main_method_symbol);

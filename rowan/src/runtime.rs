@@ -13,6 +13,7 @@ use core::VMClass;
 use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{FunctionValue, VTables}};
 use std::borrow::BorrowMut;
 use std::num::NonZeroU64;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 mod tables;
 pub mod class;
@@ -34,6 +35,7 @@ pub type Index = usize;
 
 pub type VTableIndex = usize;
 
+pub static DO_GARBAGE_COLLECTION: LazyLock<AtomicU32> = LazyLock::new(AtomicU32::default);
 
 static VTABLES: LazyLock<RwLock<VTables>> = LazyLock::new(|| {
     let table = VTables::new();
@@ -451,7 +453,7 @@ impl Context {
         let value = function.value.read().expect("Lock poisoned");
         let value = match &*value {
             FunctionValue::Builtin(ptr) => *ptr,
-            FunctionValue::Compiled(ptr) => *ptr,
+            FunctionValue::Compiled(ptr, _) => *ptr,
             _ => {
                 drop(value);
                 let mut compiler = Context::create_jit_compiler();
@@ -463,7 +465,7 @@ impl Context {
 
                 let value = function.value.read().expect("Lock poisoned");
                 match &*value {
-                    FunctionValue::Compiled(ptr) => *ptr,
+                    FunctionValue::Compiled(ptr,_ ) => *ptr,
                     _ => panic!("Function wasn't compiled")
                 }
             }
@@ -519,7 +521,7 @@ impl Context {
         let value = function.value.read().expect("Lock poisoned");
         let value = match &*value {
             FunctionValue::Builtin(ptr) => *ptr,
-            FunctionValue::Compiled(ptr) => *ptr,
+            FunctionValue::Compiled(ptr, _) => *ptr,
             _ => {
                 drop(value);
                 let mut compiler = Context::create_jit_compiler();
@@ -534,7 +536,7 @@ impl Context {
 
                 let value = function.value.read().expect("Lock poisoned");
                 match &*value {
-                    FunctionValue::Compiled(ptr) => *ptr,
+                    FunctionValue::Compiled(ptr, _) => *ptr,
                     _ => panic!("Function wasn't compiled")
                 }
             }
@@ -664,6 +666,31 @@ impl Context {
         string_table.get_string(string_index)
     }
 
+
+    pub fn check_and_do_garbage_collection(&mut self) {
+        /*if DO_GARBAGE_COLLECTION.load(Ordering::Acquire) == 0 {
+            //return
+        }*/
+        println!("Garbage collection");
+
+        let libunwind_context = libunwind::common::Context::get_context().unwrap();
+        let mut cursor = libunwind_context.cursor().unwrap();
+        _ = cursor.next();
+
+        while let Some(mut data) = cursor.next() {
+            let mut buffer = vec![0; 1024];
+
+            data.get_procedure_name(&mut buffer).unwrap();
+            let mut i = 0;
+            while i < buffer.len() && buffer[i] != 0 {
+                i += 1;
+            }
+            buffer.truncate(i + 1);
+            let string = unsafe { String::from_utf8_unchecked(buffer) };
+            println!("string: {}", string);
+        }
+
+    }
 }
 
 
@@ -694,6 +721,8 @@ pub extern "C" fn new_object(class_symbol: u64) -> u64 {
 }
 
 pub extern "C" fn get_static_function(context: &mut Context, class_symbol: u64, method_name: u64) -> u64 {
+    context.check_and_do_garbage_collection();
+
     let class_symbol = class_symbol as Symbol;
     let method_name = method_name as Symbol;
     let method_ptr = context.get_static_method(class_symbol, method_name);

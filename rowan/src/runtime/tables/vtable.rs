@@ -24,8 +24,8 @@ impl VTable {
     }
 
     pub fn get_function(&self, symbol: Symbol) -> Option<&Function> {
-        //println!("[VTable] Looking for symbol: {:?}", symbol);
-        //println!("[VTable] Mapper: {:?}", self.symbol_mapper);
+        println!("[VTable] Looking for symbol: {:?}", symbol);
+        println!("[VTable] Mapper: {:?}", self.symbol_mapper);
         if self.table.len() < 10 {
             for func in self.table.iter() {
                 if func.name == symbol {
@@ -88,7 +88,7 @@ impl Debug for Function {
 pub enum FunctionValue {
     Builtin(*const ()),
     Bytecode(Vec<Bytecode>, FuncId),
-    Compiled(*const ()),
+    Compiled(*const (), HashMap<u32, Vec<u32>>),
     Native(*const ()),
     Blank,
 }
@@ -111,7 +111,7 @@ impl Debug for FunctionValue {
                     .finish()
             }
             FunctionValue::Blank => f.debug_struct("Blank").finish(),
-            FunctionValue::Compiled(ptr) => {
+            FunctionValue::Compiled(ptr, _) => {
                 f.debug_struct("Compiled")
                 .field("ptr", ptr)
                 .finish()

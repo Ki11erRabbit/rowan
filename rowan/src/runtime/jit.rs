@@ -217,13 +217,23 @@ impl JITCompiler {
                 }
             })?;
 
+        let compiled_code = self.context.compiled_code().unwrap();
+        let stack_maps = compiled_code.buffer.user_stack_maps();
+        let mut object_locations = HashMap::new();
+        for (_, pc, map) in stack_maps {
+            let objects = map.entries()
+                .map(|(_, offset)| offset)
+                .collect::<Vec<_>>();
+            object_locations.insert(*pc, objects);
+        }
+
         module.clear_context(&mut self.context);
 
         module.finalize_definitions().unwrap();
 
         let code = module.get_finalized_function(*id);
 
-        let new_function_value = FunctionValue::Compiled(code as *const ());
+        let new_function_value = FunctionValue::Compiled(code as *const (), object_locations);
 
         drop(value);
         let Ok(mut value) = function.value.write() else {
@@ -1217,7 +1227,7 @@ impl FunctionTranslator<'_> {
 
                     let get_virt_func_func = module.declare_func_in_func(fn_id, self.builder.func);
 
-                    //println!("[translate] class_name from invoke virt: {}", class_name);
+                    println!("[translate] class_name from invoke virt: {}", class_name);
                     let sig = Context::get_method_signature(*class_name as Symbol, *method_name as Symbol);
                     
                     let class_name_value = self.builder
