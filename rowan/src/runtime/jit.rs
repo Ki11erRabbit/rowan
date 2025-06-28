@@ -1,16 +1,18 @@
 
 use std::collections::HashMap;
-
-use codegen::{ir::{self, FuncRef}, CodegenError};
+use std::ffi::CStr;
+use codegen::{ir::self, CodegenError};
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, FuncOrDataId, Linkage, Module, ModuleError, ModuleResult};
 use rowan_shared::bytecode::linked::Bytecode;
 
 use rowan_shared::TypeTag;
-use super::{tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue}}, Context, Symbol};
-use std::sync::Arc;
+use super::{tables::vtable::{Function, FunctionValue}, Context, Symbol};
 use cranelift::codegen::ir::BlockArg;
+use cranelift_codegen::gimli::{Encoding, Format, LittleEndian, Register, RunTimeEndian};
+use cranelift_codegen::gimli::write::{Address, CommonInformationEntry, Dwarf, EhFrame, EndianVec, FrameTable, Range, RangeList, Sections, Writer};
+use cranelift_codegen::isa::unwind::UnwindInfo;
 use crate::runtime;
 
 pub struct JITController {
@@ -183,6 +185,7 @@ impl JITCompiler {
         &mut self,
         function: &Function,
         module: &mut JITModule,
+        //name: &CStr,
     ) -> Result<(), String> {
 
         let Ok(mut value) = function.value.read() else {
@@ -217,7 +220,44 @@ impl JITCompiler {
                 }
             })?;
 
+        let mut flag_builder = settings::builder();
+        flag_builder.set("use_colocated_libcalls", "false").unwrap();
+        flag_builder.set("is_pic", "false").unwrap();
+        let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
+            panic!("host machine is not supported: {}", msg);
+        });
+        let isa = isa_builder
+            .finish(settings::Flags::new(flag_builder))
+            .unwrap();
+
         let compiled_code = self.context.compiled_code().unwrap();
+        let unwind_info = compiled_code.create_unwind_info(isa.as_ref()).unwrap();
+        match unwind_info {
+            Some(UnwindInfo::SystemV(info)) => {
+
+                let info = info.to_fde(Address::Constant(0));
+                println!("fde: {info:#?}");
+
+                let mut frame_table = FrameTable::default();
+
+                let cie_id = frame_table.add_cie(isa.create_systemv_cie().unwrap());
+
+                frame_table.add_fde(cie_id, info);
+
+
+                let mut eh_frame = EhFrame(EndianVec::new(RunTimeEndian::default()));
+
+                frame_table.write_eh_frame(&mut eh_frame).unwrap();
+                eh_frame.0.write_u32(0).unwrap();
+
+                let vec = eh_frame.0.into_vec();
+                let ptr = vec.into_boxed_slice();
+                let ptr = Box::leak(ptr);
+
+                libunwind::common::register_frame(ptr.as_ptr())
+            }
+            _ => todo!("unwind info for other systems"),
+        }
         let stack_maps = compiled_code.buffer.user_stack_maps();
         let mut object_locations = HashMap::new();
         for (_, pc, map) in stack_maps {

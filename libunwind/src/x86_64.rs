@@ -1,6 +1,7 @@
 
 
 
+#[derive(Debug, Copy, Clone)]
 pub enum Register {
     RAX,
     RDX,

@@ -1,6 +1,12 @@
 use std::cell::UnsafeCell;
 use libunwind_sys as unwind;
 
+pub fn register_frame(ptr: *const u8) {
+    unsafe {
+        unwind::__register_frame(ptr as *mut u8)
+    }
+}
+
 #[derive(Debug)]
 pub enum Error {
     // Success

@@ -675,19 +675,34 @@ impl Context {
 
         let libunwind_context = libunwind::common::Context::get_context().unwrap();
         let mut cursor = libunwind_context.cursor().unwrap();
-        _ = cursor.next();
+        _ = cursor.next(); // skip this function
+        _ = cursor.next(); // skip calling function
 
         while let Some(mut data) = cursor.next() {
             let mut buffer = vec![0; 1024];
 
-            data.get_procedure_name(&mut buffer).unwrap();
-            let mut i = 0;
-            while i < buffer.len() && buffer[i] != 0 {
-                i += 1;
+            match data.get_procedure_name(&mut buffer) {
+                Ok(_) => {
+                    let mut i = 0;
+                    while i < buffer.len() && buffer[i] != 0 {
+                        i += 1;
+                    }
+                    buffer.truncate(i + 1);
+                    let string = unsafe { String::from_utf8_unchecked(buffer) };
+                    let sp = data.get_register(libunwind::machine::Register::RSP);
+                    if let Ok(sp) = sp {
+                        println!("string: {}, RSP: {sp:x}", string);
+                    } else {
+                        println!("string: {}", string);
+                    }
+                },
+                Err(libunwind::common::Error::Unspecified) => {
+                    let sp = data.get_register(libunwind::machine::Register::RSP).unwrap_or(0);
+                    println!("RSP: {:x}", sp);
+                }
+                Err(e) => panic!("{:?}", e),
             }
-            buffer.truncate(i + 1);
-            let string = unsafe { String::from_utf8_unchecked(buffer) };
-            println!("string: {}", string);
+
         }
 
     }

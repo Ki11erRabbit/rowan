@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 libunwind-sys = { git = "https://github.com/Ki11erRabbit/libunwind-sys" }
+bitflags = "2.9.1"

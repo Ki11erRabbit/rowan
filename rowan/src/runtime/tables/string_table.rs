@@ -1,5 +1,4 @@
-
-
+use std::ffi::{c_char, CStr};
 
 pub struct StringTable {
     table: Vec<(usize, *const u8)>
@@ -15,17 +14,19 @@ impl StringTable {
     pub fn add_string(&mut self, string: &str) -> usize {
         use std::alloc::*;
         let out = self.table.len();
-        let layout = Layout::array::<u8>(string.len()).expect("string layout is wrong or too big");
+        let layout = Layout::array::<u8>(string.len() + 1) // Adding one to null terminate it
+            .expect("string layout is wrong or too big");
         let pointer = unsafe { alloc(layout) };
         if pointer.is_null() {
             eprintln!("Out of memory");
             handle_alloc_error(layout);
         }
         unsafe {
-            std::ptr::copy_nonoverlapping(string.as_ptr(), pointer, string.len())
+            std::ptr::copy_nonoverlapping(string.as_ptr(), pointer, string.len());
+            pointer.add(string.len()).write(0);
         }
 
-        self.table.push((string.len(), pointer as *const u8));
+        self.table.push((string.len(), pointer as *const u8)); // Not adding one to prevent null terminator from being in the Rust &str
         
         out
     }
@@ -46,6 +47,13 @@ impl StringTable {
             std::str::from_utf8_unchecked(slice)
         };
         s
+    }
+
+    pub fn get_cstr(&self, index: usize) -> &'static CStr {
+        let (_, ptr) = self.table[index];
+        unsafe {
+            CStr::from_ptr(ptr as *const c_char)
+        }
     }
 }
 
