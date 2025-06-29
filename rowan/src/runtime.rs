@@ -762,8 +762,26 @@ impl Context {
                 Err(e) => panic!("{:?}", e),
             }
         }
-
-        println!("{:x?}", info);
+        
+        println!("Starting Displaying Info");
+        println!("\t{:x?}", info);
+        info.iter()
+            .for_each(|i| {
+                println!("\t{:?}", i);
+                let Ok(string_table) = STRING_TABLE.read() else {
+                    panic!("Lock poisoned");
+                };
+                let name = i.0.get_method_name();
+                let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+                    panic!("Lock poisoned");
+                };
+                let SymbolEntry::StringRef(index) = symbol_table[name] else {
+                    panic!("symbol table wasn't a string");
+                };
+                println!("\t{}", &string_table[index]);
+            });
+        println!("\t{:x?}", info);
+        println!("Ending Displaying Info");
 
         let live_objects = self.dereference_stack_pointer(&info);
         self.sender.send(live_objects).unwrap();
@@ -798,6 +816,8 @@ impl Context {
 
 
         for (name, sp, ip) in backtrace_stack_pointer_instruction_pointer {
+            println!("\tderef: {:?}", name);
+            println!("\tsp: {:x}, RIP: {:x}", sp, ip);
             match name {
                 MethodName::StaticMethod {
                     class_symbol,
@@ -916,7 +936,7 @@ impl Context {
         let mut objects_to_delete = Vec::new();
 
         for (i, _) in object_table.iter().enumerate() {
-            if live_objects.contains(&(i as Reference)) {
+            if !live_objects.contains(&(i as Reference)) {
                 objects_to_delete.push(i as Reference);
             }
         }

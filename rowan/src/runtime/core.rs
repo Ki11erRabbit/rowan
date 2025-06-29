@@ -262,7 +262,6 @@ macro_rules! array_create_init {
             pub extern "C" fn $fn_name(context: &mut Context, this: Reference, length: u64) {
                 use std::alloc::*;
                 let Some(object) = context.get_object(this) else {
-                    Context::normal_return(context);
                     return
                 };
                 let object = object as *mut Array;
@@ -292,7 +291,6 @@ macro_rules! array_create_get {
         paste! {
             pub extern "C" fn $fn_name(context: &mut Context, this: Reference, index: u64) -> $ty {
                 let Some(object) = context.get_object(this) else {
-                    Context::normal_return(context);
                     return 0 as $ty;
                 };
                 let object = object as *mut Array;
@@ -308,7 +306,6 @@ macro_rules! array_create_get {
                 }
 
                 let index = index as usize;
-                Context::normal_return(context);
 
                 unsafe { *pointer.add(index) }
             }
@@ -336,7 +333,6 @@ macro_rules! array_create_set {
                     return;
                 }
                 unsafe { *pointer.add(index as usize) = value }
-                Context::normal_return(context);
             }
         }
     };
@@ -424,6 +420,7 @@ extern "C" fn array_len(context: &mut Context, this: Reference) -> u64 {
     let object = object as *mut Array;
     let object = unsafe { object.as_ref().unwrap() };
     let length = object.length;
+    Context::normal_return(context);
     length
 }
 

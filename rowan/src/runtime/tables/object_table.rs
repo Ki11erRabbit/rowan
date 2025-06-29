@@ -34,10 +34,9 @@ impl ObjectTable {
         let pointer = self[reference];
 
         if pointer.is_null() {// We have already handled this object
-            println!("Null pointer");
             return;
         }
-        println!("Freeing: {reference}");
+        //println!("Freeing: {reference}");
 
         let (class_symbol, parent_objects) = unsafe {
             pointer.as_ref().expect("Non-null pointer was null").get_class_and_parents()
