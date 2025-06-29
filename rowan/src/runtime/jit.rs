@@ -221,67 +221,30 @@ impl JITCompiler {
                 }
             })?;
 
-        let mut flag_builder = settings::builder();
-        flag_builder.set("use_colocated_libcalls", "false").unwrap();
-        flag_builder.set("is_pic", "false").unwrap();
-        let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
-            panic!("host machine is not supported: {}", msg);
-        });
-        let isa = isa_builder
-            .finish(settings::Flags::new(flag_builder))
-            .unwrap();
 
         let compiled_code = self.context.compiled_code().unwrap();
-        let unwind_info = compiled_code.create_unwind_info(isa.as_ref()).unwrap();
-        let (code, object_locations) = match unwind_info {
-            Some(UnwindInfo::SystemV(info)) => {
+        let stack_maps = compiled_code.buffer.user_stack_maps();
+        let mut object_locations = Vec::new();
+        for (location, _, map) in stack_maps {
+            let objects = map.entries()
+                .map(|(_, offset)| offset)
+                .collect::<Vec<_>>();
+            object_locations.push((*location, objects));
+        }
+        let locations = object_locations;
 
-                /*let info = info.to_fde(Address::Constant(0));
-                println!("fde: {info:#?}");
+        module.clear_context(&mut self.context);
 
-                let mut frame_table = FrameTable::default();
+        module.finalize_definitions().unwrap();
 
-                let cie_id = frame_table.add_cie(isa.create_systemv_cie().unwrap());
+        let code = module.get_finalized_function(*id) as *const ();
+        let mut object_locations = HashMap::new();
+        locations.into_iter()
+            .for_each(|(offset, objects)| {
+                object_locations.insert(offset as usize + code as usize, objects);
+            });
 
-                frame_table.add_fde(cie_id, info);
-
-
-                let mut eh_frame = EhFrame(EndianVec::new(RunTimeEndian::default()));
-
-                frame_table.write_eh_frame(&mut eh_frame).unwrap();
-                eh_frame.0.write_u32(0).unwrap();
-
-                let vec = eh_frame.0.into_vec();
-                let ptr = vec.into_boxed_slice();
-                libunwind::common::register_frame(ptr.as_ptr());*/
-
-                let stack_maps = compiled_code.buffer.user_stack_maps();
-                let mut object_locations = HashMap::new();
-                for (_, pc, map) in stack_maps {
-                    let objects = map.entries()
-                        .map(|(_, offset)| offset)
-                        .collect::<Vec<_>>();
-                    object_locations.insert(*pc, objects);
-                }
-
-                module.clear_context(&mut self.context);
-
-                module.finalize_definitions().unwrap();
-
-                let code = module.get_finalized_function(*id)as *const ();
-
-                /*let dyn_table = DynTableInfo::new(c"this::is::a::test::string", ptr);
-                let mut dyn_info = DynamicInfo::new_builder()
-                    .ip(code, unsafe { code.add(504)})
-                    .table_info(dyn_table)
-                    .build();*/
-                //dyn_info.register();
-
-                (code, object_locations)
-            }
-            _ => todo!("unwind info for other systems"),
-        };
-
+        println!("object locations: {:#?}", object_locations);
 
         let new_function_value = FunctionValue::Compiled(code, object_locations);
 
@@ -1008,6 +971,7 @@ impl FunctionTranslator<'_> {
                     let init_array = self.builder.ins().call(initialize_array, &[context_value, value, array_size]);
                     self.builder.inst_results(init_array);
 
+                    self.builder.declare_value_needs_stack_map(value);
                     self.push(value, ir::types::I64);
 
                 }
@@ -1063,12 +1027,16 @@ impl FunctionTranslator<'_> {
                 }
                 Bytecode::ArrayGet(type_tag) => {
                     // println!("array get");
+                    let mut is_object = false;
                     let fun_name = match type_tag {
                         TypeTag::U8 | TypeTag::I8 => "array8_get",
                         TypeTag::U16 | TypeTag::I16 => "array16_get",
                         TypeTag::U32 | TypeTag::I32 => "array32_get",
                         TypeTag::U64 | TypeTag::I64 => "array64_get",
-                        TypeTag::Object | TypeTag::Str | TypeTag::Void => "arrayobject_get",
+                        TypeTag::Object | TypeTag::Str | TypeTag::Void => {
+                            is_object = true;
+                            "arrayobject_get"
+                        },
                         TypeTag::F32 => "arrayf32_get",
                         TypeTag::F64 => "arrayf64_get",
                     };
@@ -1118,6 +1086,10 @@ impl FunctionTranslator<'_> {
                         TypeTag::F64 => types::F64,
                     };
 
+                    if is_object {
+                        self.builder.declare_value_needs_stack_map(value);
+                    }
+
                     self.create_bail_block(module, Some(ty), &[BlockArg::Value(value)]);
 
                     self.push(value, ty);
@@ -1144,15 +1116,20 @@ impl FunctionTranslator<'_> {
                     let object_symbol = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(symbol.to_le_bytes()));
                     let new_object = self.builder.ins().call(new_object_func, &[object_symbol]);
                     let value = self.builder.inst_results(new_object)[0];
+                    self.builder.declare_value_needs_stack_map(value);
                     self.push(value, ir::types::I64);
                 }
                 Bytecode::GetField(class_name, parent_symbol, offset, type_tag) => {
+                    let mut is_object = false;
                     let fun_name = match type_tag {
                         TypeTag::U8 | TypeTag::I8 => "member8_get",
                         TypeTag::U16 | TypeTag::I16 => "member16_get",
                         TypeTag::U32 | TypeTag::I32 => "member32_get",
                         TypeTag::U64 | TypeTag::I64 => "member64_get",
-                        TypeTag::Object | TypeTag::Str | TypeTag::Void => "memberobject_get",
+                        TypeTag::Object | TypeTag::Str | TypeTag::Void => {
+                            is_object = true;
+                            "memberobject_get"
+                        },
                         TypeTag::F32 => "memberf32_get",
                         TypeTag::F64 => "memberf64_get",
                     };
@@ -1206,6 +1183,10 @@ impl FunctionTranslator<'_> {
                         TypeTag::F32 => types::F32,
                         TypeTag::F64 => types::F64,
                     };
+
+                    if is_object {
+                        self.builder.declare_value_needs_stack_map(value);
+                    }
 
                     self.create_bail_block(module, Some(ty), &[BlockArg::Value(value)]);
 
@@ -1277,8 +1258,8 @@ impl FunctionTranslator<'_> {
 
                     let get_virt_func_func = module.declare_func_in_func(fn_id, self.builder.func);
 
-                    println!("[translate] class_name from invoke virt: {}", class_name);
-                    let sig = Context::get_method_signature(*class_name as Symbol, *method_name as Symbol);
+                    //println!("[translate] class_name from invoke virt: {}", class_name);
+                    let (sig, is_object) = Context::get_method_signature(*class_name as Symbol, *method_name as Symbol);
                     
                     let class_name_value = self.builder
                         .ins()
@@ -1319,6 +1300,10 @@ impl FunctionTranslator<'_> {
 
                     let return_value = self.builder.inst_results(result);
                     let return_value = return_value.to_vec();
+                    if is_object {
+                        return_value.iter()
+                            .for_each(|x| self.builder.declare_value_needs_stack_map(*x));
+                    }
                     if return_value.len() != 0 {
                         self.push(return_value[0], return_type.unwrap().value_type)
                     }
@@ -1340,7 +1325,7 @@ impl FunctionTranslator<'_> {
 
                     let get_static_func_func = module.declare_func_in_func(fn_id, self.builder.func);
 
-                    let sig = Context::get_static_method_signature(*class_name as Symbol, *method_name as Symbol);
+                    let (sig, is_object) = Context::get_static_method_signature(*class_name as Symbol, *method_name as Symbol);
 
                     let class_name_value = self.builder
                         .ins()
@@ -1368,6 +1353,10 @@ impl FunctionTranslator<'_> {
 
                     let return_value = self.builder.inst_results(result);
                     let return_value = return_value.to_vec();
+                    if is_object {
+                        return_value.iter()
+                            .for_each(|x| self.builder.declare_value_needs_stack_map(*x));
+                    }
                     if return_value.len() != 0 {
                         self.push(return_value[0], return_type.unwrap().value_type)
                     }
@@ -1378,12 +1367,16 @@ impl FunctionTranslator<'_> {
                     self.create_bail_block(module, return_type.map(|x| x.value_type), &return_value);
                 }
                 Bytecode::GetStaticMember(class_name, index, type_tag) => {
+                    let mut is_object = false;
                     let fun_name = match type_tag {
                         TypeTag::U8 | TypeTag::I8 => "static_member8_get",
                         TypeTag::U16 | TypeTag::I16 => "static_member16_get",
                         TypeTag::U32 | TypeTag::I32 => "static_member32_get",
                         TypeTag::U64 | TypeTag::I64 => "static_member64_get",
-                        TypeTag::Object | TypeTag::Str | TypeTag::Void => "static_memberobject_get",
+                        TypeTag::Object | TypeTag::Str | TypeTag::Void => {
+                            is_object = true;
+                            "static_memberobject_get"
+                        },
                         TypeTag::F32 => "static_memberf32_get",
                         TypeTag::F64 => "static_memberf64_get",
                     };
@@ -1433,6 +1426,10 @@ impl FunctionTranslator<'_> {
                         TypeTag::F32 => types::F32,
                         TypeTag::F64 => types::F64,
                     };
+
+                    if is_object {
+                        self.builder.declare_value_needs_stack_map(value);
+                    }
 
                     self.create_bail_block(module, Some(ty), &[BlockArg::Value(value)]);
 

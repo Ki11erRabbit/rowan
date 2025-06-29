@@ -555,7 +555,7 @@ impl Context {
         JITCompiler::new(context)
     }
 
-    pub fn get_method_signature(class_symbol: Symbol, method_name: Symbol) -> Signature {
+    pub fn get_method_signature(class_symbol: Symbol, method_name: Symbol) -> (Signature, bool) {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
@@ -575,14 +575,18 @@ impl Context {
 
         let vtable = &vtables_table[vtable_index];
         let function = vtable.get_function(method_name).unwrap();
-        function.signature.clone()
+        let is_object = match function.return_type {
+            crate::runtime::class::TypeTag::Object => true,
+            _ => false,
+        };
+        (function.signature.clone(), is_object)
 
     }
 
     pub fn get_static_method_signature(
         class_symbol: Symbol, 
         method_name: Symbol
-    ) -> Signature {
+    ) -> (Signature, bool) {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
@@ -602,7 +606,11 @@ impl Context {
 
         let vtable = &vtables_table[vtable_index];
         let function = vtable.get_function(method_name).unwrap();
-        function.signature.clone()
+        let is_object = match function.return_type {
+            crate::runtime::class::TypeTag::Object => true,
+            _ => false,
+        };
+        (function.signature.clone(), is_object)
     }
 
     pub fn new_object<N>(class_name: N) -> Reference
