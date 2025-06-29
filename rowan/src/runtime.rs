@@ -12,6 +12,7 @@ use rowan_shared::classfile::ClassFile;
 use core::VMClass;
 use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{FunctionValue, VTables}};
 use std::borrow::BorrowMut;
+use std::collections::HashSet;
 use std::num::NonZeroU64;
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -21,9 +22,7 @@ pub mod object;
 pub mod core;
 pub mod linker;
 pub mod jit;
-mod runtime;
 
-pub use runtime::Runtime;
 use crate::runtime::class::{ClassMember, ClassMemberData};
 use crate::runtime::core::{exception_fill_in_stack_trace, exception_print_stack_trace};
 
@@ -166,15 +165,38 @@ impl MakeObject<&str> for ContextHelper {
     }
 }
 
+#[derive(Copy, Clone)]
+pub enum MethodName {
+    StaticMethod {
+        class_symbol: Symbol,
+        method_name: Symbol,
+    },
+    VirtualMethod {
+        object_class_symbol: Symbol,
+        class_symbol: Symbol,
+        source_class: Option<Symbol>,
+        method_name: Symbol,
+    }
+}
+
+impl MethodName {
+    pub fn get_method_name(&self) -> Symbol {
+        match self {
+            MethodName::StaticMethod { method_name, .. } => *method_name,
+            MethodName::VirtualMethod { method_name, .. } => *method_name,
+        }
+    }
+}
+
 pub struct Context {
     /// The reference to the current exception
     /// If the reference is non-zero then we should unwind until we hit a registered exception
     pub current_exception: RefCell<Reference>,
     /// The backtrace of function names.
     /// This gets appended as functions get called, popped as functions return
-    function_backtrace: Vec<String>,
+    function_backtrace: Vec<MethodName>,
     /// A map between function_backtraces and all currently registered exceptions
-    registered_exceptions: HashMap<String, Vec<Symbol>>,
+    registered_exceptions: HashMap<Symbol, Vec<Symbol>>,
     static_memo: HashMap<(Symbol, Symbol), *const ()>,
     virtual_memo: HashMap<(Symbol, Symbol, Option<Symbol>, Symbol), *const ()>,
 }
@@ -198,18 +220,34 @@ impl Context {
         *self.current_exception.borrow()
     }
 
-    pub fn push_backtrace(&mut self, method_name: String) {
+    pub fn push_backtrace(&mut self, method_name: MethodName) {
         self.function_backtrace.push(method_name);
     }
 
-    pub fn pop_backtrace(&mut self) -> Option<String> {
+    pub fn pop_backtrace(&mut self) -> Option<MethodName> {
         self.function_backtrace.pop()
     }
 
     pub fn get_current_method(&mut self) -> Reference {
         let string_ref = Self::new_object("String");
 
-        core::string_from_str(self, string_ref, self.function_backtrace[self.function_backtrace.len() - 1].clone());
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            unreachable!("Lock poisoned");
+        };
+
+        let Ok(string_table) = STRING_TABLE.read() else {
+            unreachable!("Lock poisoned");
+        };
+
+        let method_name = self.function_backtrace[self.function_backtrace.len() - 1].get_method_name();
+
+        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
+            panic!("method wasn't a string");
+        };
+
+        let name = &string_table[method_name_index];
+
+        core::string_from_str(self, string_ref, name.to_string());
 
         string_ref
     }
@@ -228,7 +266,7 @@ impl Context {
         let Some(last) = context.function_backtrace.last() else {
             return 0;
         };
-        if let Some(symbols) = context.registered_exceptions.get(last) {
+        if let Some(symbols) = context.registered_exceptions.get(&last.get_method_name()) {
             for symbol in symbols {
                 if *symbol == exception.class {
                     return 0;
@@ -399,22 +437,20 @@ impl Context {
         source_class: Option<Symbol>,
         method_name: Symbol,
     ) -> *const () {
-        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-        let Ok(string_table) = STRING_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-
-        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
-            panic!("method wasn't a string");
-        };
-
-        self.push_backtrace(string_table.get_string(method_name_index).to_string());
+        self.push_backtrace(MethodName::VirtualMethod {
+            object_class_symbol,
+            class_symbol,
+            source_class,
+            method_name,
+        });
 
         if let Some(method) = self.virtual_memo.get(&(object_class_symbol, class_symbol, source_class, method_name)) {
             return *method;
         }
+
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
 
 
         let Ok(class_table) = CLASS_TABLE.read() else {
@@ -480,23 +516,18 @@ impl Context {
         class_symbol: Symbol,
         method_name: Symbol,
     ) -> *const () {
-        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
-            unreachable!("Lock poisoned");
-        };
-
-        let Ok(string_table) = STRING_TABLE.read() else {
-            unreachable!("Lock poisoned");
-        };
-
-        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
-            panic!("method wasn't a string");
-        };
-
-        self.push_backtrace(string_table.get_string(method_name_index).to_string());
+        self.push_backtrace(MethodName::StaticMethod {
+            class_symbol,
+            method_name,
+        });
 
         if let Some(method) = self.static_memo.get(&(class_symbol, method_name)) {
             return *method;
         }
+
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            unreachable!("Lock poisoned");
+        };
 
         let Ok(class_table) = CLASS_TABLE.read() else {
             unreachable!("Lock poisoned");
@@ -686,33 +717,133 @@ impl Context {
         _ = cursor.next(); // skip this function
         _ = cursor.next(); // skip calling function
 
-        while let Some(mut data) = cursor.next() {
-            let mut buffer = vec![0; 1024];
+        let iterator = cursor.zip(self.function_backtrace.iter().rev());
+        let mut info = Vec::new();
 
+        for (data, backtrace) in iterator {
+            let mut buffer = [0; 10];
             match data.get_procedure_name(&mut buffer) {
                 Ok(_) => {
-                    let mut i = 0;
-                    while i < buffer.len() && buffer[i] != 0 {
-                        i += 1;
-                    }
-                    buffer.truncate(i + 1);
-                    let string = unsafe { String::from_utf8_unchecked(buffer) };
+
                     let sp = data.get_register(libunwind::machine::Register::RSP);
+                    let ip = data.get_register(libunwind::machine::Register::RIP).unwrap_or(0);
                     if let Ok(sp) = sp {
-                        println!("string: {}, RSP: {sp:x}", string);
+                        println!("RSP: {sp:x}, RIP: {ip:x}");
                     } else {
-                        println!("string: {}", string);
+                        println!("RIP: {ip:x}");
                     }
+                    break
                 },
                 Err(libunwind::common::Error::Unspecified) => {
                     let sp = data.get_register(libunwind::machine::Register::RSP).unwrap_or(0);
-                    println!("RSP: {:x}", sp);
+                    let ip = data.get_register(libunwind::machine::Register::RIP).unwrap_or(0);
+                    println!("RSP: {:x}, RIP: {:x}", sp, ip);
+                    info.push((*backtrace, sp as usize, ip as usize))
                 }
                 Err(e) => panic!("{:?}", e),
             }
-
         }
 
+        let live_objects = self.dereference_stack_pointer(&info);
+        println!("live_objects: {:x?}", live_objects);
+    }
+
+    fn dereference_stack_pointer(&self, backtrace_stack_pointer_instruction_pointer: &[(MethodName, usize, usize)]) -> HashSet<Reference> {
+        let mut live_objects = HashSet::new();
+
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            unreachable!("Lock poisoned");
+        };
+
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            unreachable!("Lock poisoned");
+        };
+
+
+
+        let Ok(vtables_table) = VTABLES.read() else {
+            unreachable!("Lock poisoned");
+        };
+
+
+        for (name, sp, ip) in backtrace_stack_pointer_instruction_pointer {
+            match name {
+                MethodName::StaticMethod {
+                    class_symbol,
+                    method_name,
+                } => {
+                    let SymbolEntry::ClassRef(class_index) = symbol_table[*class_symbol] else {
+                        panic!("class wasn't a class");
+                    };
+                    let class = &class_table[class_index];
+                    let vtable_index = class.static_methods;
+                    let vtable = &vtables_table[vtable_index];
+                    let function = vtable.get_function(*method_name).expect("unable to get function");
+                    let value = function.value.read().unwrap();
+                    let FunctionValue::Compiled(_, map) = &*value else {
+                        unreachable!("we are trying to access the stack of a non-compiled function");
+                    };
+                    if let Some(offsets) = map.get(ip) {
+                        for offset in offsets {
+                            let pointer = (*sp + *offset as usize) as *mut Reference;
+                            unsafe {
+                                live_objects.insert(*pointer);
+                            }
+                        }
+                    }
+                }
+                MethodName::VirtualMethod {
+                    object_class_symbol,
+                    class_symbol,
+                    source_class,
+                    method_name
+                } => {
+                    let SymbolEntry::ClassRef(object_class_index) = symbol_table[*object_class_symbol] else {
+                        panic!("class wasn't a class");
+                    };
+
+                    let class = &class_table[object_class_index];
+                    let vtable_index = if source_class.is_some() {
+                        let key = (*class_symbol, None);
+                        if let Some(index) = class.get_vtable(&key) {
+                            index
+                        } else if let Some(index) = class.get_vtable(&(*class_symbol, *source_class)) {
+                            index
+                        } else {
+                            panic!("unable to find vtable");
+                        }
+                    } else {
+                        if let Some(index) = class.get_vtable(&(*class_symbol, *source_class)) {
+                            index
+                        } else {
+                            panic!("unable to find vtable");
+                        }
+                    };
+
+                    let Ok(vtables_table) = VTABLES.read() else {
+                        panic!("Lock poisoned");
+                    };
+
+                    let vtable = &vtables_table[vtable_index];
+                    let function = vtable.get_function(*method_name).expect("unable to find function");
+
+                    let value = function.value.read().unwrap();
+                    let FunctionValue::Compiled(_, map) = &*value else {
+                        unreachable!("we are trying to access the stack of a non-compiled function");
+                    };
+                    if let Some(offsets) = map.get(ip) {
+                        for offset in offsets {
+                            let pointer = (*sp + *offset as usize) as *mut Reference;
+                            unsafe {
+                                live_objects.insert(*pointer);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        live_objects
     }
 }
 

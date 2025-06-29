@@ -2,7 +2,7 @@ use std::{collections::HashMap, io::Read};
 
 use rowan_shared::classfile::ClassFile;
 use runtime::{core, Context};
-use crate::runtime::{Reference, Runtime};
+use crate::runtime::Reference;
 use crate::runtime::core::exception_print_stack_trace;
 
 mod runtime;

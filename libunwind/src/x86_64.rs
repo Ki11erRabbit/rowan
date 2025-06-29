@@ -60,7 +60,7 @@ impl Into<i32> for Register {
             Register::R13 => 11,
             Register::R14 => 12,
             Register::R15 => 13,
-            Register::RIP => 14,
+            Register::RIP => 16,
         }
     }
 }
