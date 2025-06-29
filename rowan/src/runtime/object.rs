@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+use crate::runtime::core::Array;
 use super::{Context, Reference, Symbol};
 
 
@@ -342,5 +344,37 @@ impl Object {
 
     pub extern "C" fn set_f64(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: f64) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
+    }
+
+    pub fn garbage_collect(this: Reference, live_objects: &mut HashSet<Reference>) {
+        let Some(object_ptr) = Context::gc_get_object(this) else {
+            return
+        };
+        let object = unsafe { object_ptr.as_ref().unwrap() };
+
+        for parent in object.parent_objects.iter() {
+            Self::garbage_collect(*parent, live_objects);
+        }
+        let class = Context::get_class(object.class);
+        let class = unsafe { class.as_ref().unwrap() };
+        let live_objects_indices = class.get_object_member_indices();
+        for index in live_objects_indices {
+            Self::garbage_collect(object.get_safe(index as usize).unwrap(), live_objects);
+        }
+
+        let array_object = Context::get_class_symbol("Arrayobject");
+        if array_object == object.class {
+            let object_ptr = object_ptr as *mut Array;
+            let object = unsafe { object_ptr.as_ref().unwrap() };
+            let length = object.length;
+            let pointer = object.buffer as *const Reference;
+            for i in 0..length {
+                unsafe {
+                    let reference = pointer.add(i as usize).read();
+                    Self::garbage_collect(reference, live_objects);
+                }
+            }
+        } // TODO: do this for backtrace as well since it holds string objects
+
     }
 }

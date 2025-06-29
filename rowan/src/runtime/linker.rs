@@ -309,7 +309,6 @@ pub fn link_class_files(
 
         class_parts.push((class_name_str, class_symbol, class_name_symbol, parent_symbols, class_members, static_method_functions, class, vtables_to_link, static_members, static_init));
     }
-    println!("{:#?}",  class_map);
     let mut class_parts_to_try_again;
     loop {
         class_parts_to_try_again = Vec::new();
@@ -416,7 +415,6 @@ pub fn link_class_files(
 
 
                     let derived_functions = vtables_map.get(class_name).unwrap().get(&class_symbol).unwrap();
-                    println!("class_name: {class_name}");
                     let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
 
                     for (_,_,_,value, _) in base_functions {

@@ -103,6 +103,17 @@ impl Class {
     pub fn get_member_mut(&mut self, index: usize) -> Option<&mut ClassMember> {
         self.class_members.get_mut(index)
     }
+
+    pub fn get_object_member_indices(&self) -> Vec<usize> {
+        let mut output = Vec::new();
+        for (i, info) in self.members.iter().enumerate() {
+            match info.ty {
+                TypeTag::Object => output.push(i),
+                _ => {}
+            }
+        }
+        output
+    }
 }
 
 

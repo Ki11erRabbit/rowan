@@ -4,6 +4,7 @@ use rowan_shared::classfile::ClassFile;
 use runtime::{core, Context};
 use crate::runtime::Reference;
 use crate::runtime::core::exception_print_stack_trace;
+use crate::runtime::garbage_collection::{GarbageCollection, GC_SENDER};
 
 mod runtime;
 
@@ -50,8 +51,15 @@ fn main() {
     let (main_symbol, main_method_symbol) = Context::link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map);
 
     Context::finish_linking_classes(pre_class_table);
-    println!("String Map: {string_map:#?}");
-    let mut context = Context::new();
+    //println!("String Map: {string_map:#?}");
+    let mut gc = GarbageCollection::new();
+    std::thread::Builder::new().name("Garbage Collection".to_owned())
+        .spawn(move || {
+            gc.main_loop()
+        }).expect("Thread 'new' panicked at 'Garbage Collection'");
+
+    let sender = unsafe { GC_SENDER.clone().unwrap() };
+    let mut context = Context::new(sender);
     
     //println!("main_symbol: {}, main_method_symbol: {}", main_symbol, main_method_symbol);
     

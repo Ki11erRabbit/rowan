@@ -9,6 +9,9 @@ class Main {
         let n: u64 = 5
         let result: u64 = Main::fib(n);
         printer.println-int(result);
+        while True {
+            Main::thrash()
+        }
     }
 
     fn fib(n: u64) -> u64 {
@@ -22,4 +25,11 @@ class Main {
         let x: u64 = 0;
     }
 
+    fn thrash() {
+        let i: u64 = 0;
+        while i < 10 {
+            let x: [u64] = new [u64; 1];
+            i = i + 1;
+        }
+    }
 }

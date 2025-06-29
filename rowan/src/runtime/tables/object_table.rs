@@ -32,6 +32,12 @@ impl ObjectTable {
 
     pub fn free(&mut self, reference: Reference, symbol_table: &SymbolTable, class_table: &ClassTable) {
         let pointer = self[reference];
+
+        if pointer.is_null() {// We have already handled this object
+            return;
+        }
+        println!("Freeing: {reference}");
+
         let (class_symbol, parent_objects) = unsafe {
             pointer.as_ref().expect("Non-null pointer was null").get_class_and_parents()
         };
@@ -52,6 +58,10 @@ impl ObjectTable {
 
         self.free_list.push_back(reference);
         self[reference] = std::ptr::null::<Object>() as *mut Object;        
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &*mut Object> {
+        self.table.iter()
     }
 }
 

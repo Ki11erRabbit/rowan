@@ -15,6 +15,8 @@ use std::borrow::BorrowMut;
 use std::collections::HashSet;
 use std::num::NonZeroU64;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::mpsc::Sender;
+use crate::runtime::class::{ClassMember, ClassMemberData};
 
 mod tables;
 pub mod class;
@@ -22,9 +24,10 @@ pub mod object;
 pub mod core;
 pub mod linker;
 pub mod jit;
+pub mod garbage_collection;
 
-use crate::runtime::class::{ClassMember, ClassMemberData};
 use crate::runtime::core::{exception_fill_in_stack_trace, exception_print_stack_trace};
+use crate::runtime::garbage_collection::GC_SENDER;
 
 pub type Symbol = usize;
 
@@ -34,7 +37,9 @@ pub type Index = usize;
 
 pub type VTableIndex = usize;
 
-pub static DO_GARBAGE_COLLECTION: LazyLock<AtomicU32> = LazyLock::new(AtomicU32::default);
+pub static mut DO_GARBAGE_COLLECTION: AtomicU32 = AtomicU32::new(0);
+
+pub static mut THREAD_COUNT: AtomicU32 = AtomicU32::new(0);
 
 static VTABLES: LazyLock<RwLock<VTables>> = LazyLock::new(|| {
     let table = VTables::new();
@@ -199,16 +204,18 @@ pub struct Context {
     registered_exceptions: HashMap<Symbol, Vec<Symbol>>,
     static_memo: HashMap<(Symbol, Symbol), *const ()>,
     virtual_memo: HashMap<(Symbol, Symbol, Option<Symbol>, Symbol), *const ()>,
+    sender: Sender<HashSet<Reference>>,
 }
 
 impl Context {
-    pub fn new() -> Self {
+    pub fn new(sender: Sender<HashSet<Reference>>) -> Self {
         Context {
             current_exception: RefCell::new(0),
             function_backtrace: Vec::new(),
             registered_exceptions: HashMap::new(),
             static_memo: HashMap::new(),
             virtual_memo: HashMap::new(),
+            sender,
         }
     }
     
@@ -388,7 +395,8 @@ impl Context {
         }
         drop(class_table);
         for function in init_functions {
-            let mut context = Context::new();
+            let (sender, _) = std::sync::mpsc::channel();
+            let mut context = Context::new(sender);
             function(&mut context);
             if *context.current_exception.borrow() != 0 {
                 println!("Failed to initialize class static members");
@@ -707,9 +715,9 @@ impl Context {
 
 
     pub fn check_and_do_garbage_collection(&mut self) {
-        /*if DO_GARBAGE_COLLECTION.load(Ordering::Acquire) == 0 {
-            //return
-        }*/
+        if unsafe { DO_GARBAGE_COLLECTION.load(Ordering::Acquire) == 0 } {
+            return
+        }
         println!("Garbage collection");
 
         let libunwind_context = libunwind::common::Context::get_context().unwrap();
@@ -725,19 +733,19 @@ impl Context {
             match data.get_procedure_name(&mut buffer) {
                 Ok(_) => {
 
-                    let sp = data.get_register(libunwind::machine::Register::RSP);
+                    /*let sp = data.get_register(libunwind::machine::Register::RSP);
                     let ip = data.get_register(libunwind::machine::Register::RIP).unwrap_or(0);
                     if let Ok(sp) = sp {
                         println!("RSP: {sp:x}, RIP: {ip:x}");
                     } else {
                         println!("RIP: {ip:x}");
-                    }
+                    }*/
                     break
                 },
                 Err(libunwind::common::Error::Unspecified) => {
                     let sp = data.get_register(libunwind::machine::Register::RSP).unwrap_or(0);
                     let ip = data.get_register(libunwind::machine::Register::RIP).unwrap_or(0);
-                    println!("RSP: {:x}, RIP: {:x}", sp, ip);
+                    //println!("RSP: {:x}, RIP: {:x}", sp, ip);
                     info.push((*backtrace, sp as usize, ip as usize))
                 }
                 Err(e) => panic!("{:?}", e),
@@ -745,7 +753,7 @@ impl Context {
         }
 
         let live_objects = self.dereference_stack_pointer(&info);
-        println!("live_objects: {:x?}", live_objects);
+        //println!("live_objects: {:x?}", live_objects);
     }
 
     fn dereference_stack_pointer(&self, backtrace_stack_pointer_instruction_pointer: &[(MethodName, usize, usize)]) -> HashSet<Reference> {
@@ -758,8 +766,6 @@ impl Context {
         let Ok(class_table) = CLASS_TABLE.read() else {
             unreachable!("Lock poisoned");
         };
-
-
 
         let Ok(vtables_table) = VTABLES.read() else {
             unreachable!("Lock poisoned");
@@ -845,11 +851,54 @@ impl Context {
 
         live_objects
     }
+
+    pub fn gc_get_object(reference: Reference) -> Option<*mut Object> {
+        let Ok(object_table) = OBJECT_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        if reference == 0 {
+            return None;
+        }
+        let object = object_table[reference];
+        Some(object)
+    }
+
+    pub fn gc_explore_object(reference: Reference, live_objects: &mut HashSet<Reference>) {
+        Object::garbage_collect(reference, live_objects);
+    }
+
+    pub fn gc_collect_garbage(live_objects: &HashSet<Reference>) {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut object_table) = OBJECT_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+
+        let mut objects_to_delete = Vec::new();
+
+        for (i, _) in object_table.iter().enumerate() {
+            if live_objects.contains(&(i as Reference)) {
+                objects_to_delete.push(i as Reference);
+            }
+        }
+
+        println!("Survived: {live_objects:?}");
+
+        for reference in objects_to_delete {
+            object_table.free(reference, &symbol_table, &class_table);
+        }
+    }
 }
 
 
 
 pub extern "C" fn get_virtual_function(context: &mut Context, object: Reference, class_symbol: u64, source_class: i64, method_name: u64) -> u64 {
+    context.check_and_do_garbage_collection();
+
     let Some(object) = context.get_object(object) else {
         return 0;
     };
