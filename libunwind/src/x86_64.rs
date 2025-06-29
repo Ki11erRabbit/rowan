@@ -51,7 +51,7 @@ impl Into<i32> for Register {
             Register::RCX => 2,
             Register::RBX => 3,
             Register::RSI => 4,
-            Register::RSP => 5,
+            Register::RSP => 7,
             Register::R8 => 6,
             Register::R9 => 7,
             Register::R10 => 8,

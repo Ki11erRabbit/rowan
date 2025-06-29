@@ -2,7 +2,7 @@ use std::ffi::CStr;
 use libunwind_sys as unwind;
 use crate::machine::Register;
 
-/*
+
 pub struct DynamicInfo {
     info: unwind::unw_dyn_info_t,
 }
@@ -74,8 +74,14 @@ impl DynamicInfoBuilder {
     }*/
 
     pub fn proc_info(mut self, info: DynProcInfo) -> DynamicInfoBuilder {
-        self.info.pi = info.to_proc_info();
+        self.info.u.pi = info.to_proc_info();
         self.info.format = 0; // Info Dynamic
+        self
+    }
+
+    pub fn table_info(mut self, info: DynTableInfo) -> DynamicInfoBuilder {
+        self.info.u.ti = info.to_table_info();
+        self.info.format = 1; // Info Table
         self
     }
 }
@@ -120,7 +126,9 @@ impl<'a> DynProcInfo<'a> {
         output.regions = prev;
         for region in regions_iter {
             let current = region.to_region();
-            prev.next = current;
+            unsafe {
+                (*prev).next = current;
+            }
             prev = current;
         }
         output
@@ -158,6 +166,7 @@ impl RegionInfo {
         region.op_count = self.ops.len() as u32;
         unsafe {
             let pointer = pointer.add(std::mem::size_of::<unwind::unw_dyn_region_info>());
+            let pointer = pointer as *mut unwind::unw_dyn_op_t;
             for i in 0..self.ops.len() {
                 pointer.add(i).write(self.ops[i].to_operation())
             }
@@ -187,18 +196,18 @@ impl DynamicOperation {
     }
 
     fn to_operation(self) -> unwind::unw_dyn_op_t {
-        let tag = self.tag.to_u8();
-        let qp = self.qp as u8;
-        let register = self.register.into();
+        let tag = self.tag.to_i8();
+        let qp = self.qp as i8;
+        let register: i32 = self.register.into();
         let when = self.when;
         let value = self.value;
 
         unwind::unw_dyn_op_t {
             tag,
             qp,
-            reg: register,
+            reg: register as i16,
             when,
-            value
+            val: value as u64,
         }
     }
 }
@@ -217,7 +226,7 @@ pub enum OperationTag {
 }
 
 impl OperationTag {
-    pub fn to_u8(self) -> u8 {
+    pub fn to_i8(self) -> i8 {
         match self {
             OperationTag::Stop => 0,
             OperationTag::SaveRegisters => 1,
@@ -231,4 +240,25 @@ impl OperationTag {
         }
     }
 }
-*/
+
+
+pub struct DynTableInfo<'a> {
+    name: &'a CStr,
+    table: Box<[u8]>,
+}
+
+impl<'a> DynTableInfo<'a> {
+    pub fn new(name: &'a CStr, table: Box<[u8]>) -> DynTableInfo<'a> {
+        DynTableInfo { name, table }
+    }
+
+    fn to_table_info(self) -> unwind::unw_dyn_table_info_t {
+        let ptr = Box::into_raw(self.table);
+        unwind::unw_dyn_table_info_t {
+            name_ptr: self.name.as_ptr() as *mut u8 as usize as u64,
+            segbase: 0,
+            table_len: ptr.len() as u64,
+            table_data: ptr as *mut u8 as *mut u64,
+        }
+    }
+}

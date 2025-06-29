@@ -13,6 +13,7 @@ use cranelift::codegen::ir::BlockArg;
 use cranelift_codegen::gimli::{Encoding, Format, LittleEndian, Register, RunTimeEndian};
 use cranelift_codegen::gimli::write::{Address, CommonInformationEntry, Dwarf, EhFrame, EndianVec, FrameTable, Range, RangeList, Sections, Writer};
 use cranelift_codegen::isa::unwind::UnwindInfo;
+use libunwind::dynamic::{DynTableInfo, DynamicInfo};
 use crate::runtime;
 
 pub struct JITController {
@@ -232,10 +233,10 @@ impl JITCompiler {
 
         let compiled_code = self.context.compiled_code().unwrap();
         let unwind_info = compiled_code.create_unwind_info(isa.as_ref()).unwrap();
-        match unwind_info {
+        let (code, object_locations) = match unwind_info {
             Some(UnwindInfo::SystemV(info)) => {
 
-                let info = info.to_fde(Address::Constant(0));
+                /*let info = info.to_fde(Address::Constant(0));
                 println!("fde: {info:#?}");
 
                 let mut frame_table = FrameTable::default();
@@ -252,28 +253,37 @@ impl JITCompiler {
 
                 let vec = eh_frame.0.into_vec();
                 let ptr = vec.into_boxed_slice();
-                let ptr = Box::leak(ptr);
+                libunwind::common::register_frame(ptr.as_ptr());*/
 
-                libunwind::common::register_frame(ptr.as_ptr())
+                let stack_maps = compiled_code.buffer.user_stack_maps();
+                let mut object_locations = HashMap::new();
+                for (_, pc, map) in stack_maps {
+                    let objects = map.entries()
+                        .map(|(_, offset)| offset)
+                        .collect::<Vec<_>>();
+                    object_locations.insert(*pc, objects);
+                }
+
+                module.clear_context(&mut self.context);
+
+                module.finalize_definitions().unwrap();
+
+                let code = module.get_finalized_function(*id)as *const ();
+
+                /*let dyn_table = DynTableInfo::new(c"this::is::a::test::string", ptr);
+                let mut dyn_info = DynamicInfo::new_builder()
+                    .ip(code, unsafe { code.add(504)})
+                    .table_info(dyn_table)
+                    .build();*/
+                //dyn_info.register();
+
+                (code, object_locations)
             }
             _ => todo!("unwind info for other systems"),
-        }
-        let stack_maps = compiled_code.buffer.user_stack_maps();
-        let mut object_locations = HashMap::new();
-        for (_, pc, map) in stack_maps {
-            let objects = map.entries()
-                .map(|(_, offset)| offset)
-                .collect::<Vec<_>>();
-            object_locations.insert(*pc, objects);
-        }
+        };
 
-        module.clear_context(&mut self.context);
 
-        module.finalize_definitions().unwrap();
-
-        let code = module.get_finalized_function(*id);
-
-        let new_function_value = FunctionValue::Compiled(code as *const (), object_locations);
+        let new_function_value = FunctionValue::Compiled(code, object_locations);
 
         drop(value);
         let Ok(mut value) = function.value.write() else {
