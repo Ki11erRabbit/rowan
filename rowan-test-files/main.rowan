@@ -9,8 +9,10 @@ class Main {
         let n: u64 = 5
         let result: u64 = Main::fib(n);
         printer.println-int(result);
+        Main::thrash()
+        let arr: [u64] = [1, 2, 3, 4];
         while True {
-            Main::thrash()
+            Main::from-array(arr);
         }
     }
 

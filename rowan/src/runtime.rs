@@ -767,7 +767,7 @@ impl Context {
         println!("\t{:x?}", info);
         info.iter()
             .for_each(|i| {
-                println!("\t{:?}", i);
+                println!("\t{:x?}", i);
                 let Ok(string_table) = STRING_TABLE.read() else {
                     panic!("Lock poisoned");
                 };
@@ -813,6 +813,9 @@ impl Context {
         let Ok(vtables_table) = VTABLES.read() else {
             unreachable!("Lock poisoned");
         };
+        let Ok(string_table) = STRING_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
 
 
         for (name, sp, ip) in backtrace_stack_pointer_instruction_pointer {
@@ -826,6 +829,11 @@ impl Context {
                     let SymbolEntry::ClassRef(class_index) = symbol_table[*class_symbol] else {
                         panic!("class wasn't a class");
                     };
+                    let SymbolEntry::StringRef(method_index) = symbol_table[*method_name] else {
+                        panic!("string wasn't a string");
+                    };
+                    let name = &string_table[method_index];
+                    println!("\t{}", name);
                     let class = &class_table[class_index];
                     let vtable_index = class.static_methods;
                     let vtable = &vtables_table[vtable_index];
