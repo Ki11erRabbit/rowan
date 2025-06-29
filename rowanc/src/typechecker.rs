@@ -762,6 +762,21 @@ impl TypeChecker {
                     todo!("report missing class")
                 }
             }
+            Expression::BinaryOperation { operator: BinaryOperator::Lt, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Le, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Gt, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Ge, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Eq, left, right, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Ne, left, right, .. } => {
+                // TODO: add conversion when traits are added
+                // TODO: make it so that types get upgraded if they are compatable
+                self.check_expr(return_type, left)?;
+                let ty = self.get_type(left.as_mut())?;
+                self.annotate_expr(&ty, left.as_mut())?;
+                self.annotate_expr(&ty, right.as_mut())?;
+                self.check_expr(return_type, right)?;
+                self.annotate_expr(&Type::U8, expr)?;
+            }
             Expression::BinaryOperation { operator: BinaryOperator::Add, left, right, .. }
             | Expression::BinaryOperation { operator: BinaryOperator::Sub, left, right, .. }
             | Expression::BinaryOperation { operator: BinaryOperator::Mul, left, right, .. }
