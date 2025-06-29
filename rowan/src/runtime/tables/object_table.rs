@@ -34,6 +34,7 @@ impl ObjectTable {
         let pointer = self[reference];
 
         if pointer.is_null() {// We have already handled this object
+            println!("Null pointer");
             return;
         }
         println!("Freeing: {reference}");

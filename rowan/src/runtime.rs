@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::LazyLock};
 use std::cell::RefCell;
-use std::sync::{Arc,  RwLock};
+use std::sync::{Arc, RwLock, TryLockError};
 
 use class::Class;
 
@@ -37,9 +37,9 @@ pub type Index = usize;
 
 pub type VTableIndex = usize;
 
-pub static mut DO_GARBAGE_COLLECTION: AtomicU32 = AtomicU32::new(0);
+pub static DO_GARBAGE_COLLECTION: RwLock<()> = RwLock::new(());
 
-pub static mut THREAD_COUNT: AtomicU32 = AtomicU32::new(0);
+pub static mut THREAD_COUNT: AtomicU32 = AtomicU32::new(1);
 
 static VTABLES: LazyLock<RwLock<VTables>> = LazyLock::new(|| {
     let table = VTables::new();
@@ -170,7 +170,7 @@ impl MakeObject<&str> for ContextHelper {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum MethodName {
     StaticMethod {
         class_symbol: Symbol,
@@ -291,7 +291,8 @@ impl Context {
     }
 
     pub extern "C" fn normal_return(ctx: &mut Self) {
-        ctx.pop_backtrace();
+        let _out = ctx.pop_backtrace();
+        //println!("Normal Return: {out:?}");
     }
 
 
@@ -715,8 +716,14 @@ impl Context {
 
 
     pub fn check_and_do_garbage_collection(&mut self) {
-        if unsafe { DO_GARBAGE_COLLECTION.load(Ordering::Acquire) == 0 } {
-            return
+        match DO_GARBAGE_COLLECTION.try_read() {
+            Ok(_) => return,
+            Err(TryLockError::WouldBlock) => {
+
+            }
+            Err(TryLockError::Poisoned(_)) => {
+                panic!("Lock poisoned");
+            }
         }
         println!("Garbage collection");
 
@@ -725,34 +732,52 @@ impl Context {
         _ = cursor.next(); // skip this function
         _ = cursor.next(); // skip calling function
 
+        println!("backtrace len {}", self.function_backtrace.len());
+
         let iterator = cursor.zip(self.function_backtrace.iter().rev());
         let mut info = Vec::new();
 
         for (data, backtrace) in iterator {
-            let mut buffer = [0; 10];
+            let mut buffer = [0; 1024];
             match data.get_procedure_name(&mut buffer) {
                 Ok(_) => {
 
-                    /*let sp = data.get_register(libunwind::machine::Register::RSP);
+                    let string = std::str::from_utf8(&buffer).unwrap();
+
+                    let sp = data.get_register(libunwind::machine::Register::RSP);
                     let ip = data.get_register(libunwind::machine::Register::RIP).unwrap_or(0);
                     if let Ok(sp) = sp {
-                        println!("RSP: {sp:x}, RIP: {ip:x}");
+                        println!("{string}: RSP: {sp:x}, RIP: {ip:x}");
                     } else {
-                        println!("RIP: {ip:x}");
-                    }*/
+                        println!("{string}: RIP: {ip:x}");
+                    }
                     break
                 },
                 Err(libunwind::common::Error::Unspecified) => {
                     let sp = data.get_register(libunwind::machine::Register::RSP).unwrap_or(0);
                     let ip = data.get_register(libunwind::machine::Register::RIP).unwrap_or(0);
-                    //println!("RSP: {:x}, RIP: {:x}", sp, ip);
+                    println!("RSP: {:x}, RIP: {:x}", sp, ip);
                     info.push((*backtrace, sp as usize, ip as usize))
                 }
                 Err(e) => panic!("{:?}", e),
             }
         }
 
+        println!("{:x?}", info);
+
         let live_objects = self.dereference_stack_pointer(&info);
+        self.sender.send(live_objects).unwrap();
+        loop {
+            match DO_GARBAGE_COLLECTION.try_read() {
+                Ok(_) => return,
+                Err(TryLockError::WouldBlock) => {
+
+                }
+                Err(TryLockError::Poisoned(_)) => {
+                    panic!("Lock poisoned");
+                }
+            }
+        }
         //println!("live_objects: {:x?}", live_objects);
     }
 
@@ -792,10 +817,13 @@ impl Context {
                     if let Some(offsets) = map.get(ip) {
                         for offset in offsets {
                             let pointer = (*sp + *offset as usize) as *mut Reference;
+                            println!("dereferencing: {:x?}", pointer);
                             unsafe {
                                 live_objects.insert(*pointer);
                             }
                         }
+                    } else {
+                        println!("No offsets found");
                     }
                 }
                 MethodName::VirtualMethod {
@@ -835,7 +863,14 @@ impl Context {
 
                     let value = function.value.read().unwrap();
                     let FunctionValue::Compiled(_, map) = &*value else {
-                        unreachable!("we are trying to access the stack of a non-compiled function");
+                        let Ok(string_table) = STRING_TABLE.read() else {
+                            unreachable!("we are trying to access the stack of a non-compiled function");
+                        };
+                        let SymbolEntry::StringRef(index) = symbol_table[*method_name] else {
+                            panic!("class wasn't a string");
+                        };
+                        let string = &string_table[index];
+                        unreachable!("we are trying to access the stack of a non-compiled function: {string}");
                     };
                     if let Some(offsets) = map.get(ip) {
                         for offset in offsets {

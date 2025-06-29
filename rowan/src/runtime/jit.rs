@@ -244,7 +244,7 @@ impl JITCompiler {
                 object_locations.insert(offset as usize + code as usize, objects);
             });
 
-        //println!("object locations: {:#?}", object_locations);
+        println!("object locations: {:#x?}", object_locations);
 
         let new_function_value = FunctionValue::Compiled(code, object_locations);
 

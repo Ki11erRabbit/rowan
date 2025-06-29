@@ -125,6 +125,7 @@ extern "C" fn object_downcast(context: &mut Context, this: Reference, class_inde
     };
     let object = unsafe { object.as_mut().unwrap() };
     if object.class == class_index as Symbol {
+        Context::normal_return(context);
         this
     } else {
         for obj in object.parent_objects.iter() {
@@ -132,6 +133,7 @@ extern "C" fn object_downcast(context: &mut Context, this: Reference, class_inde
                 return this;
             }
         }
+        Context::normal_return(context);
         0
     }
 }
@@ -165,10 +167,12 @@ pub fn generate_printer_class() -> VMClass {
 
 extern "C" fn printer_println_int(context: &mut Context, _: Reference, int: u64) {
     println!("{}", int);
+    Context::normal_return(context);
 }
 
 extern "C" fn printer_println_float(context: &mut Context, _: Reference, float: f64) {
     println!("{}", float);
+    Context::normal_return(context);
 }
 
 extern "C" fn printer_println(context: &mut Context, _: Reference, string: Reference) {
@@ -182,12 +186,14 @@ extern "C" fn printer_println(context: &mut Context, _: Reference, string: Refer
     let slice = unsafe { std::slice::from_raw_parts(pointer, length as usize) };
     let string = unsafe { std::str::from_utf8_unchecked(slice) };
     println!("{}", string);
+    Context::normal_return(context);
 }
 
 macro_rules! array_downcast_contents {
     (object, $ty:ty, $context:ident, $this:ident, $class_symbol:ident) => {
         {
             let Some(object) = $context.get_object($this) else {
+                Context::normal_return($context);
                 return 0;
             };
             let object = unsafe { object.as_mut().unwrap() };
@@ -197,11 +203,14 @@ macro_rules! array_downcast_contents {
             unsafe {
                 for i in 0..length as usize {
                     if object_downcast($context, *pointer.add(i), $class_symbol) == 0 {
+
+                        Context::normal_return($context);
                         return 0;
                     }
                 }
             }
 
+            Context::normal_return($context);
             $this
         }
     };
@@ -253,6 +262,7 @@ macro_rules! array_create_init {
             pub extern "C" fn $fn_name(context: &mut Context, this: Reference, length: u64) {
                 use std::alloc::*;
                 let Some(object) = context.get_object(this) else {
+                    Context::normal_return(context);
                     return
                 };
                 let object = object as *mut Array;
@@ -282,6 +292,7 @@ macro_rules! array_create_get {
         paste! {
             pub extern "C" fn $fn_name(context: &mut Context, this: Reference, index: u64) -> $ty {
                 let Some(object) = context.get_object(this) else {
+                    Context::normal_return(context);
                     return 0 as $ty;
                 };
                 let object = object as *mut Array;
@@ -297,6 +308,7 @@ macro_rules! array_create_get {
                 }
 
                 let index = index as usize;
+                Context::normal_return(context);
 
                 unsafe { *pointer.add(index) }
             }
@@ -309,6 +321,7 @@ macro_rules! array_create_set {
         paste! {
             pub extern "C" fn $fn_name(context: &mut Context, this: Reference, index: u64, value: $ty) {
                 let Some(object) = context.get_object(this) else {
+                    Context::normal_return(context);
                     return
                 };
                 let object = object as *mut Array;
@@ -323,6 +336,7 @@ macro_rules! array_create_set {
                     return;
                 }
                 unsafe { *pointer.add(index as usize) = value }
+                Context::normal_return(context);
             }
         }
     };

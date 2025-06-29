@@ -32,26 +32,26 @@ impl GarbageCollection {
             let duration = now.duration_since(start);
 
             if duration.as_secs() >= 5 {// TODO: make this 5 mins configurable
-                let thread_count = unsafe {
+                let mut thread_count = unsafe {
                     THREAD_COUNT.load(std::sync::atomic::Ordering::Relaxed)
                 };
 
-                unsafe {
-                    DO_GARBAGE_COLLECTION.store(thread_count, std::sync::atomic::Ordering::Relaxed);
-                }
+                let lock = unsafe {
+                    DO_GARBAGE_COLLECTION.write().unwrap()
+                };
 
                 loop {
                     match self.receiver.recv() {
                         Ok(live_objects) => {
+                            println!("Received live objects: {live_objects:?}");
                             for live_object in live_objects.iter() {
                                 Context::gc_explore_object(*live_object, &mut self.live_objects);
                                 self.live_objects.insert(*live_object);
                             }
-                            let value = unsafe {
-                                DO_GARBAGE_COLLECTION.fetch_sub(1, std::sync::atomic::Ordering::Relaxed)
-                            };
+                            thread_count -= 1;
 
-                            if value == 1 {
+                            if thread_count == 0 {
+                                println!("Completed collecting all threads");
                                 break;
                             }
                         }
