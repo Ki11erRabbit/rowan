@@ -13,6 +13,7 @@ use cranelift::codegen::ir::BlockArg;
 use cranelift_codegen::gimli::{Encoding, Format, LittleEndian, Register, RunTimeEndian};
 use cranelift_codegen::gimli::write::{Address, CommonInformationEntry, Dwarf, EhFrame, EndianVec, FrameTable, Range, RangeList, Sections, Writer};
 use cranelift_codegen::isa::unwind::UnwindInfo;
+use log::trace;
 use libunwind::dynamic::{DynTableInfo, DynamicInfo};
 use crate::runtime;
 
@@ -197,7 +198,7 @@ impl JITCompiler {
             todo!("add error handling for non-bytecode value");
         };
 
-        //println!("[Translating]");
+        trace!("[Translating]");
         self.translate(&function.arguments, &function.return_type, &bytecode, module)?;
 
 
@@ -232,10 +233,12 @@ impl JITCompiler {
             object_locations.push((*location, objects));
         }
         let locations = object_locations;
-
+        trace!("resulting function:\n{}", self.context.func);
         module.clear_context(&mut self.context);
 
         module.finalize_definitions().unwrap();
+
+
 
         let code = module.get_finalized_function(*id) as *const ();
         let mut object_locations = HashMap::new();

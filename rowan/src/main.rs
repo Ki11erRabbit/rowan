@@ -9,6 +9,8 @@ use crate::runtime::garbage_collection::{GarbageCollection, GC_SENDER};
 mod runtime;
 
 fn main() {
+
+    env_logger::init();
     let args = std::env::args().collect::<Vec<String>>();
 
     if args.len() < 2 {
