@@ -7,25 +7,12 @@ class Main {
     fn main(args: [String]) {
         let printer: Printer = new Printer();
         let n: u64 = 5
-        let result: u64 = Main::fib(n);
-        printer.println-int(result);
-        Main::thrash()
-        let arr: [u64] = [1, 2, 3, 4];
+        Main::thrash();
         while True {
-            Main::from-array(arr);
+            printer.println-int(n)
         }
     }
 
-    fn fib(n: u64) -> u64 {
-        if n < 2 {
-            return n;
-        }
-        return Main::fib(n - 1) + Main::fib(n - 2);
-    }
-
-    fn from-array(arr: [u64]) {
-        let x: u64 = 0;
-    }
 
     fn thrash() {
         let i: u64 = 0;
