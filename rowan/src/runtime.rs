@@ -726,8 +726,38 @@ impl Context {
             }
         }
         println!("Garbage collection");
+        
+        let mut counter = 2;
+        let mut info = Vec::new();
 
-        let libunwind_context = libunwind::common::Context::get_context().unwrap();
+        backtrace::trace(|frame| {
+            if counter > 0 {
+                counter -= 1;
+                return true;
+            }
+            
+            let ip = frame.ip();
+            let sp = frame.sp();
+            
+            let mut function_backtrace = self.function_backtrace.iter().rev();
+            
+            let mut r#continue = true;
+            
+            backtrace::resolve_frame(frame, |symbol| {
+                if symbol.name().is_some() {
+                    r#continue = false;
+                }
+                let Some(backtrace) = function_backtrace.next() else {
+                    r#continue = false;
+                    return;
+                };
+                info.push((*backtrace, sp as usize, ip as usize))
+                
+            });
+            r#continue
+        });
+
+        /*let libunwind_context = libunwind::common::Context::get_context().unwrap();
         let mut cursor = libunwind_context.cursor().unwrap();
         _ = cursor.next(); // skip this function
         _ = cursor.next(); // skip calling function
@@ -735,7 +765,6 @@ impl Context {
         println!("backtrace len {}", self.function_backtrace.len());
 
         let iterator = cursor.zip(self.function_backtrace.iter().rev());
-        let mut info = Vec::new();
 
         for (data, backtrace) in iterator {
             let mut buffer = [0; 1024];
@@ -761,7 +790,7 @@ impl Context {
                 }
                 Err(e) => panic!("{:?}", e),
             }
-        }
+        }*/
         
         println!("Starting Displaying Info");
         println!("\t{:x?}", info);

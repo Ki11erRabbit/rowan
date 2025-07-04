@@ -14,7 +14,6 @@ use cranelift_codegen::gimli::{Encoding, Format, LittleEndian, Register, RunTime
 use cranelift_codegen::gimli::write::{Address, CommonInformationEntry, Dwarf, EhFrame, EndianVec, FrameTable, Range, RangeList, Sections, Writer};
 use cranelift_codegen::isa::unwind::UnwindInfo;
 use log::trace;
-use libunwind::dynamic::{DynTableInfo, DynamicInfo};
 use crate::runtime;
 
 pub struct JITController {
@@ -519,7 +518,13 @@ impl FunctionTranslator<'_> {
     pub fn get_var(&mut self, pos: u8) -> (Value, ir::Type, bool) {
         match self.variables[pos as usize] {
             Some((var, ty, is_object)) => {
-                (self.builder.use_var(var), ty, is_object)
+                let value = self.builder.use_var(var);
+                
+                if is_object {
+                    self.builder.declare_value_needs_stack_map(value);
+                }
+                
+                (value, ty, is_object)
             },
             _ => panic!("code was compiled wrong, empty value was not expected"),
         }
@@ -1185,6 +1190,7 @@ impl FunctionTranslator<'_> {
 
                     let context_value = self.builder.use_var(self.context_var);
                     let (this_value, _, _) = self.pop();
+                    self.builder.declare_value_needs_stack_map(this_value);
                     
                     let class_symbol = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(class_name.to_le_bytes()));
                     let parent_symbol = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(parent_symbol.to_le_bytes()));
@@ -1255,6 +1261,7 @@ impl FunctionTranslator<'_> {
                     let context_value = self.builder.use_var(self.context_var);
                     let (value, _, _) = self.pop();
                     let (this_value, _, _) = self.pop();
+                    self.builder.declare_value_needs_stack_map(this_value);
 
                     let class_symbol = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(class_name.to_le_bytes()));
                     let parent_symbol = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(parent_symbol.to_le_bytes()));
@@ -1302,6 +1309,7 @@ impl FunctionTranslator<'_> {
                         .iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(method_name.to_le_bytes())));
 
                     let method_args = self.get_call_arguments_as_vec();
+                    self.builder.declare_value_needs_stack_map(method_args[1]);
                     let method_instructions = self.builder
                         .ins()
                         .call(get_virt_func_func, &[

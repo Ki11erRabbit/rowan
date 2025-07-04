@@ -31,7 +31,7 @@ impl GarbageCollection {
             let now = std::time::Instant::now();
             let duration = now.duration_since(start);
 
-            if duration.as_secs() >= 5 {// TODO: make this 5 mins configurable
+            if duration.as_secs() >= 0 {// TODO: make this 5 mins configurable
                 let mut thread_count = unsafe {
                     THREAD_COUNT.load(std::sync::atomic::Ordering::Relaxed)
                 };
