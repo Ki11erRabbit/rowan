@@ -353,6 +353,7 @@ impl Object {
         let object = unsafe { object_ptr.as_ref().unwrap() };
 
         for parent in object.parent_objects.iter() {
+            live_objects.insert(*parent);
             Self::garbage_collect(*parent, live_objects);
         }
         let class = Context::get_class(object.class);

@@ -1,7 +1,7 @@
 [workspace]
-members = [ "rowan", "rowan_shared","rowanc"]
+members = [ "rowan", "rowan_shared","rowanc", "libunwind"]
 resolver = "2"
 
 [workspace.dependencies]
 rowan_shared = { path = "rowan_shared" }
-#libunwind = { path = "libunwind" }
+libunwind = { path = "libunwind" }

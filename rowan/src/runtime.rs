@@ -725,44 +725,16 @@ impl Context {
                 panic!("Lock poisoned");
             }
         }
-        println!("Garbage collection");
+        //println!("Garbage collection");
         
-        let mut counter = 2;
         let mut info = Vec::new();
 
-        backtrace::trace(|frame| {
-            if counter > 0 {
-                counter -= 1;
-                return true;
-            }
-            
-            let ip = frame.ip();
-            let sp = frame.sp();
-            
-            let mut function_backtrace = self.function_backtrace.iter().rev();
-            
-            let mut r#continue = true;
-            
-            backtrace::resolve_frame(frame, |symbol| {
-                if symbol.name().is_some() {
-                    r#continue = false;
-                }
-                let Some(backtrace) = function_backtrace.next() else {
-                    r#continue = false;
-                    return;
-                };
-                info.push((*backtrace, sp as usize, ip as usize))
-                
-            });
-            r#continue
-        });
-
-        /*let libunwind_context = libunwind::common::Context::get_context().unwrap();
+        let libunwind_context = libunwind::common::Context::get_context().unwrap();
         let mut cursor = libunwind_context.cursor().unwrap();
         _ = cursor.next(); // skip this function
         _ = cursor.next(); // skip calling function
 
-        println!("backtrace len {}", self.function_backtrace.len());
+        //println!("backtrace len {}", self.function_backtrace.len());
 
         let iterator = cursor.zip(self.function_backtrace.iter().rev());
 
@@ -775,42 +747,22 @@ impl Context {
 
                     let sp = data.get_register(libunwind::machine::Register::RSP);
                     let ip = data.get_register(libunwind::machine::Register::RIP).unwrap_or(0);
-                    if let Ok(sp) = sp {
+                    /*if let Ok(sp) = sp {
                         println!("{string}: RSP: {sp:x}, RIP: {ip:x}");
                     } else {
                         println!("{string}: RIP: {ip:x}");
-                    }
+                    }*/
                     break
                 },
                 Err(libunwind::common::Error::Unspecified) => {
                     let sp = data.get_register(libunwind::machine::Register::RSP).unwrap_or(0);
                     let ip = data.get_register(libunwind::machine::Register::RIP).unwrap_or(0);
-                    println!("RSP: {:x}, RIP: {:x}", sp, ip);
+                    //println!("RSP: {:x}, RIP: {:x}", sp, ip);
                     info.push((*backtrace, sp as usize, ip as usize))
                 }
                 Err(e) => panic!("{:?}", e),
             }
-        }*/
-        
-        println!("Starting Displaying Info");
-        println!("\t{:x?}", info);
-        info.iter()
-            .for_each(|i| {
-                println!("\t{:x?}", i);
-                let Ok(string_table) = STRING_TABLE.read() else {
-                    panic!("Lock poisoned");
-                };
-                let name = i.0.get_method_name();
-                let Ok(symbol_table) = SYMBOL_TABLE.read() else {
-                    panic!("Lock poisoned");
-                };
-                let SymbolEntry::StringRef(index) = symbol_table[name] else {
-                    panic!("symbol table wasn't a string");
-                };
-                println!("\t{}", &string_table[index]);
-            });
-        println!("\t{:x?}", info);
-        println!("Ending Displaying Info");
+        }
 
         let live_objects = self.dereference_stack_pointer(&info);
         self.sender.send(live_objects).unwrap();
@@ -848,8 +800,8 @@ impl Context {
 
 
         for (name, sp, ip) in backtrace_stack_pointer_instruction_pointer {
-            println!("\tderef: {:?}", name);
-            println!("\tsp: {:x}, RIP: {:x}", sp, ip);
+            //println!("\tderef: {:?}", name);
+            //println!("\tsp: {:x}, RIP: {:x}", sp, ip);
             match name {
                 MethodName::StaticMethod {
                     class_symbol,
@@ -858,11 +810,6 @@ impl Context {
                     let SymbolEntry::ClassRef(class_index) = symbol_table[*class_symbol] else {
                         panic!("class wasn't a class");
                     };
-                    let SymbolEntry::StringRef(method_index) = symbol_table[*method_name] else {
-                        panic!("string wasn't a string");
-                    };
-                    let name = &string_table[method_index];
-                    println!("\t{}", name);
                     let class = &class_table[class_index];
                     let vtable_index = class.static_methods;
                     let vtable = &vtables_table[vtable_index];
@@ -874,13 +821,11 @@ impl Context {
                     if let Some(offsets) = map.get(ip) {
                         for offset in offsets {
                             let pointer = (*sp + *offset as usize) as *mut Reference;
-                            println!("dereferencing: {:x?}", pointer);
+                            //println!("dereferencing: {:x?}", pointer);
                             unsafe {
                                 live_objects.insert(*pointer);
                             }
                         }
-                    } else {
-                        println!("No offsets found");
                     }
                 }
                 MethodName::VirtualMethod {
@@ -978,7 +923,7 @@ impl Context {
             }
         }
 
-        println!("Survived: {live_objects:?}");
+        //println!("Survived: {live_objects:?}");
 
         for reference in objects_to_delete {
             object_table.free(reference, &symbol_table, &class_table);

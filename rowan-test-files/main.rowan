@@ -9,9 +9,9 @@ class Main {
         let n: u64 = 5
         printer.println-int(n);
         Main::thrash();
-        //while True {
-            printer.println-int(n)
-        //}
+        while True {
+            Main::thrash();
+        }
     }
 
 

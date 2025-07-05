@@ -236,17 +236,17 @@ impl JITCompiler {
         module.clear_context(&mut self.context);
 
         module.finalize_definitions().unwrap();
-
-
-
+        
         let code = module.get_finalized_function(*id) as *const ();
+        //println!("code: {:x}", code as usize);
         let mut object_locations = HashMap::new();
         locations.into_iter()
             .for_each(|(offset, objects)| {
+                //println!("offset: {offset:x}");
                 object_locations.insert(offset as usize + code as usize, objects);
             });
 
-        println!("object locations: {:#x?}", object_locations);
+        //println!("object locations: {:#x?}", object_locations);
 
         let new_function_value = FunctionValue::Compiled(code, object_locations);
 

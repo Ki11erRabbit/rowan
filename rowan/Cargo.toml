@@ -15,7 +15,7 @@ quote = "1.0.40"
 paste = "1.0.15"
 backtrace = "0.3.75"
 clap = { version = "4.5.40", features = ["derive"] }
-#libunwind = { workspace = true }
+libunwind = { workspace = true }
 #gimli = "0.32.0"
 env_logger = "0.11.8"
 log = "0.4.27"
