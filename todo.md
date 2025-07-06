@@ -21,7 +21,7 @@ In no particular order
 * [ ] break, continue, labels on loops
 * [ ] marker traits
 * [ ] static method references
-* [ ] Garbage Collection
+* [x] Garbage Collection
 * [ ] Using Cranelift for Exception Handling
 
 
