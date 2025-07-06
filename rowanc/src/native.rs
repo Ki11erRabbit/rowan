@@ -27,17 +27,17 @@ impl NativeAttributes {
                 .replace("-", "_dash_");
             
             match return_type {
-                TypeTag::I8 => output.push_str("int_8"),
-                TypeTag::U8 => output.push_str("uint_8"),
-                TypeTag::I16 => output.push_str("int_16"),
-                TypeTag::U16 => output.push_str("uint_16"),
-                TypeTag::I32 => output.push_str("int_32"),
-                TypeTag::U32 => output.push_str("uint_32"),
-                TypeTag::I64 => output.push_str("int_64"),
-                TypeTag::U64 => output.push_str("uint_64"),
+                TypeTag::I8 => output.push_str("int_8_t"),
+                TypeTag::U8 => output.push_str("uint_8_t"),
+                TypeTag::I16 => output.push_str("int_16_t"),
+                TypeTag::U16 => output.push_str("uint_16_t"),
+                TypeTag::I32 => output.push_str("int_32_t"),
+                TypeTag::U32 => output.push_str("uint_32_t"),
+                TypeTag::I64 => output.push_str("int_64_t"),
+                TypeTag::U64 => output.push_str("uint_64_t"),
                 TypeTag::F32 => output.push_str("float"),
                 TypeTag::F64 => output.push_str("double"),
-                TypeTag::Object | TypeTag::Str => output.push_str("uint_64"),
+                TypeTag::Object | TypeTag::Str => output.push_str("uint_64_t"),
                 TypeTag::Void => output.push_str("void"),
                 _ => unreachable!("return type can't be native")
             }
@@ -46,17 +46,17 @@ impl NativeAttributes {
 
             for (i, arg) in args.iter().enumerate() {
                 match arg {
-                    TypeTag::I8 => output.push_str("int_8"),
-                    TypeTag::U8 => output.push_str("uint_8"),
-                    TypeTag::I16 => output.push_str("int_16"),
-                    TypeTag::U16 => output.push_str("uint_16"),
-                    TypeTag::I32 => output.push_str("int_32"),
-                    TypeTag::U32 => output.push_str("uint_32"),
-                    TypeTag::I64 => output.push_str("int_64"),
-                    TypeTag::U64 => output.push_str("uint_64"),
+                    TypeTag::I8 => output.push_str("int_8_t"),
+                    TypeTag::U8 => output.push_str("uint_8_t"),
+                    TypeTag::I16 => output.push_str("int_16_t"),
+                    TypeTag::U16 => output.push_str("uint_16_t"),
+                    TypeTag::I32 => output.push_str("int_32_t"),
+                    TypeTag::U32 => output.push_str("uint_32_t"),
+                    TypeTag::I64 => output.push_str("int_64_t"),
+                    TypeTag::U64 => output.push_str("uint_64_t"),
                     TypeTag::F32 => output.push_str("float"),
                     TypeTag::F64 => output.push_str("double"),
-                    TypeTag::Object | TypeTag::Str => output.push_str("uint_64"),
+                    TypeTag::Object | TypeTag::Str => output.push_str("uint_64_t"),
                     TypeTag::Void => output.push_str("void"),
                     _ => unreachable!("return type can't be native")
                 }
