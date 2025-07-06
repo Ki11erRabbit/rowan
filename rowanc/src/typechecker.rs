@@ -82,7 +82,8 @@ impl<'a> From<Type<'a>> for TypeCheckerType {
                 args.into_iter().map(TypeCheckerType::from).collect(),
                 Box::new(TypeCheckerType::from(*ret))
             ),
-            Type::Tuple(tys, _) => TypeCheckerType::Tuple(tys.into_iter().map(TypeCheckerType::from).collect())
+            Type::Tuple(tys, _) => TypeCheckerType::Tuple(tys.into_iter().map(TypeCheckerType::from).collect()),
+            Type::Native => unreachable!("Native type should not be constructable"),
         }
     }
 }

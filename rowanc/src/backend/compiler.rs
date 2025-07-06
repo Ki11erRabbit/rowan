@@ -364,7 +364,12 @@ impl Compiler {
     }
 
     /// files should be sorted in a way that means we don't need to do each file incrementally
-    pub fn compile_files(mut self, files: Vec<File>) -> Result<(), CompilerError> {
+    pub fn compile_files(
+        mut self, 
+        files: Vec<File>, 
+        generate_c_header: bool,
+        generate_rust_file: bool,
+    ) -> Result<(), CompilerError> {
 
         for file in files {
             let File { path, content, .. } = file;
@@ -399,7 +404,7 @@ impl Compiler {
         }
 
         for (path, file) in self.classes.into_iter() {
-            if let Some(file) = file.create_class_file() {
+            if let Some((file, native_definitions)) = file.create_class_file() {
                 let path = format!("output/{}.class", path.join("/"));
                 let bytes = file.as_binary();
                 let path = PathBuf::from(path);
@@ -754,6 +759,7 @@ impl Compiler {
             Type::TypeArg(_, _, _) => TypeTag::Object,
             Type::Tuple(_, _) => TypeTag::Object,
             Type::Function(_, _, _) => TypeTag::Object,
+            Type::Native => TypeTag::Native,
         }
 
     }
@@ -1064,6 +1070,7 @@ impl Compiler {
                             Some(Type::Void) => TypeTag::Void,
                             Some(Type::TypeArg(_ ,_, _)) => TypeTag::Object,
                             Some(Type::Function(_, _, _)) => TypeTag::Object,
+                            Some(Type::Native) => unreachable!("Native should not ever occur in here"),
                             None => todo!("handle case where we don't know what the type is for the array")
                         };
                         output.push(Bytecode::LoadU64(exprs.len() as u64));
@@ -1184,6 +1191,7 @@ impl Compiler {
                             Type::Array(_, _) => TypeTag::Object,
                             Type::Char => TypeTag::U32,
                             Type::Function(_, _, _) => TypeTag::Object,
+                            Type::Native => unreachable!("Should not be able to get a native type"),
                         };
 
                         if lhs {
@@ -1661,6 +1669,7 @@ impl Compiler {
                                 }
                                 Type::F32 => Text::Borrowed("Arrayf32"),
                                 Type::F64 => Text::Borrowed("Arrayf64"),
+                                Type::Native => unreachable!("Native shouldn't be a constructable type in Rowan"),
                             };
                             (field, vec![ty.to_string()], var.clone())
                         }
@@ -1745,6 +1754,7 @@ impl Compiler {
                                         }
                                         Type::F32 => Text::Borrowed("Arrayf32"),
                                         Type::F64 => Text::Borrowed("Arrayf64"),
+                                        Type::Native => unreachable!("Native shouldn't be a constructable type in Rowan"),
                                     };
                                     ty
                                 }
@@ -1842,6 +1852,7 @@ impl Compiler {
                                 }
                             }
                         }
+                        Type::Native => unreachable!("Native shouldn't be a constructable type in Rowan"),
                     }
                 }
                 Type::Object(name, _) => name.clone(),

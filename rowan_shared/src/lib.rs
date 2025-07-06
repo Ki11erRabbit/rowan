@@ -20,6 +20,7 @@ pub enum TypeTag {
     F64,
     Str,
     Object,
+    Native,
 }
 
 impl TypeTag {

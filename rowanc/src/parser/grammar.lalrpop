@@ -35,7 +35,7 @@ extern {
         "new" => Token::New,
         "to" => Token::To,
         "self" => Token::This,
-        "from" => Token::From,
+        "native" => Token::Native,
         "let" => Token::Let,
         "const" => Token::Const,
         "mut" => Token::Mut,
@@ -241,7 +241,18 @@ Member: ClassMember<'a> = {
                 span,
             }
         )
-    }
+    },
+    <start: @L> <vis:Visibility> <name:Identifier> ":" "native" <end: @R> => {
+            let span = Span::new(start, end);
+            ClassMember::Member(
+                Member {
+                    visibility: vis,
+                    name,
+                    ty: Type::Native,
+                    span,
+                }
+            )
+        }
 };
 
 StaticMember: ClassMember<'a> = {
@@ -329,6 +340,7 @@ Method: ClassMember<'a> = {
             Method {
                 visibility: vis,
                 name,
+                is_native: false,
                 annotations,
                 type_params,
                 parameters: params,
@@ -337,7 +349,31 @@ Method: ClassMember<'a> = {
                 span
             }
         )
-    }
+    },
+    <start: @L> <annotations:MethodAnnotations?> <vis:Visibility> "native" "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Lb <end: @R> => {
+            let span = Span::new(start, end);
+            let type_params = match typaram {
+                Some(typ) => typ,
+                None => Vec::new(),
+            };
+            let annotations = match annotations {
+                Some(a) => a,
+                None => Vec::new(),
+            };
+            ClassMember::Method(
+                Method {
+                    visibility: vis,
+                    is_native: true,
+                    name,
+                    annotations,
+                    type_params,
+                    parameters: params,
+                    return_type: ret,
+                    body: Vec::new(),
+                    span
+                }
+            )
+        }
 };
 
 MethodAnnotations: Vec<Annotation<'a>> = {

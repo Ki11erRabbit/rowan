@@ -249,6 +249,7 @@ pub struct Member<'a> {
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Method<'a> {
     pub name: Text<'a>,
+    pub is_native: bool,
     pub annotations: Vec<Annotation<'a>>,
     pub visibility: Visibility,
     pub type_params: Vec<TypeParameter<'a>>,
@@ -316,6 +317,7 @@ pub enum Type<'a> {
     F64,
     Char,
     Str,
+    Native,
     Array(Box<Type<'a>>, Span),
     Object(Text<'a>, Span),
     TypeArg(Box<Type<'a>>, Vec<Type<'a>>, Span),
