@@ -25,7 +25,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
     ];
     let vtable = VTable::new(functions);
-    object.add_vtable(&vec![String::from("Object")], vtable, &names, &signatures);
+    object.add_vtable(&vec![String::from("Object")], vtable, &names, &signatures, &vec![false]);
     object.make_not_printable();
     classes.insert(vec![String::from("Object")], object);
 
@@ -47,7 +47,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    printer.add_vtable(&vec![String::from("Printer")], vtable, &names, &signatures);
+    printer.add_vtable(&vec![String::from("Printer")], vtable, &names, &signatures, &vec![false, false, false]);
     printer.make_not_printable();
     classes.insert(vec![String::from("Printer")], printer);
 
@@ -71,7 +71,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    string.add_vtable(&vec![String::from("String")], vtable, &names, &signatures);
+    string.add_vtable(&vec![String::from("String")], vtable, &names, &signatures, &vec![false, false, false]);
     string.make_not_printable();
     classes.insert(vec![String::from("String")], string);
 
@@ -95,7 +95,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable(&vec![String::from("Array8")], vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Array8")], vtable, &names, &signatures, &vec![false, false, false]);
     array.make_not_printable();
     classes.insert(vec![String::from("Array8")], array);
 
@@ -118,7 +118,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable(&vec![String::from("Array16")], vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Array16")], vtable, &names, &signatures, &vec![false, false, false]);
     array.make_not_printable();
     classes.insert(vec![String::from("Array16")], array);
 
@@ -141,7 +141,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable(&vec![String::from("Array32")], vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Array32")], vtable, &names, &signatures, &vec![false, false, false]);
     array.make_not_printable();
     classes.insert(vec![String::from("Array32")], array);
 
@@ -164,7 +164,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable(&vec![String::from("Array64")], vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Array64")], vtable, &names, &signatures, &vec![false, false, false]);
     array.make_not_printable();
     classes.insert(vec![String::from("Array64")], array);
 
@@ -187,7 +187,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable(&vec![String::from("Arrayf32")], vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Arrayf32")], vtable, &names, &signatures, &vec![false, false, false]);
     array.make_not_printable();
     classes.insert(vec![String::from("Arrayf32")], array);
 
@@ -210,7 +210,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable(&vec![String::from("Arrayf64")], vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Arrayf64")], vtable, &names, &signatures, &vec![false, false, false]);
     array.make_not_printable();
     classes.insert(vec![String::from("Arrayf64")], array);
 
@@ -233,7 +233,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable(&vec![String::from("Arrayobject")], vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("Arrayobject")], vtable, &names, &signatures, &vec![false, false, false]);
     array.make_not_printable();
     classes.insert(vec![String::from("Arrayobject")], array);
     
@@ -366,9 +366,7 @@ impl Compiler {
     /// files should be sorted in a way that means we don't need to do each file incrementally
     pub fn compile_files(
         mut self, 
-        files: Vec<File>, 
-        generate_c_header: bool,
-        generate_rust_file: bool,
+        files: Vec<File>,
     ) -> Result<(), CompilerError> {
 
         for file in files {
@@ -405,6 +403,18 @@ impl Compiler {
 
         for (path, file) in self.classes.into_iter() {
             if let Some((file, native_definitions)) = file.create_class_file() {
+                if !native_definitions.is_empty() {
+                    let path = format!("output/{}.h", path.join("/"));
+                    let header = native_definitions.as_c_header();
+                    let bytes = header.as_bytes();
+                    let path = PathBuf::from(path);
+                    if let Some(parents) = path.parent() {
+                        let _ = std::fs::create_dir_all(parents);
+                    }
+                    let _ = std::fs::remove_file(&path);
+                    let mut file = std::fs::File::create(path).unwrap();
+                    file.write_all(&bytes).unwrap();
+                }
                 let path = format!("output/{}.class", path.join("/"));
                 let bytes = file.as_binary();
                 let path = PathBuf::from(path);
@@ -414,7 +424,6 @@ impl Compiler {
                 let _ = std::fs::remove_file(&path);
                 let mut file = std::fs::File::create(path).unwrap();
                 file.write_all(&bytes).unwrap();
-                
             }
         }
         Ok(())
@@ -546,14 +555,18 @@ impl Compiler {
             let partial_class = self.classes.get(&path).expect("Order of files is wrong");
             let vtables = partial_class.get_vtables(&path);
             vtables.into_iter().map(|(table, names, signatures)| {
+                let mut is_natives= Vec::new();
                 let class_name = partial_class.index_string_table(table.class_name).split("::")
-                    .map(|name| name.to_string()).collect::<Vec<String>>();
+                    .map(|name| {
+                        is_natives.push(false);
+                        name.to_string()
+                    }).collect::<Vec<String>>();
                 let source_class = if table.sub_class_name == 0 {
                     None
                 } else {
                     Some(partial_class.index_string_table(table.sub_class_name))
                 };
-                (class_name, source_class, table, names, signatures)
+                (class_name, source_class, table, names, signatures, is_natives)
             }).collect::<Vec<_>>()
 
         });
@@ -567,7 +580,8 @@ impl Compiler {
             names,
             signatures,
             static_method_map,
-            static_signatures
+            static_signatures,
+            is_natives
         ) = self.construct_vtable(&name, &methods)?;
 
         let names = names.into_iter()
@@ -583,7 +597,7 @@ impl Compiler {
         partial_class.set_static_method_to_sig(static_method_map);
 
         if vtable.functions.len() != 0 {
-            partial_class.add_vtable(&name, vtable, &names, &signatures);
+            partial_class.add_vtable(&name, vtable, &names, &signatures, &is_natives);
         } else {
             drop(vtable);
             drop(names);
@@ -599,16 +613,16 @@ impl Compiler {
                 .map(|n| format!("core::Object::{n}"))
                 .collect::<Vec<String>>();
 
-            partial_class.add_vtable(&vec![String::from("core::Object")], vtable.clone(), &names, signatures);
+            partial_class.add_vtable(&vec![String::from("core::Object")], vtable.clone(), &names, signatures, &vec![false]);
             partial_class.add_parent("core::Object");
         }
 
         for vtables in parent_vtables {
-            for (class_name, _source_class, vtable, names, signatures) in vtables {
+            for (class_name, _source_class, vtable, names, signatures, is_natives) in vtables {
                 let names = names.into_iter()
                     .map(|n| self.add_path_if_needed(n).join("::"))
                     .collect::<Vec<String>>();
-                partial_class.add_vtable(&class_name, vtable.clone(), &names, &signatures);
+                partial_class.add_vtable(&class_name, vtable.clone(), &names, &signatures, &is_natives);
             }
         }
 
@@ -671,6 +685,7 @@ impl Compiler {
         Vec<SignatureEntry>,
         HashMap<String,SignatureIndex>,
         Vec<SignatureEntry>,
+        Vec<bool>,
     ), CompilerError> {
 
 
@@ -679,6 +694,7 @@ impl Compiler {
         let mut signatures = Vec::new();
         let mut static_signatures = Vec::new();
         let mut static_method_to_signature = HashMap::new();
+        let mut is_natives = Vec::new();
 
         'methods: for method in methods.iter() {
             let Method {
@@ -687,8 +703,10 @@ impl Compiler {
                 parameters,
                 return_type,
                 span: _span,
+                is_native,
                 ..
             } = method;
+            is_natives.push(*is_native);
 
             for annotation in annotations.iter() {
                 if annotation.name == "Override" {
@@ -733,7 +751,7 @@ impl Compiler {
         }
         let vtable = VTable::new(entries);
 
-        Ok((vtable, names, signatures, static_method_to_signature, static_signatures))
+        Ok((vtable, names, signatures, static_method_to_signature, static_signatures, is_natives))
     }
 
     fn convert_type(&self, ty: &Type) -> TypeTag {
@@ -773,6 +791,7 @@ impl Compiler {
                 name,
                 parameters,
                 body,
+                is_native,
                 ..
             } = method;
 
@@ -802,7 +821,9 @@ impl Compiler {
                 let mut class_name = partial_class.get_class_name();
                 class_name.push(name.to_string());
                 let name = class_name.join("::");
-                partial_class.add_static_method(name, bytecode);
+                if !*is_native {
+                    partial_class.add_static_method(name, bytecode);
+                }
             } else {
                 //println!("{}", name);
                 let vtable = partial_class.get_vtable(&name).unwrap();
@@ -815,7 +836,9 @@ impl Compiler {
                 method_name.push(name.to_string());
                 let method_name = method_name.join("::");
 
-                partial_class.attach_bytecode(&method_class_name, method_name, bytecode).expect("Handle partial class error");
+                if !*is_native {
+                    partial_class.attach_bytecode(&method_class_name, method_name, bytecode).expect("Handle partial class error");
+                }
             }
 
             self.pop_scope();

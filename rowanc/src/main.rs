@@ -16,10 +16,6 @@ pub struct Args {
 
     #[arg(short, long)]
     pub stdlib_path: String,
-    #[arg(short, long, default_value_t = true)]
-    pub c_native_header: bool,
-    #[arg(short, long, default_value_t = false)]
-    pub rust_native_file: bool,
 }
 
 fn explore_directories<P: AsRef<Path>>(path: P, files: &mut Vec<(String, Vec<String>, String)>) {
@@ -123,6 +119,6 @@ fn main() {
     let class_files = typechecker.check(class_files).unwrap();
 
     let mut compiler = backend::Compiler::new();
-    compiler.compile_files(class_files, args.c_native_header, args.rust_native_file).unwrap();
+    compiler.compile_files(class_files).unwrap();
 
 }

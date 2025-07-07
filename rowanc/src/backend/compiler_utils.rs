@@ -4,6 +4,7 @@ use rowan_shared::{classfile::{BytecodeEntry, ClassFile, Member, SignatureEntry,
 use rowan_shared::classfile::{BytecodeIndex, StaticMethods};
 use crate::ast::Method;
 use crate::backend::Compiler;
+use crate::native::NativeAttributes;
 
 #[derive(Debug)]
 pub enum PartialClassError {
@@ -128,6 +129,10 @@ pub struct PartialClass {
     method_to_class: HashMap<String, Vec<Vec<String>>>,
     /// Maps static method names to a method signature
     static_method_to_signature: HashMap<String, SignatureIndex>,
+    /// Names of functions that get the size of a native member
+    native_member_sizes: Vec<String>,
+    /// Names and types of native defined methods,
+    native_functions: Vec<(String, Vec<TypeTag>, TypeTag)>,
     /// A flag to mark the class as one to not emit a class file for
     dont_print: bool,
 }
@@ -195,6 +200,8 @@ impl PartialClass {
             method_to_class: HashMap::new(),
             vtable_to_class: HashMap::new(),
             static_method_to_signature: HashMap::new(),
+            native_member_sizes: Vec::new(),
+            native_functions: Vec::new(),
             dont_print: false,
         }
     }
@@ -203,11 +210,11 @@ impl PartialClass {
         self.dont_print = true
     }
 
-    pub fn create_class_file(self) -> Option<ClassFile> {
+    pub fn create_class_file(self) -> Option<(ClassFile, NativeAttributes)> {
         if self.dont_print {
             return None;
         }
-        Some(ClassFile::new_from_parts(
+        Some((ClassFile::new_from_parts(
             self.name,
             self.parents,
             self.vtables,
@@ -217,7 +224,9 @@ impl PartialClass {
             self.static_init,
             self.bytecode_table,
             self.string_table,
-            self.signature_table))
+            self.signature_table),
+            NativeAttributes::new(self.native_member_sizes, self.native_functions),
+        ))
     }
     
     pub fn add_signatures(&mut self, sigs: Vec<SignatureEntry>) {
@@ -243,6 +252,7 @@ impl PartialClass {
         mut vtable: VTable,
         names: &Vec<impl AsRef<str>>,
         signatures: &Vec<SignatureEntry>,
+        native_methods: &Vec<bool>,
 
     ) {
         //println!("add_vtable1 {} {}", self.index_string_table(self.name), class_name.as_ref());
@@ -258,6 +268,14 @@ impl PartialClass {
             self.method_to_function.entry(String::from(names[i].as_ref()))
                 .and_modify(|v| v.push((self.vtables.len(), i)))
                 .or_insert(vec![(self.vtables.len(), i)]);
+            if native_methods[i] {
+                function.bytecode = -1;
+                self.native_functions.push((
+                    names[i].as_ref().to_string(),
+                    signatures[i].types[1..].to_vec(),
+                    signatures[i].types[0],
+                ));
+            }
         }
         self.class_to_vtable.entry(class_name.clone())
             .and_modify(|v| v.push(self.vtables.len()))
@@ -285,7 +303,14 @@ impl PartialClass {
     }
 
     pub fn add_member<S: AsRef<str>>(&mut self, mut member: Member, name: S) {
-        member.name = self.add_string(name);
+        member.name = self.add_string(name.as_ref());
+
+        match member.type_tag {
+            TypeTag::Native => {
+                self.set_field_as_native(name.as_ref())
+            }
+            _ => {}
+        }
 
         self.members.push(member);
     }
@@ -391,6 +416,13 @@ impl PartialClass {
             }
         }
         false
+    }
+
+    pub fn set_field_as_native(
+        &mut self,
+        field: &str,
+    ) {
+        self.native_member_sizes.push(format!("{}::get-size", field));
     }
     
     pub fn find_class_with_field<'a>(

@@ -22,4 +22,6 @@ class Main {
             i = i + 1;
         }
     }
+
+    native fn test(self);
 }

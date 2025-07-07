@@ -12,9 +12,14 @@ impl NativeAttributes {
             native_member_sizes,
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.native_member_sizes.is_empty() && self.native_functions.is_empty()
+    }
     
     pub fn as_c_header(&self) -> String {
-        let mut output = String::from("#include <stdint.h>\n");
+        let mut output = String::from("#include <rowan.h>\n");
+        output.push_str("#include <stdint.h>\n");
         
         for member_size in self.native_member_sizes.iter() {
             let name = member_size.replace("::", "__")
@@ -42,7 +47,7 @@ impl NativeAttributes {
                 _ => unreachable!("return type can't be native")
             }
 
-            output.push_str(&format!(" {name}("));
+            output.push_str(&format!(" {name}(rowan_context_t context, "));
 
             for (i, arg) in args.iter().enumerate() {
                 match arg {
@@ -67,9 +72,6 @@ impl NativeAttributes {
 
             output.push_str(");\n");
         }
-        
-        
-        
         output
     }
 }
