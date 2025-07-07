@@ -149,6 +149,7 @@ impl PartialClass {
     }
 
     pub fn get_vtable(&self, method_name: impl AsRef<str>) -> Result<&VTable, PartialClassError> {
+        println!("{}: {:#?}", method_name.as_ref(), self.method_to_class);
         let class_names = self.method_to_class.get(method_name.as_ref()).ok_or(PartialClassError::ClassNotNotFound(method_name.as_ref().to_string()))?;
         if class_names.len() > 1 {
             return Err(PartialClassError::Ambiguity);
@@ -252,8 +253,6 @@ impl PartialClass {
         mut vtable: VTable,
         names: &Vec<impl AsRef<str>>,
         signatures: &Vec<SignatureEntry>,
-        native_methods: &Vec<bool>,
-
     ) {
         //println!("add_vtable1 {} {}", self.index_string_table(self.name), class_name.as_ref());
         vtable.class_name = self.add_string(class_name.join("::"));
@@ -268,14 +267,6 @@ impl PartialClass {
             self.method_to_function.entry(String::from(names[i].as_ref()))
                 .and_modify(|v| v.push((self.vtables.len(), i)))
                 .or_insert(vec![(self.vtables.len(), i)]);
-            if native_methods[i] {
-                function.bytecode = -1;
-                self.native_functions.push((
-                    names[i].as_ref().to_string(),
-                    signatures[i].types[1..].to_vec(),
-                    signatures[i].types[0],
-                ));
-            }
         }
         self.class_to_vtable.entry(class_name.clone())
             .and_modify(|v| v.push(self.vtables.len()))
@@ -288,9 +279,29 @@ impl PartialClass {
         &mut self,
         method_name: impl AsRef<str>,
         code: B,
+        is_native: bool,
     ) {
         let name_index = self.add_string(method_name.as_ref());
         let signature_index = self.static_method_to_signature.get(method_name.as_ref()).unwrap();
+
+        if is_native {
+
+            let signature: SignatureEntry = self.signature_table[*signature_index as usize].clone();
+
+            self.native_functions.push((
+                method_name.as_ref().to_string(),
+                signature.types[1..].to_vec(),
+                signature.types[0],
+            ));
+
+            self.static_methods.push(VTableEntry {
+                name: name_index,
+                signature: *signature_index,
+                bytecode: 0,
+            });
+
+            return
+        }
 
         self.bytecode_table.push(BytecodeEntry::new(code.as_ref()));
         let bytecode_index = self.bytecode_table.len() as BytecodeIndex;
@@ -326,6 +337,7 @@ impl PartialClass {
         class_name: &[String],
         method_name: impl AsRef<str>,
         code: B,
+        is_native: bool,
     ) -> PartialClassResult<()> {
         //println!("{}", class_name.as_ref());
         //println!("{:#?}", self);
@@ -344,6 +356,23 @@ impl PartialClass {
         }
         //println!("{:#?}", self);
         let method_index = method_index.unwrap();
+
+        let signature_index = self.static_method_to_signature.get(method_name.as_ref()).unwrap();
+
+        if is_native {
+
+            let signature: SignatureEntry = self.signature_table[*signature_index as usize].clone();
+
+            self.native_functions.push((
+                method_name.as_ref().to_string(),
+                signature.types[1..].to_vec(),
+                signature.types[0],
+            ));
+
+            self.vtables[vtable_index].functions[method_index].bytecode = 0;
+
+            return Ok(());
+        }
 
         self.bytecode_table.push(BytecodeEntry::new(code.as_ref()));
         let bytecode_index = self.bytecode_table.len();

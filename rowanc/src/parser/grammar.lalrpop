@@ -350,7 +350,7 @@ Method: ClassMember<'a> = {
             }
         )
     },
-    <start: @L> <annotations:MethodAnnotations?> <vis:Visibility> "native" "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> Lb <end: @R> => {
+    <start: @L> <annotations:MethodAnnotations?> <vis:Visibility> "native" "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <end: @R> => {
             let span = Span::new(start, end);
             let type_params = match typaram {
                 Some(typ) => typ,

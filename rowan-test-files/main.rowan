@@ -14,7 +14,6 @@ class Main {
         }
     }
 
-
     fn thrash() {
         let i: u64 = 0;
         while i < 10 {
@@ -23,5 +22,6 @@ class Main {
         }
     }
 
-    native fn test(self);
+    native fn test(self)
+
 }
