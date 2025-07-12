@@ -9,7 +9,7 @@ can be implemented.
 * [ ] Generics
   * [x] Classes
   * [ ] Methods
-* [ ] Option to null pointer check
+* [ ] Throwing Exceptions
 * [ ] Module Paths
   * [x] Static method Paths
   * [ ] Method Paths
@@ -72,7 +72,6 @@ can be implemented.
   * [ ] Iterator Based For Loop
   * [ ] With Context Manager for RAII
 * [ ] Try/Catch
-  * [ ] Throwing
   * [ ] Setting up exception handling
 * [ ] break, continue, and labels on any loop
 * [ ] Marker Traits for Thread Safety
