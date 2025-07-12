@@ -14,6 +14,7 @@ use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::S
 use std::borrow::BorrowMut;
 use std::collections::HashSet;
 use std::num::NonZeroU64;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::Sender;
 use crate::runtime::class::{ClassMember, ClassMemberData};
@@ -28,6 +29,7 @@ pub mod garbage_collection;
 
 use crate::runtime::core::{exception_fill_in_stack_trace, exception_print_stack_trace};
 use crate::runtime::garbage_collection::GC_SENDER;
+use crate::runtime::tables::native_object_table::NativeObjectTable;
 
 pub type Symbol = usize;
 
@@ -80,6 +82,11 @@ static JIT_CONTROLLER: LazyLock<RwLock<JITController>> = LazyLock::new(|| {
 static CLASS_MAPPER: LazyLock<RwLock<HashMap<String, Symbol>>> = LazyLock::new(|| {
     let map = HashMap::new();
     RwLock::new(map)
+});
+
+static LIBRARY_TABLE: LazyLock<RwLock<NativeObjectTable>> = LazyLock::new(|| {
+    let table = NativeObjectTable::new();
+    RwLock::new(table)
 });
 
 trait MakeObject<N> {
@@ -299,6 +306,7 @@ impl Context {
 
     pub fn link_classes(
         classes: Vec<ClassFile>,
+        class_locations: Vec<PathBuf>,
         pre_class_table: &mut Vec<TableEntry<Class>>,
         // The first hashmap is the class symbol which the vtable comes from.
         // The second hashmap is the class that has a custom version of the vtable
@@ -322,9 +330,13 @@ impl Context {
         let Ok(mut class_map) = CLASS_MAPPER.write() else {
             panic!("Lock poisoned");
         };
+        let Ok(mut library_table) = LIBRARY_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
 
         linker::link_class_files(
             classes,
+            class_locations,
             &mut jit_controller,
             &mut jit_compiler,
             &mut symbol_table,
@@ -334,6 +346,7 @@ impl Context {
             vtables_map,
             string_map,
             class_map.borrow_mut(),
+            &mut library_table,
         ).unwrap()
     }
 

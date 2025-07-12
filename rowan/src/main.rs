@@ -1,5 +1,5 @@
 use std::{collections::HashMap, io::Read};
-
+use std::path::PathBuf;
 use rowan_shared::classfile::ClassFile;
 use runtime::{core, Context};
 use crate::runtime::Reference;
@@ -17,13 +17,20 @@ fn main() {
         return
     }
 
-    let classes = args[1..].iter().map(|f| {
+    let (classes, paths): (Vec<ClassFile>, Vec<PathBuf>) = args[1..].iter().map(|f| {
         //println!("{}", f);
         let mut file = std::fs::File::open(f).unwrap();
         let mut output = Vec::new();
         file.read_to_end(&mut output).unwrap();
-        ClassFile::new(&output)
-    }).collect::<Vec<_>>();
+        (ClassFile::new(&output), PathBuf::from(f))
+    }).unzip();
+
+    let paths = paths.into_iter()
+        .map(|mut f| {
+            f.pop();
+            f
+        })
+        .collect::<Vec<PathBuf>>();
 
     let vm_classes = vec![
         core::generate_object_class(),
@@ -50,7 +57,7 @@ fn main() {
     Context::link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map, &mut string_map);
 
 
-    let (main_symbol, main_method_symbol) = Context::link_classes(classes, &mut pre_class_table, &mut vtables_map, &mut string_map);
+    let (main_symbol, main_method_symbol) = Context::link_classes(classes, paths, &mut pre_class_table, &mut vtables_map, &mut string_map);
 
     Context::finish_linking_classes(pre_class_table);
     //println!("String Map: {string_map:#?}");

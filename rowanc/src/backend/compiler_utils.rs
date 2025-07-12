@@ -297,7 +297,7 @@ impl PartialClass {
             self.static_methods.push(VTableEntry {
                 name: name_index,
                 signature: *signature_index,
-                bytecode: 0,
+                bytecode: -1,
             });
 
             return
@@ -369,7 +369,7 @@ impl PartialClass {
                 signature.types[0],
             ));
 
-            self.vtables[vtable_index].functions[method_index].bytecode = 0;
+            self.vtables[vtable_index].functions[method_index].bytecode = -1;
 
             return Ok(());
         }

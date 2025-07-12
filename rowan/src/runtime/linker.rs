@@ -1,10 +1,12 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use cranelift::prelude::Signature;
 use rowan_shared::classfile::{self, ClassFile, VTableEntry};
 use rowan_shared::TypeTag;
 use crate::runtime::class::{ClassMember, ClassMemberData};
 use crate::runtime::jit::JITCompiler;
+use crate::runtime::tables::native_object_table::NativeObjectTable;
 use super::{class::{self, Class, MemberInfo}, jit::JITController, core::{VMClass, VMMember, VMMethod, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Context, Symbol, VTableIndex};
 
 #[derive(Debug)]
@@ -25,6 +27,7 @@ pub enum MethodLocation {
 
 pub fn link_class_files(
     classes: Vec<ClassFile>,
+    class_locations: Vec<PathBuf>,
     jit_controller: &mut JITController,
     jit_compiler: &mut JITCompiler,
     symbol_table: &mut SymbolTable,
@@ -37,6 +40,7 @@ pub fn link_class_files(
     vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<rowan_shared::TypeTag>, MethodLocation, Arc<RwLock<FunctionValue>>, Signature)>>>,
     string_map: &mut HashMap<String, Symbol>,
     class_map: &mut HashMap<String, Symbol>,
+    library_table: &mut NativeObjectTable,
 ) -> Result<(Symbol, Symbol), ()> {
 
     let mut main_class_symbol = None;
@@ -165,8 +169,8 @@ pub fn link_class_files(
         }
     }
 
-    let mut class_parts: Vec<(&str, Symbol, Symbol, Vec<Symbol>, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, MethodLocation)>, &ClassFile, Vec<(Symbol, Option<Symbol>)>, Vec<ClassMember>, Vec<u8>)> = Vec::new();
-    for class in classes.iter() {
+    let mut class_parts: Vec<(&str, PathBuf, Symbol, Symbol, Vec<Symbol>, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, MethodLocation)>, &ClassFile, Vec<(Symbol, Option<Symbol>)>, Vec<ClassMember>, Vec<u8>)> = Vec::new();
+    for (class, location) in classes.iter().zip(class_locations.into_iter()) {
         let ClassFile { name, parents, members, static_methods, vtables, static_members, static_init, .. } = &class;
         let class_name_str = class.index_string_table(*name);
         
@@ -220,8 +224,8 @@ pub fn link_class_files(
             let function = if *bytecode == 0 {
                 MethodLocation::Blank
             } else if *bytecode < 0 {
-                let index = bytecode.abs() as u64;
-                let string = class.index_string_table(index).to_string();
+                let string = name_str.replace("::", "__")
+                    .replace("-", "_dash_");
                 MethodLocation::Native(string)
             } else {
                 MethodLocation::Bytecode(class.index_bytecode_table(*bytecode).code.clone())
@@ -307,13 +311,13 @@ pub fn link_class_files(
             Vec::new()
         };
 
-        class_parts.push((class_name_str, class_symbol, class_name_symbol, parent_symbols, class_members, static_method_functions, class, vtables_to_link, static_members, static_init));
+        class_parts.push((class_name_str, location, class_symbol, class_name_symbol, parent_symbols, class_members, static_method_functions, class, vtables_to_link, static_members, static_init));
     }
     let mut class_parts_to_try_again;
     loop {
         class_parts_to_try_again = Vec::new();
         'outer: for class_part in class_parts {
-            let (class_name_str, class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members, static_init) = class_part;
+            let (class_name_str, mut location, class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members, static_init) = class_part;
             let mut vtables_to_add = Vec::new();
             // Source class is one of the parents of the derived class
             // This is used to disambiguate
@@ -331,7 +335,7 @@ pub fn link_class_files(
                     for (_,_,_,value, _) in base_functions {
                         if value.read().expect("lock poisoned").is_blank() {
                             // We bail if any of base has not yet been linked
-                            class_parts_to_try_again.push((class_name_str, class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members, static_init));
+                            class_parts_to_try_again.push((class_name_str, location, class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members, static_init));
                             continue 'outer;
                         }
                     }
@@ -380,8 +384,32 @@ pub fn link_class_files(
                                     let value = FunctionValue::Bytecode(bytecode, func_id);
                                     (value, sig)
                                 }
-                                MethodLocation::Native(_string) => {
-                                    todo!("load shared object file and pull the function named by `string` from it")
+                                MethodLocation::Native(string) => {
+                                    let name = class_name_str.split("::").collect::<Vec<&str>>().last().unwrap().to_string();
+                                    let name = add_library_mod(&name);
+
+                                    location.push(name);
+
+                                    let value = if let Some(library) = library_table.get_mut(&location.to_str().unwrap()) {
+                                        let symbol = unsafe {
+                                            let symbol = library.get::<*const ()>(string.as_bytes()).expect("TODO: handle missing function reference");
+                                            *symbol
+                                        };
+                                        FunctionValue::Native(symbol)
+                                    } else {
+                                        let (symbol, lib) = unsafe {
+                                            let lib = libloading::Library::new(&location).expect("Handle Missing library");
+                                            let symbol = lib.get::<*const ()>(string.as_bytes()).expect("TODO: handle missing function reference");
+
+                                            (*symbol, lib)
+                                        };
+                                        library_table.insert(location.to_str().unwrap().to_string(), lib);
+                                        FunctionValue::Native(symbol)
+                                    };
+
+                                    location.pop();
+
+                                    (value, sig)
                                 }
                                 MethodLocation::Blank => {
                                     unreachable!("method location was blank")
@@ -420,7 +448,7 @@ pub fn link_class_files(
                     for (_,_,_,value, _) in base_functions {
                         if value.read().expect("lock is poisoned").is_blank() {
                             // We bail if any of base has not yet been linked
-                            class_parts_to_try_again.push((class_name_str, class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members, static_init));
+                            class_parts_to_try_again.push((class_name_str, location, class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members, static_init));
                             continue 'outer;
                         }
                     }
@@ -446,8 +474,32 @@ pub fn link_class_files(
                                     let value = FunctionValue::Bytecode(bytecode, func_id);
                                     Arc::new(RwLock::new(value))
                                 }
-                                MethodLocation::Native(_string) => {
-                                    todo!("load shared object file and pull the function named by `string` from it")
+                                MethodLocation::Native(string) => {
+                                    let name = class_name_str.split("::").collect::<Vec<&str>>().last().unwrap().to_string();
+                                    let name = add_library_mod(&name);
+
+                                    location.push(name);
+
+                                    let value = if let Some(library) = library_table.get_mut(&location.to_str().unwrap()) {
+                                        let symbol = unsafe {
+                                            let symbol = library.get::<*const ()>(string.as_bytes()).expect("TODO: handle missing function reference");
+                                            *symbol
+                                        };
+                                        FunctionValue::Native(symbol)
+                                    } else {
+                                        let (symbol, lib) = unsafe {
+                                            let lib = libloading::Library::new(&location).expect("Handle Missing library");
+                                            let symbol = lib.get::<*const ()>(string.as_bytes()).expect("TODO: handle missing function reference");
+
+                                            (*symbol, lib)
+                                        };
+                                        library_table.insert(location.to_str().unwrap().to_string(), lib);
+                                        FunctionValue::Native(symbol)
+                                    };
+
+                                    location.pop();
+
+                                    Arc::new(RwLock::new(value))
                                 }
                                 MethodLocation::Blank => {
                                     base_value.clone()
@@ -489,7 +541,7 @@ pub fn link_class_files(
             match add_parent_vtables(&mut class_vtable_mapper, &parents, class_table, symbol_table, &mut HashSet::new()) {
                 Err(_) => {
                     // We bail if any of base has not yet been linked
-                    class_parts_to_try_again.push((class_name_str, class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members, static_init));
+                    class_parts_to_try_again.push((class_name_str, location, class_symbol, class_name_symbol, parents, members, static_methods, class, vtables, static_members, static_init));
                     continue 'outer;
                 }
                 _ => {},
@@ -1417,4 +1469,14 @@ fn add_parent_vtables(
     }
     
     Ok(())
+}
+
+
+#[cfg(target_family = "windows")]
+fn add_library_mod(name: &str) -> String {
+    format!("{name}.dll")
+}
+#[cfg(target_family = "unix")]
+fn add_library_mod(name: &str) -> String {
+    format!("{name}.so")
 }
