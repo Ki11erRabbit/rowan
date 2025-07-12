@@ -215,6 +215,7 @@ impl PartialClass {
         if self.dont_print {
             return None;
         }
+        let class_name = self.get_class_name().join("::");
         Some((ClassFile::new_from_parts(
             self.name,
             self.parents,
@@ -226,7 +227,7 @@ impl PartialClass {
             self.bytecode_table,
             self.string_table,
             self.signature_table),
-            NativeAttributes::new(self.native_member_sizes, self.native_functions),
+            NativeAttributes::new(class_name, self.native_member_sizes, self.native_functions),
         ))
     }
     

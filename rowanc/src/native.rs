@@ -1,13 +1,15 @@
 use rowan_shared::TypeTag;
 
 pub struct NativeAttributes {
+    pub name: String,
     pub native_member_sizes: Vec<String>,
     pub native_functions: Vec<(String, Vec<TypeTag>, TypeTag)>,
 }
 
 impl NativeAttributes {
-    pub fn new(native_member_sizes: Vec<String>, native_functions: Vec<(String, Vec<TypeTag>, TypeTag)>) -> Self {
+    pub fn new(name: String, native_member_sizes: Vec<String>, native_functions: Vec<(String, Vec<TypeTag>, TypeTag)>) -> Self {
         Self {
+            name,
             native_functions,
             native_member_sizes,
         }
@@ -18,8 +20,11 @@ impl NativeAttributes {
     }
     
     pub fn as_c_header(&self) -> String {
-        let mut output = String::from("#include <rowan.h>\n");
-        output.push_str("#include <stdint.h>\n");
+        let header_name = self.name.replace("::", "__")
+            .replace("-", "_dash_")
+            .to_uppercase();
+        let mut output = format!("#ifndef {header_name}_H\n#define {header_name}_H\n\n#include <rowan.h>\n");
+        output.push_str("#include <stdint.h>\n\n");
         
         for member_size in self.native_member_sizes.iter() {
             let name = member_size.replace("::", "__")
@@ -76,6 +81,8 @@ impl NativeAttributes {
         if !self.native_member_sizes.is_empty() {
             output.push_str("void custom_drop(object_t*);\n")
         }
+
+        output.push_str("\n#endif\n");
 
         output
     }
