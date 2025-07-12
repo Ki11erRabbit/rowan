@@ -31,7 +31,13 @@ use crate::runtime::garbage_collection::GC_SENDER;
 
 pub type Symbol = usize;
 
-pub type Reference = u64;
+pub type Reference = *mut Object;
+
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct WrappedReference(Reference);
+
+unsafe impl Send for WrappedReference {}
+unsafe impl Sync for WrappedReference {}
 
 pub type Index = usize;
 
@@ -204,13 +210,13 @@ pub struct Context {
     registered_exceptions: HashMap<Symbol, Vec<Symbol>>,
     static_memo: HashMap<(Symbol, Symbol), *const ()>,
     virtual_memo: HashMap<(Symbol, Symbol, Option<Symbol>, Symbol), *const ()>,
-    sender: Sender<HashSet<Reference>>,
+    sender: Sender<HashSet<WrappedReference>>,
 }
 
 impl Context {
-    pub fn new(sender: Sender<HashSet<Reference>>) -> Self {
+    pub fn new(sender: Sender<HashSet<WrappedReference>>) -> Self {
         Context {
-            current_exception: RefCell::new(0),
+            current_exception: RefCell::new(std::ptr::null_mut()),
             function_backtrace: Vec::new(),
             registered_exceptions: HashMap::new(),
             static_memo: HashMap::new(),
@@ -260,12 +266,10 @@ impl Context {
     }
 
     pub extern "C" fn should_unwind(context: &mut Self) -> u8 {
-        if *context.current_exception.borrow() == 0 {
+        if context.current_exception.borrow().is_null() {
             return 0;
         }
-        let Some(exception) = context.get_object(*context.current_exception.borrow()) else {
-            unreachable!("after checking exception wasn't zero, exception was zero");
-        };
+        let exception = *context.current_exception.borrow();
         let exception = unsafe { exception.as_ref().unwrap() };
         let parent_exception = exception.parent_objects[0];
         exception_fill_in_stack_trace(context, parent_exception);
@@ -278,9 +282,6 @@ impl Context {
                 if *symbol == exception.class {
                     return 0;
                 }
-                let Some(parent_exception) = context.get_object(parent_exception) else {
-                    unreachable!("parents shouldn't be null");
-                };
                 let parent_exception = unsafe { parent_exception.as_ref().unwrap() };
                 if *symbol == parent_exception.class {
                     return 0;
@@ -399,16 +400,12 @@ impl Context {
             let (sender, _) = std::sync::mpsc::channel();
             let mut context = Context::new(sender);
             function(&mut context);
-            if *context.current_exception.borrow() != 0 {
+            if !context.current_exception.borrow().is_null() {
                 println!("Failed to initialize class static members");
                 let exception = context.get_exception();
-                let exception = context.get_object(exception).unwrap();
                 let exception = unsafe { exception.as_ref().unwrap() };
                 let base_exception_ref = exception.parent_objects[0];
-                let exception = context.get_object(base_exception_ref).unwrap();
-                let exception = unsafe { exception.as_ref().unwrap() };
                 let message = unsafe { exception.get::<Reference>(0) };
-                let message = context.get_object(message).unwrap();
                 let message = unsafe { message.as_ref().unwrap() };
                 let message_slice = unsafe { std::slice::from_raw_parts(message.get::<*const u8>(16), message.get(0)) };
                 let message_str = std::str::from_utf8(message_slice).unwrap();
@@ -417,26 +414,6 @@ impl Context {
                 std::process::exit(1);
             }
         }
-    }
-
-    pub fn get_object(&self, reference: Reference) -> Option<*mut Object> {
-        let Ok(object_table) = OBJECT_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-        if reference == 0 {
-            let exception = Context::new_object("NullPointerException");
-            core::null_pointer_init(self, exception);
-            self.set_exception(exception);
-            return None;
-        }
-        Some(object_table[reference])
-    }
-    
-    pub fn get_object_safe(reference: NonZeroU64) -> *mut Object {
-        let Ok(object_table) = OBJECT_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-        object_table[reference.get()]
     }
 
     pub fn get_method(
@@ -780,7 +757,10 @@ impl Context {
         //println!("live_objects: {:x?}", live_objects);
     }
 
-    fn dereference_stack_pointer(&self, backtrace_stack_pointer_instruction_pointer: &[(MethodName, usize, usize)]) -> HashSet<Reference> {
+    fn dereference_stack_pointer(
+        &self,
+        backtrace_stack_pointer_instruction_pointer: &[(MethodName, usize, usize)]
+    ) -> HashSet<WrappedReference> {
         let mut live_objects = HashSet::new();
 
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
@@ -886,19 +866,9 @@ impl Context {
             }
         }
 
-        live_objects
+        live_objects.into_iter().map(WrappedReference).collect::<HashSet<_>>()
     }
 
-    pub fn gc_get_object(reference: Reference) -> Option<*mut Object> {
-        let Ok(object_table) = OBJECT_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-        if reference == 0 {
-            return None;
-        }
-        let object = object_table[reference];
-        Some(object)
-    }
 
     pub fn gc_explore_object(reference: Reference, live_objects: &mut HashSet<Reference>) {
         Object::garbage_collect(reference, live_objects);
@@ -936,9 +906,6 @@ impl Context {
 pub extern "C" fn get_virtual_function(context: &mut Context, object: Reference, class_symbol: u64, source_class: i64, method_name: u64) -> u64 {
     context.check_and_do_garbage_collection();
 
-    let Some(object) = context.get_object(object) else {
-        return 0;
-    };
     let object = unsafe {object.as_mut().unwrap()};
 
     let object_class_symbol = object.class;
@@ -1091,7 +1058,7 @@ pub extern "C" fn get_static_memberobject(_context: &mut Context, class_symbol: 
     let class = &class_table[class_index];
 
     match class.get_member(member_index as usize) {
-        Some(ClassMember {  data: ClassMemberData::Object(v), .. } ) => *v,
+        Some(ClassMember {  data: ClassMemberData::Object(v), .. } ) => *v as usize as u64,
         _ => todo!("Throw an exception")
     }
 }
@@ -1215,6 +1182,8 @@ pub extern "C" fn set_static_memberobject(_context: &mut Context, class_symbol: 
         panic!("Lock poisoned");
     };
     let class = &mut class_table[class_index];
+
+    let value = value as usize as Reference;
 
     match class.get_member_mut(member_index as usize) {
         Some(ClassMember {  data: ClassMemberData::Object(v), .. } ) => *v = value,

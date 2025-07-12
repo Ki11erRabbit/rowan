@@ -2,13 +2,13 @@ use std::collections::HashSet;
 use std::sync::{Arc, LazyLock};
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread::yield_now;
-use crate::runtime::{Context, Reference, DO_GARBAGE_COLLECTION, THREAD_COUNT};
+use crate::runtime::{Context, Reference, WrappedReference, DO_GARBAGE_COLLECTION, THREAD_COUNT};
 
-pub static mut GC_SENDER: Option<Sender<HashSet<Reference>>> = None;
+pub static mut GC_SENDER: Option<Sender<HashSet<WrappedReference>>> = None;
 
 pub struct GarbageCollection {
     live_objects: HashSet<Reference>,
-    receiver: Receiver<HashSet<Reference>>,
+    receiver: Receiver<HashSet<WrappedReference>>,
 }
 
 impl GarbageCollection {
@@ -45,8 +45,8 @@ impl GarbageCollection {
                         Ok(live_objects) => {
                             //println!("Received live objects: {live_objects:?}");
                             for live_object in live_objects.iter() {
-                                Context::gc_explore_object(*live_object, &mut self.live_objects);
-                                self.live_objects.insert(*live_object);
+                                Context::gc_explore_object(live_object.0, &mut self.live_objects);
+                                self.live_objects.insert(live_object.0);
                             }
                             thread_count -= 1;
 
@@ -69,5 +69,8 @@ impl GarbageCollection {
         }
     }
 }
+
+unsafe impl Send for GarbageCollection {}
+unsafe impl Sync for GarbageCollection {}
 
 

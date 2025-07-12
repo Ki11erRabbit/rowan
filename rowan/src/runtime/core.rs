@@ -120,21 +120,19 @@ pub fn generate_object_class() -> VMClass {
 
 
 extern "C" fn object_downcast(context: &mut Context, this: Reference, class_index: u64) -> Reference {
-    let Some(object) = context.get_object(this) else {
-        return 0;
-    };
+    let object = this;
     let object = unsafe { object.as_mut().unwrap() };
     if object.class == class_index as Symbol {
         Context::normal_return(context);
         this
     } else {
         for obj in object.parent_objects.iter() {
-            if object_downcast(context, *obj, class_index) != 0 {
+            if !object_downcast(context, *obj, class_index).is_null() {
                 return this;
             }
         }
         Context::normal_return(context);
-        0
+        std::ptr::null_mut()
     }
 }
 
@@ -176,9 +174,7 @@ extern "C" fn printer_println_float(context: &mut Context, _: Reference, float: 
 }
 
 extern "C" fn printer_println(context: &mut Context, _: Reference, string: Reference) {
-    let Some(object) = context.get_object(string) else {
-        return
-    };
+    let object = string;
     let object = unsafe { object.as_ref().unwrap() };
     let length = unsafe { object.get::<u64>(0) };
     let pointer = unsafe { object.get::<u64>(8) };
@@ -192,20 +188,17 @@ extern "C" fn printer_println(context: &mut Context, _: Reference, string: Refer
 macro_rules! array_downcast_contents {
     (object, $ty:ty, $context:ident, $this:ident, $class_symbol:ident) => {
         {
-            let Some(object) = $context.get_object($this) else {
-                Context::normal_return($context);
-                return 0;
-            };
+            let object = $this;
             let object = unsafe { object.as_mut().unwrap() };
             let pointer = unsafe { object.get::<u64>(8) };
             let length = unsafe { object.get::<u64>(0) };
-            let pointer = pointer as *mut u64;
+            let pointer = pointer as *mut Reference;
             unsafe {
                 for i in 0..length as usize {
-                    if object_downcast($context, *pointer.add(i), $class_symbol) == 0 {
+                    if object_downcast($context, *pointer.add(i), $class_symbol).is_null() {
 
                         Context::normal_return($context);
-                        return 0;
+                        return std::ptr::null_mut();
                     }
                 }
             }
@@ -261,9 +254,7 @@ macro_rules! array_create_init {
         paste! {
             pub extern "C" fn $fn_name(context: &mut Context, this: Reference, length: u64) {
                 use std::alloc::*;
-                let Some(object) = context.get_object(this) else {
-                    return
-                };
+                let object = this;
                 let object = object as *mut Array;
                 let object = unsafe { object.as_mut().unwrap() };
                 object.length = length;
@@ -290,9 +281,7 @@ macro_rules! array_create_get {
     ($variant:expr, $fn_name:ident, $ty:ty) => {
         paste! {
             pub extern "C" fn $fn_name(context: &mut Context, this: Reference, index: u64) -> $ty {
-                let Some(object) = context.get_object(this) else {
-                    return 0 as $ty;
-                };
+                let object = this;
                 let object = object as *mut Array;
                 let object = unsafe { object.as_ref().expect("array get") };
                 let pointer = object.buffer;
@@ -317,10 +306,7 @@ macro_rules! array_create_set {
     ($variant:expr, $fn_name:ident, $ty:ty) => {
         paste! {
             pub extern "C" fn $fn_name(context: &mut Context, this: Reference, index: u64, value: $ty) {
-                let Some(object) = context.get_object(this) else {
-                    Context::normal_return(context);
-                    return
-                };
+                let object = this;
                 let object = object as *mut Array;
                 let object = unsafe { object.as_mut().expect("array set") };
                 let pointer = object.buffer;
@@ -414,9 +400,7 @@ create_array_class!(f32, f32);
 create_array_class!(f64, f64);
 
 extern "C" fn array_len(context: &mut Context, this: Reference) -> u64 {
-    let Some(object) = context.get_object(this) else {
-        return 0
-    };
+    let object = this;
     let object = object as *mut Array;
     let object = unsafe { object.as_ref().unwrap() };
     let length = object.length;
@@ -470,9 +454,7 @@ pub fn generate_exception_class() -> VMClass {
 
 extern "C" fn exception_init(context: &Context, this: Reference, message: Reference) {
     use std::alloc::*;
-    let Some(object) = context.get_object(this) else {
-        return
-    };
+    let object = this;
     let object = object as *mut Exception;
     let object = unsafe { object.as_mut().unwrap() };
     object.message = message;
@@ -491,9 +473,7 @@ extern "C" fn exception_init(context: &Context, this: Reference, message: Refere
 }
 
 pub extern "C" fn exception_fill_in_stack_trace(context: &mut Context, this: Reference) {
-    let Some(object) = context.get_object(this) else {
-        return
-    };
+    let object = this;
     let object = object as *mut Exception;
     let object = unsafe { object.as_mut().unwrap() };
     let length = object.stack_length;
@@ -514,9 +494,9 @@ pub extern "C" fn exception_fill_in_stack_trace(context: &mut Context, this: Ref
         let layout = Layout::array::<u64>(capacity as usize).expect("stack-trace layout is wrong or too big");
         unsafe { dealloc(pointer as *mut u8, layout) };
         capacity = capacity * 2;
-        (new_pointer as *mut u64, capacity)
+        (new_pointer as *mut Reference, capacity)
     } else {
-        (pointer as *mut u64, capacity)
+        (pointer as *mut Reference, capacity)
     };
     object.stack_capacity = capacity;
     object.stack_pointer = pointer;
@@ -534,9 +514,7 @@ pub extern "C" fn exception_fill_in_stack_trace(context: &mut Context, this: Ref
 }
 
 pub extern "C" fn exception_print_stack_trace(context: &mut Context, this: Reference) {
-    let Some(object) = context.get_object(this) else {
-        return
-    };
+    let object = this;
     let object = object as *mut Exception;
     let object = unsafe { object.as_mut().unwrap() };
     let length = object.stack_length;
@@ -589,9 +567,7 @@ pub fn generate_backtrace_class() -> VMClass {
 }
 
 extern "C" fn backtrace_init(context: &mut Context, this: Reference, function_name: Reference, line: u64, column: u64) {
-    let Some(object) = context.get_object(this) else {
-        return
-    };
+    let object = this;
     let object = object as *mut Backtrace;
     let object = unsafe { object.as_mut().unwrap() };
     object.function_name = function_name;
@@ -600,18 +576,14 @@ extern "C" fn backtrace_init(context: &mut Context, this: Reference, function_na
 }
 
 extern "C" fn backtrace_display(context: &mut Context, this: Reference) {
-    let Some(object) = context.get_object(this) else {
-        return
-    };
+    let object = this;
     let object = object as *mut Backtrace;
     let object = unsafe { object.as_ref().unwrap() };
     let function_name = object.function_name;
     let line = object.line_number;
     let column = object.column_number;
 
-    let Some(string) = context.get_object(function_name) else {
-        return
-    };
+    let string = function_name;
     let string = string as *mut StringObject;
     let string = unsafe { string.as_ref().unwrap() };
     let string_length = string.length;
@@ -642,9 +614,7 @@ pub fn generate_index_out_of_bounds_class() -> VMClass {
 }
 
 extern "C" fn out_of_bounds_init(context: &mut Context, this: Reference, bounds: u64, index: u64) {
-    let Some(object) = context.get_object(this) else {
-        return
-    };
+    let object = this;
     let object = unsafe { object.as_mut().unwrap() };
 
     let message = Context::new_object("String"); // String Class Symbol
@@ -675,9 +645,7 @@ pub fn generate_null_pointer_class() -> VMClass {
 }
 
 pub extern "C" fn null_pointer_init(context: &Context, this: Reference) {
-    let Some(object) = context.get_object(this) else {
-        return
-    };
+    let object = this;
     let object = unsafe { object.as_mut().unwrap() };
 
     let message = Context::new_object("String"); // String Class Symbol
@@ -741,9 +709,7 @@ pub fn generate_string_class() -> VMClass {
 }
 
 extern "C" fn string_len(context: &mut Context, this: Reference) -> u64 {
-    let Some(object) = context.get_object(this) else {
-        return 0
-    };
+    let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
     object.length
@@ -753,9 +719,7 @@ extern "C" fn string_load_str(context: &mut Context, this: Reference, string_ref
     use std::alloc::*;
     let string = Context::get_string(string_ref as Symbol);
     let bytes = string.as_bytes();
-    let Some(object) = context.get_object(this) else {
-        return
-    };
+    let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
     object.length = bytes.len() as u64;
@@ -774,9 +738,7 @@ extern "C" fn string_load_str(context: &mut Context, this: Reference, string_ref
 
 extern "C" fn string_init(context: &mut Context, this: Reference) {
     use std::alloc::*;
-    let Some(object) = context.get_object(this) else {
-        return
-    };
+    let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
     object.length = 0;
@@ -794,9 +756,7 @@ extern "C" fn string_init(context: &mut Context, this: Reference) {
 }
 
 pub fn string_from_str(context: &Context, this: Reference, string: String) {
-    let Some(object) = context.get_object(this) else {
-        return
-    };
+    let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
     object.length = string.len() as u64;
@@ -818,9 +778,7 @@ pub fn string_drop(object: &mut StringObject) {
 }
 
 extern "C" fn string_is_char_boundary(context: &mut Context, this: Reference, index: u64) -> u8 {
-    let Some(object) = context.get_object(this) else {
-        return 0
-    };
+    let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
     let length = object.length;
@@ -846,9 +804,7 @@ extern "C" fn string_is_char_boundary(context: &mut Context, this: Reference, in
 }
 
 extern "C" fn string_as_bytes(context: &mut Context, this: Reference) -> Reference {
-    let Some(object) = context.get_object(this) else {
-        return 0
-    };
+    let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
     let length = object.length;
@@ -857,9 +813,7 @@ extern "C" fn string_as_bytes(context: &mut Context, this: Reference) -> Referen
     let byte_array = Context::new_object("Array8");
 
     array8_init(context, byte_array, length);
-    let Some(array) = context.get_object(byte_array) else {
-        unreachable!("array just created is invalid")
-    };
+    let array = byte_array;
     let array = array as *mut Array;
     let array = unsafe { array.as_ref().unwrap() };
     let array_pointer = array.buffer;

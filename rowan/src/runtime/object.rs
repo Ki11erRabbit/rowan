@@ -145,16 +145,12 @@ impl Object {
         (class_symbol, &self.parent_objects)
     }
 
-    pub fn add_custom_drop(&mut self, func: fn(&mut Object)) {
+    pub fn add_custom_drop(&mut self, func: extern "C" fn(&mut Object)) {
         self.custom_drop = Some(func);
     }
     
     pub fn get_internal<T: Sized + Default>(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> T {
-        let Some(object) = context.get_object(this) else {
-            let exception = Context::new_object("NullPointerException");
-            context.set_exception(exception);
-            return T::default();
-        };
+        let object = this;
         let object = unsafe { object.as_ref().unwrap() };
 
         if object.class == class_symbol as Symbol {
@@ -162,11 +158,6 @@ impl Object {
         }
 
         for parent in object.parent_objects.iter() {
-            let Some(parent) = context.get_object(*parent) else {
-                let exception = Context::new_object("NullPointerException");
-                context.set_exception(exception);
-                return T::default();
-            };
             let parent = unsafe { parent.as_ref().unwrap() };
 
             if parent.class == parent_symbol as Symbol {
@@ -185,11 +176,7 @@ impl Object {
         todo!("Throw exception saying invalid offset")
     }
     fn get_internal_helper<T: Sized + Default>(context: &mut Context, this: Reference, class_symbol: u64, offset: u64) -> Option<T> {
-        let Some(object) = context.get_object(this) else {
-            let exception = Context::new_object("NullPointerException");
-            context.set_exception(exception);
-            return Some(T::default());
-        };
+        let object = this;
         let object = unsafe { object.as_ref().unwrap() };
 
         if object.class == class_symbol as Symbol {
@@ -197,11 +184,6 @@ impl Object {
         }
 
         for parent in object.parent_objects.iter() {
-            let Some(parent) = context.get_object(*parent) else {
-                let exception = Context::new_object("NullPointerException");
-                context.set_exception(exception);
-                return None;
-            };
             let parent = unsafe { parent.as_ref().unwrap() };
 
 
@@ -248,11 +230,7 @@ impl Object {
     }
 
     pub fn set_internal<T: Sized + Default + Copy>(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: T) {
-        let Some(object) = context.get_object(this) else {
-            let exception = Context::new_object("NullPointerException");
-            context.set_exception(exception);
-            return;
-        };
+        let object = this;
         let object = unsafe { object.as_mut().unwrap() };
 
         if object.class == class_symbol as Symbol {
@@ -261,11 +239,6 @@ impl Object {
         }
 
         for parent in object.parent_objects.iter() {
-            let Some(parent) = context.get_object(*parent) else {
-                let exception = Context::new_object("NullPointerException");
-                context.set_exception(exception);
-                return;
-            };
             let parent = unsafe { parent.as_mut().unwrap() };
 
             if parent.class == parent_symbol as Symbol {
@@ -284,11 +257,7 @@ impl Object {
         todo!("Throw exception saying invalid offset")
     }
     fn set_internal_helper<T: Sized + Default + Copy>(context: &mut Context, this: Reference, class_symbol: u64, offset: u64, value: T) -> Option<()> {
-        let Some(object) = context.get_object(this) else {
-            let exception = Context::new_object("NullPointerException");
-            context.set_exception(exception);
-            return None;
-        };
+        let object = this;
         let object = unsafe { object.as_mut().unwrap() };
 
         if object.class == class_symbol as Symbol {
@@ -296,13 +265,7 @@ impl Object {
         }
 
         for parent in object.parent_objects.iter() {
-            let Some(parent) = context.get_object(*parent) else {
-                let exception = Context::new_object("NullPointerException");
-                context.set_exception(exception);
-                return None;
-            };
             let parent = unsafe { parent.as_mut().unwrap() };
-
 
             if parent.class == class_symbol as Symbol {
                 return parent.get_safe(offset as usize).unwrap();
@@ -347,9 +310,7 @@ impl Object {
     }
 
     pub fn garbage_collect(this: Reference, live_objects: &mut HashSet<Reference>) {
-        let Some(object_ptr) = Context::gc_get_object(this) else {
-            return
-        };
+        let object_ptr = this;
         let object = unsafe { object_ptr.as_ref().unwrap() };
 
         for parent in object.parent_objects.iter() {

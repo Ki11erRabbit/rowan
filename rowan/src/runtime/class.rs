@@ -116,6 +116,8 @@ impl Class {
     }
 }
 
+unsafe impl Send for Class {}
+unsafe impl Sync for Class {}
 
 #[derive(Debug)]
 pub struct MemberInfo {

@@ -133,6 +133,7 @@ impl JITController {
                 TypeTag::U64 | TypeTag::I64 | TypeTag::Object | TypeTag::Str => cranelift::codegen::ir::types::I64,
                 TypeTag::F32 => cranelift::codegen::ir::types::F32,
                 TypeTag::F64 => cranelift::codegen::ir::types::F64,
+                TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                 _ => unreachable!("void in argument types"),
             };
 
@@ -147,6 +148,7 @@ impl JITController {
                 TypeTag::F32 => cranelift::codegen::ir::types::F32,
                 TypeTag::F64 => cranelift::codegen::ir::types::F64,
                 TypeTag::Void => break,
+                TypeTag::Native => unreachable!("Native Type not ABI compatible"),
             };
 
             signature.returns.push(AbiParam::new(ty));
@@ -959,6 +961,7 @@ impl FunctionTranslator<'_> {
                         TypeTag::F64 => {
                             self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Arrayf64") as i64)
                         }
+                        TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                     };
 
                     let new_object = self.builder.ins().call(new_object_func, &[array_symbol]);
@@ -972,6 +975,7 @@ impl FunctionTranslator<'_> {
                         TypeTag::Object | TypeTag::Str | TypeTag::Void => "array64_init",
                         TypeTag::F32 => "arrayf32_init",
                         TypeTag::F64 => "arrayf64_init",
+                        TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                     };
 
                     let initialize_array_id = if let Some(id) = module.get_name(fun_name) {
@@ -1011,6 +1015,7 @@ impl FunctionTranslator<'_> {
                         TypeTag::Object | TypeTag::Str | TypeTag::Void => "arrayobject_set",
                         TypeTag::F32 => "arrayf32_set",
                         TypeTag::F64 => "arrayf64_set",
+                        TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                     };
 
                     let array_set = if let Some(id) = module.get_name(fun_name) {
@@ -1032,6 +1037,7 @@ impl FunctionTranslator<'_> {
                             TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
                             TypeTag::F32 => types::F32,
                             TypeTag::F64 => types::F64,
+                            TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                         };
                         new_object.params.push(AbiParam::new(ty));
 
@@ -1065,6 +1071,7 @@ impl FunctionTranslator<'_> {
                         },
                         TypeTag::F32 => "arrayf32_get",
                         TypeTag::F64 => "arrayf64_get",
+                        TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                     };
 
                     let array_get = if let Some(id) = module.get_name(fun_name) {
@@ -1086,6 +1093,7 @@ impl FunctionTranslator<'_> {
                             TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
                             TypeTag::F32 => types::F32,
                             TypeTag::F64 => types::F64,
+                            TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                         };
                         new_object.returns.push(AbiParam::new(ty));
 
@@ -1110,6 +1118,7 @@ impl FunctionTranslator<'_> {
                         TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
                         TypeTag::F32 => types::F32,
                         TypeTag::F64 => types::F64,
+                        TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                     };
 
                     if is_object {
@@ -1158,6 +1167,7 @@ impl FunctionTranslator<'_> {
                         },
                         TypeTag::F32 => "memberf32_get",
                         TypeTag::F64 => "memberf64_get",
+                        TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                     };
 
                     let member_get = if let Some(id) = module.get_name(fun_name) {
@@ -1181,6 +1191,7 @@ impl FunctionTranslator<'_> {
                             TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
                             TypeTag::F32 => types::F32,
                             TypeTag::F64 => types::F64,
+                            TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                         };
                         new_object.returns.push(AbiParam::new(ty));
 
@@ -1209,6 +1220,7 @@ impl FunctionTranslator<'_> {
                         TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
                         TypeTag::F32 => types::F32,
                         TypeTag::F64 => types::F64,
+                        TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                     };
 
                     if is_object {
@@ -1228,6 +1240,7 @@ impl FunctionTranslator<'_> {
                         TypeTag::Object | TypeTag::Str | TypeTag::Void => "memberobject_set",
                         TypeTag::F32 => "memberf32_set",
                         TypeTag::F64 => "memberf64_set",
+                        TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                     };
 
                     let member_set = if let Some(id) = module.get_name(fun_name) {
@@ -1251,6 +1264,7 @@ impl FunctionTranslator<'_> {
                             TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
                             TypeTag::F32 => types::F32,
                             TypeTag::F64 => types::F64,
+                            TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                         };
                         new_object.params.push(AbiParam::new(ty));
 
@@ -1408,6 +1422,7 @@ impl FunctionTranslator<'_> {
                         },
                         TypeTag::F32 => "static_memberf32_get",
                         TypeTag::F64 => "static_memberf64_get",
+                        TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                     };
 
                     let member_get = if let Some(id) = module.get_name(fun_name) {
@@ -1429,6 +1444,7 @@ impl FunctionTranslator<'_> {
                             TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
                             TypeTag::F32 => types::F32,
                             TypeTag::F64 => types::F64,
+                            TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                         };
                         new_object.returns.push(AbiParam::new(ty));
 
@@ -1454,6 +1470,7 @@ impl FunctionTranslator<'_> {
                         TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
                         TypeTag::F32 => types::F32,
                         TypeTag::F64 => types::F64,
+                        TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                     };
 
                     if is_object {
@@ -1473,6 +1490,7 @@ impl FunctionTranslator<'_> {
                         TypeTag::Object | TypeTag::Str | TypeTag::Void => "static_memberobject_set",
                         TypeTag::F32 => "static_memberf32_set",
                         TypeTag::F64 => "static_memberf64_set",
+                        TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                     };
 
                     let member_set = if let Some(id) = module.get_name(fun_name) {
@@ -1494,6 +1512,7 @@ impl FunctionTranslator<'_> {
                             TypeTag::Object | TypeTag::Str | TypeTag::Void => types::I64,
                             TypeTag::F32 => types::F32,
                             TypeTag::F64 => types::F64,
+                            TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                         };
                         new_object.params.push(AbiParam::new(ty));
 

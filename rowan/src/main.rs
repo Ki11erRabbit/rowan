@@ -70,15 +70,12 @@ fn main() {
     let method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64)>(method) };
     
     method(&mut context, 0);
-    if *context.current_exception.borrow() != 0 {
+    if !context.current_exception.borrow().is_null() {
         let exception = context.get_exception();
-        let exception = context.get_object(exception).unwrap();
         let exception = unsafe { exception.as_ref().unwrap() };
         let base_exception_ref = exception.parent_objects[0];
-        let exception = context.get_object(base_exception_ref).unwrap();
-        let exception = unsafe { exception.as_ref().unwrap() };
+        let exception = unsafe { base_exception_ref.as_ref().unwrap() };
         let message = unsafe { exception.get::<Reference>(0) };
-        let message = context.get_object(message).unwrap();
         let message = unsafe { message.as_ref().unwrap() };
         let message_slice = unsafe { std::slice::from_raw_parts(message.get::<*const u8>(16), message.get(0)) };
         let message_str = std::str::from_utf8(message_slice).unwrap();

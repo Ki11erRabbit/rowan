@@ -283,7 +283,7 @@ pub fn link_class_files(
                     TypeTag::U64 | TypeTag::I64 => ClassMemberData::Long(0),
                     TypeTag::F32 => ClassMemberData::Float(0.0),
                     TypeTag::F64 => ClassMemberData::Double(0.0),
-                    _ => ClassMemberData::Object(0),
+                    _ => ClassMemberData::Object(std::ptr::null_mut()),
                 };
                 let name_symbol = if let Some(symbol) = string_map.get(name_str) {
                     *symbol
@@ -582,6 +582,7 @@ fn convert_type(tag: &rowan_shared::TypeTag) -> class::TypeTag {
         rowan_shared::TypeTag::Object => class::TypeTag::Object,
         rowan_shared::TypeTag::Str => class::TypeTag::Str,
         rowan_shared::TypeTag::Void => class::TypeTag::Void,
+        TypeTag::Native => unreachable!("Native Type not ABI compatible"),
     }
 }
 
@@ -1202,7 +1203,7 @@ pub fn link_vm_classes(
                     TypeTag::U64 | TypeTag::I64 => ClassMemberData::Long(0),
                     TypeTag::F32 => ClassMemberData::Float(0.0),
                     TypeTag::F64 => ClassMemberData::Double(0.0),
-                    _ => ClassMemberData::Object(0),
+                    _ => ClassMemberData::Object(std::ptr::null_mut()),
                 };
 
                 ClassMember {
