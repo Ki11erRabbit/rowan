@@ -8,7 +8,7 @@ use super::{Context, Reference, Symbol};
 pub struct Object {
     pub class: Symbol,
     pub parent_objects: Box<[Reference]>,
-    pub custom_drop: Option<fn(&mut Object)>,
+    pub custom_drop: Option<extern "C" fn(&mut Object)>,
     //data: [u8]
 }
 

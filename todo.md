@@ -16,8 +16,8 @@ can be implemented.
   * [x] Static Field Paths
   * [ ] Core paths
 * [ ] Native Method Interface
-  * [ ] Generate C Header File
-  * [ ] Generate Function that gives a function pointer for cleaning up native members
+  * [x] Generate C Header File
+  * [x] Generate Function that gives a function pointer for cleaning up native members
   * [ ] Runtime Code that can handle the loading of dlls/so files during the link phase
 * [ ] Garbage Collection
   * [x] Garbage Collection doesn't collect too much 
@@ -26,6 +26,7 @@ can be implemented.
     * [ ] Garbage Collection works on Windows
   * [ ] Garbage collection doesn't collect static class fields
   * [ ] There is a way to pass objects to FFI and mark that memory as uncollectable
+  * [ ] Garbage collection operation skips over native methods if they call Rowan code
 * [ ] Closure Expressions
   * [ ] Captured Primitives (ints, floats) are boxed if they are mutated in closures
   * [ ] Construction of Objects that are the closure

@@ -42,7 +42,7 @@ impl NativeAttributes {
                 TypeTag::U64 => output.push_str("uint_64_t"),
                 TypeTag::F32 => output.push_str("float"),
                 TypeTag::F64 => output.push_str("double"),
-                TypeTag::Object | TypeTag::Str => output.push_str("uint_64_t"),
+                TypeTag::Object | TypeTag::Str => output.push_str("object_t*"),
                 TypeTag::Void => output.push_str("void"),
                 _ => unreachable!("return type can't be native")
             }
@@ -61,7 +61,7 @@ impl NativeAttributes {
                     TypeTag::U64 => output.push_str("uint_64_t"),
                     TypeTag::F32 => output.push_str("float"),
                     TypeTag::F64 => output.push_str("double"),
-                    TypeTag::Object | TypeTag::Str => output.push_str("uint_64_t"),
+                    TypeTag::Object | TypeTag::Str => output.push_str("object_t*"),
                     TypeTag::Void => output.push_str("void"),
                     _ => unreachable!("return type can't be native")
                 }
@@ -72,6 +72,11 @@ impl NativeAttributes {
 
             output.push_str(");\n");
         }
+
+        if !self.native_member_sizes.is_empty() {
+            output.push_str("void custom_drop(object_t*);\n")
+        }
+
         output
     }
 }

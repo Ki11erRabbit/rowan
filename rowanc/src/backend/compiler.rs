@@ -581,9 +581,7 @@ impl Compiler {
 
         let names = names.into_iter()
             .map(|name| {
-                let mut class_name = class_name.clone();
-                class_name.push(name);
-                class_name.join("::")
+                name
             })
             .collect::<Vec<_>>();
 
@@ -830,9 +828,7 @@ impl Compiler {
                 method_name.push(name.to_string());
                 let method_name = method_name.join("::");
 
-                if !*is_native {
-                    partial_class.attach_bytecode(&method_class_name, method_name, bytecode, *is_native).expect("Handle partial class error");
-                }
+                partial_class.attach_bytecode(&method_class_name, method_name, bytecode, *is_native).expect("Handle partial class error");
             }
 
             self.pop_scope();

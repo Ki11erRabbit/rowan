@@ -149,7 +149,7 @@ impl PartialClass {
     }
 
     pub fn get_vtable(&self, method_name: impl AsRef<str>) -> Result<&VTable, PartialClassError> {
-        println!("{}: {:#?}", method_name.as_ref(), self.method_to_class);
+        //println!("{}: {:#?}", method_name.as_ref(), self.method_to_class);
         let class_names = self.method_to_class.get(method_name.as_ref()).ok_or(PartialClassError::ClassNotNotFound(method_name.as_ref().to_string()))?;
         if class_names.len() > 1 {
             return Err(PartialClassError::Ambiguity);
@@ -357,11 +357,11 @@ impl PartialClass {
         //println!("{:#?}", self);
         let method_index = method_index.unwrap();
 
-        let signature_index = self.static_method_to_signature.get(method_name.as_ref()).unwrap();
+        let signature_index =  self.vtables[vtable_index].functions[method_index].signature;
 
         if is_native {
 
-            let signature: SignatureEntry = self.signature_table[*signature_index as usize].clone();
+            let signature: SignatureEntry = self.signature_table[signature_index as usize].clone();
 
             self.native_functions.push((
                 method_name.as_ref().to_string(),
