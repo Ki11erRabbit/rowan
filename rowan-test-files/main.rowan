@@ -8,6 +8,8 @@ class Main {
         let printer: Printer = new Printer();
         let n: u64 = 5
         printer.println-int(n);
+        let main: Main = new Main();
+        main.test();
         Main::thrash();
         while True {
             Main::thrash();

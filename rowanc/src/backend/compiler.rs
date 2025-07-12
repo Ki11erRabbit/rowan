@@ -1881,8 +1881,14 @@ impl Compiler {
         }
 
         if ty == *class_name {
-            let vtable = partial_class.get_vtable(name).expect("add proper handling of missing vtable").clone();
-            let method_entry = partial_class.get_method_entry(name).expect("add proper handling of missing method");
+
+            let mut method_name = class_name.clone();
+            method_name.push(name.to_string());
+
+            let name = method_name.join("::");
+
+            let vtable = partial_class.get_vtable(&name).expect("add proper handling of missing vtable").clone();
+            let method_entry = partial_class.get_method_entry(&name).expect("add proper handling of missing method");
 
             //println!("{}", partial_class.index_string_table(vtable.class_name));
             let mut path = class_name.clone();
@@ -1901,8 +1907,7 @@ impl Compiler {
 
             let method_name = partial_class.index_string_table(method_entry.name);
             let method_name = method_name.to_string();
-            path.push(method_name);
-            let method_name = partial_class.add_string(path.join("::"));
+            let method_name = partial_class.add_string(method_name);
 
             output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
         }

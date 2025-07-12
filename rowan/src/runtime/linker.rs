@@ -144,8 +144,8 @@ pub fn link_class_files(
                 let bytecode = if *bytecode == 0 {
                     MethodLocation::Blank
                 } else if *bytecode < 0 {
-                    let index = bytecode.abs() as u64;
-                    let string = class.index_string_table(index).to_string();
+                    let string = name_str.replace("::", "__")
+                        .replace("-", "_dash_");
                     MethodLocation::Native(string)
                 } else {
                     MethodLocation::Bytecode(class.index_bytecode_table(*bytecode).code.clone())
@@ -612,7 +612,6 @@ pub fn link_class_files(
         class_parts = class_parts_to_try_again;
     }
 
-
     match (main_class_symbol, main_method_symbol) {
         (Some(main_class_symbol), Some(main_method_symbol)) => Ok((main_class_symbol, main_method_symbol)),
         _ => Err(()),
@@ -894,9 +893,6 @@ fn link_bytecode(
                     let symbol = symbol_table.add_string(index);
                     symbol
                 };
-                if method_symbol == 71 {
-                    panic!("weird method symbol");
-                }
 
                 output.push(linked::Bytecode::InvokeVirt(class_symbol as u64, source_class, method_symbol as u64));
             }

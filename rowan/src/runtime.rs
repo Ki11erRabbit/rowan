@@ -489,6 +489,7 @@ impl Context {
         let value = match &*value {
             FunctionValue::Builtin(ptr) => *ptr,
             FunctionValue::Compiled(ptr, _) => *ptr,
+            FunctionValue::Native(ptr) => *ptr,
             _ => {
                 drop(value);
                 let mut compiler = Context::create_jit_compiler();
@@ -551,6 +552,7 @@ impl Context {
         let value = function.value.read().expect("Lock poisoned");
         let value = match &*value {
             FunctionValue::Builtin(ptr) => *ptr,
+            FunctionValue::Native(ptr) => *ptr,
             FunctionValue::Compiled(ptr, _) => *ptr,
             _ => {
                 drop(value);

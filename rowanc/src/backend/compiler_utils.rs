@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-
+use std::io::BufRead;
 use rowan_shared::{classfile::{BytecodeEntry, ClassFile, Member, SignatureEntry, SignatureIndex, StringEntry, StringIndex, VTable, VTableEntry}, TypeTag};
 use rowan_shared::classfile::{BytecodeIndex, StaticMethods};
 use crate::ast::Method;
@@ -264,6 +264,7 @@ impl PartialClass {
             self.method_to_class.entry(String::from(names[i].as_ref()))
                 .and_modify(|v| v.push(class_name.clone()))
                 .or_insert(vec![class_name.clone()]);
+
             self.method_to_function.entry(String::from(names[i].as_ref()))
                 .and_modify(|v| v.push((self.vtables.len(), i)))
                 .or_insert(vec![(self.vtables.len(), i)]);
