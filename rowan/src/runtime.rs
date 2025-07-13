@@ -610,6 +610,15 @@ impl Context {
         };
 
         let vtable = &vtables_table[vtable_index];
+        /*let SymbolEntry::StringRef(index) = symbol_table[method_name] else {
+            panic!("Method wasn't a string");
+        };
+
+        let Ok(string_table) = STRING_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        println!("method_name: {}", &string_table[index]);*/
+
         let function = vtable.get_function(method_name).unwrap();
         let is_object = match function.return_type {
             crate::runtime::class::TypeTag::Object => true,
@@ -919,7 +928,6 @@ impl Context {
         }
     }
 }
-
 
 
 pub extern "C" fn get_virtual_function(context: &mut Context, object: Reference, class_symbol: u64, source_class: i64, method_name: u64) -> u64 {

@@ -423,7 +423,6 @@ impl PartialClass {
     }
 
     pub fn add_string<S: AsRef<str>>(&mut self, string: S) -> u64 {
-
         if let Some(index) = self.string_to_index.get(string.as_ref()) {
             return *index;
         }

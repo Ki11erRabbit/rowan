@@ -611,7 +611,7 @@ impl FunctionTranslator<'_> {
 
     pub fn translate(&mut self, bytecode: &[Bytecode], module: &mut JITModule) -> Result<(), String> {
 
-        //println!("\nBytecode: {:#?}", bytecode);
+        println!("\nBytecode: {:#?}", bytecode);
 
         for bytecode in bytecode.iter() {
             //println!("{:?}", bytecode);
@@ -1530,6 +1530,11 @@ impl FunctionTranslator<'_> {
                     let _ = self.builder.ins().call(member_set, &[context_value, class_symbol, index, value]);
 
                     self.create_bail_block(module, None, &[]);
+                }
+                Bytecode::GetStrRef(string_symbol) => {
+                    let symbol_value = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(string_symbol.to_le_bytes()));
+
+                    self.push(symbol_value, ir::types::I64, false);
                 }
                 Bytecode::Return => {
                     let normal_return_id = if let Some(id) = module.get_name("context_normal_return") {

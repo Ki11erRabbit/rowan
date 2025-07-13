@@ -20,6 +20,7 @@ impl ObjectTable {
     }
 
     pub fn add(&mut self, ptr: *mut Object) -> Reference {
+        println!("pointer: {ptr:p}");
         self.table.insert(ptr);
         ptr
     }

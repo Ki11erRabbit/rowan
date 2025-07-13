@@ -1921,8 +1921,7 @@ impl Compiler {
             };
 
             let method_name = class.index_string_table(method_entry.name);
-            class_name_path.push(method_name.to_string());
-            let method_name = partial_class.add_string(class_name_path.join("::"));
+            let method_name = partial_class.add_string(method_name);
 
 
             output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
