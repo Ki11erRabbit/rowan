@@ -1,17 +1,16 @@
 module main;
 
-import std::collections::arraylist::ArrayList;
+import std::console::Console;
 
 class Main {
 
     static thing: u64 = 66666666666;
 
     fn main(args: [String]) {
-        let printer: Printer = new Printer();
-        let n: u64 = 5
-        printer.println-int(n);
-        let main: Main = new Main();
-        main.test();
+        let string: String = "Hello, World!";
+
+        Console::println(string);
+
         Main::thrash();
         while True {
             Main::thrash();
@@ -25,7 +24,5 @@ class Main {
             i = i + 1;
         }
     }
-
-    native fn test(self)
 
 }

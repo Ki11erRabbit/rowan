@@ -21,7 +21,7 @@ void std__console__Console__print_dash_internal(rowan_context_t context, object_
     rowan_print_internal(1, str->buffer, str->length);
 }
 
-void std__console__Console__println_dash_internal(rowan_context_t context, object_t*) {
+void std__console__Console__println_dash_internal(rowan_context_t context, object_t* text) {
     string_t* str = (string_t*) text;
     uint8_t* buff = (uint8_t*)malloc(str->length + 1);
     memcpy(buff, str->buffer, str->length);
@@ -31,12 +31,12 @@ void std__console__Console__println_dash_internal(rowan_context_t context, objec
     buff = NULL;
 }
 
-void std__console__Console__eprint_dash_internal(rowan_context_t context, object_t*) {
+void std__console__Console__eprint_dash_internal(rowan_context_t context, object_t* text) {
     string_t* str = (string_t*)text;
     rowan_print_internal(2, str->buffer, str->length);
 }
 
-void std__console__Console__eprintln_dash_internal(rowan_context_t context, object_t*) {
+void std__console__Console__eprintln_dash_internal(rowan_context_t context, object_t* text) {
     string_t* str = (string_t*) text;
     uint8_t* buff = (uint8_t*)malloc(str->length + 1);
     memcpy(buff, str->buffer, str->length);
