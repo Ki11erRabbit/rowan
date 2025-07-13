@@ -1,4 +1,4 @@
-module std::collections;
+module std::collections::arraylist;
 
 class ArrayList[T] {
     buffer: [T];

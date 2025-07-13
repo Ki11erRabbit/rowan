@@ -55,6 +55,7 @@ pub enum TypeCheckerType {
     TypeArg(Box<TypeCheckerType>, Vec<TypeCheckerType>),
     Function(Vec<TypeCheckerType>, Box<TypeCheckerType>),
     Tuple(Vec<TypeCheckerType>),
+    Native,
 }
 
 impl<'a> From<Type<'a>> for TypeCheckerType {
@@ -83,7 +84,7 @@ impl<'a> From<Type<'a>> for TypeCheckerType {
                 Box::new(TypeCheckerType::from(*ret))
             ),
             Type::Tuple(tys, _) => TypeCheckerType::Tuple(tys.into_iter().map(TypeCheckerType::from).collect()),
-            Type::Native => unreachable!("Native type should not be constructable"),
+            Type::Native => TypeCheckerType::Native,
         }
     }
 }
@@ -125,7 +126,8 @@ impl<'a> Into<Type<'a>> for TypeCheckerType {
                 args.into_iter().map(|x| x.into()).collect(),
                 Box::new((*ret).into()), crate::ast::Span::new(0, 0)
             ),
-            TypeCheckerType::Tuple(tys) => Type::Tuple(tys.into_iter().map(|x| x.into()).collect(), crate::ast::Span::new(0, 0))
+            TypeCheckerType::Tuple(tys) => Type::Tuple(tys.into_iter().map(|x| x.into()).collect(), crate::ast::Span::new(0, 0)),
+            TypeCheckerType::Native => Type::Native,
         }
     }
 }
@@ -621,7 +623,6 @@ impl TypeChecker {
             }
             Expression::Call { name, type_args: _, args, .. } => {
                 self.check_expr(return_type, name)?;
-                //println!("{:?}", name);
                 let method = self.get_type(name)?;
 
                 for (i, arg) in args.iter_mut().enumerate() {
@@ -654,11 +655,19 @@ impl TypeChecker {
                     );
                     active_path
                 } else {
-                    name.segments[..name.segments.len() - 1].iter()
+                    let class_name = name.segments[..name.segments.len() - 1].iter()
                         .map(ToString::to_string)
-                        .collect::<Vec<_>>()
+                        .collect::<Vec<_>>();
+
+                    if class_name.len() == 1 {
+                        self.attach_module_if_needed(class_name[0].clone())
+                    } else {
+                        class_name
+                    }
                 };
                 let method_name = &name.segments[name.segments.len() - 1];
+
+                println!("class name: {:?}", class_name);
 
                 let (_, attributes) = self.class_information.get(&class_name)
                     .expect("class missing or not loaded");
@@ -694,8 +703,26 @@ impl TypeChecker {
 
             }
             Expression::MemberAccess { object, field, annotation, .. } => {
+                if format!("{object:?}").contains("stdout-lock") {
+                    println!("found stdout-lock");
+                }
                 self.check_expr(return_type, object)?;
-                let ty = self.get_type(object.as_mut())?;
+                println!("checked expr");
+
+
+                let ty = match object.as_ref() {
+                    Expression::ClassAccess { .. } => {
+                        self.get_type(object.as_mut())?
+                    }
+                    _ => {
+                        match object.get_type() {
+                            Some(Either::Left(ty)) => ty.clone(),
+                            _ => self.get_type(object.as_mut())?,
+                        }
+                    }
+                };
+
+                //let ty = self.get_type(object.as_mut())?;
                 let name = match ty {
                     Type::Object(name, _) => name,
                     Type::TypeArg(obj, _, _) => {
@@ -704,7 +731,10 @@ impl TypeChecker {
                         };
                         name.clone()
                     }
-                    _ => todo!("member access is incomplete"),
+                    Type::Array(_, _) => {
+                        Text::Borrowed("Array")
+                    }
+                    x => todo!("member access is incomplete {x:?}"),
                 };
                 let class_name = name;
                 let path = self.attach_module_if_needed(class_name.to_string());
@@ -714,17 +744,25 @@ impl TypeChecker {
 
                 let member_name = &field.segments[field.segments.len() - 1];
 
+                println!("path: {:?}", path);
+
                 let (_, attributes) = self.class_information.get(&path)
                     .expect("class missing or not loaded");
+
+                println!("object: {object:?}");
+                println!("{class_name} {member_name}");
 
                 let member = match attributes.get(member_name.as_str()) {
                     Some(ClassAttribute::Method(method)) => method,
                     Some(ClassAttribute::Member(member)) => member,
                     Some(ClassAttribute::StaticMember(member)) => member,
-                    None => todo!("member access is incomplete"),
+                    None => &object.get_type().unwrap().unwrap_left().into(),
                 };
 
+                println!("member: {member:?}");
+
                 *annotation = Some(member.into());
+                println!("{class_name} {member_name}: {annotation:?}")
 
             }
             Expression::Literal(Literal::Array(body, typ, _)) => {
@@ -1010,12 +1048,19 @@ impl TypeChecker {
                         *ty = Some(var_ty.into()); // annotate the type of the variable
                         match var_ty {
                             TypeCheckerType::Object(name) => {
-                                match self.get_attribute(&[name.to_string()], field.to_string()) {
+
+                                let path = self.attach_module_if_needed(name.to_string());
+
+                                match self.get_attribute(&path, field.to_string()) {
                                     Some(ClassAttribute::Member(ty)) => {
                                         *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
                                     }
                                     Some(ClassAttribute::Method(ty)) => {
+                                        *annotation = Some(ty.into());
+                                        Ok(ty.clone().into())
+                                    }
+                                    Some(ClassAttribute::StaticMember(ty)) => {
                                         *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
                                     }
@@ -1036,6 +1081,10 @@ impl TypeChecker {
                                                 Ok(ty.clone().into())
                                             }
                                             Some(ClassAttribute::Method(ty)) => {
+                                                *annotation = Some(ty.into());
+                                                Ok(ty.clone().into())
+                                            }
+                                            Some(ClassAttribute::StaticMember(ty)) => {
                                                 *annotation = Some(ty.into());
                                                 Ok(ty.clone().into())
                                             }
@@ -1060,6 +1109,10 @@ impl TypeChecker {
                                         *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
                                     }
+                                    Some(ClassAttribute::StaticMember(ty)) => {
+                                        *annotation = Some(ty.into());
+                                        Ok(ty.clone().into())
+                                    }
                                     _ => {
                                         eprintln!("Failed to find attribute {} in class Array", field.to_string());
                                         todo!("report unknown member access")
@@ -1079,6 +1132,10 @@ impl TypeChecker {
                                 *annotation = Some(ty.into());
                                 Ok(ty.clone().into())
                             }
+                            Some(ClassAttribute::StaticMember(ty)) => {
+                                *annotation = Some(ty.into());
+                                Ok(ty.clone().into())
+                            }
                             _ => {
                                 // TODO: change this to look at base classes
                                 match self.get_attribute(&[String::from("Object")], field.to_string()) {
@@ -1087,6 +1144,10 @@ impl TypeChecker {
                                         Ok(ty.clone().into())
                                     }
                                     Some(ClassAttribute::Method(ty)) => {
+                                        *annotation = Some(ty.into());
+                                        Ok(ty.clone().into())
+                                    }
+                                    Some(ClassAttribute::StaticMember(ty)) => {
                                         *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
                                     }
@@ -1108,12 +1169,21 @@ impl TypeChecker {
                             },
                             _ => unreachable!("Only object types can have type parameters"),
                         };
-                        match self.get_attribute(&[name.to_string()], field.to_string()) {
+
+                        let path = self.attach_module_if_needed(name.to_string());
+
+                        let (_, attributes) = self.class_information.get(&path).unwrap();
+
+                        match attributes.get(field.to_string().as_str()) {
                             Some(ClassAttribute::Member(ty)) => {
                                 *annotation = Some(ty.into());
                                 Ok(ty.clone().into())
                             }
                             Some(ClassAttribute::Method(ty)) => {
+                                *annotation = Some(ty.into());
+                                Ok(ty.clone().into())
+                            }
+                            Some(ClassAttribute::StaticMember(ty)) => {
                                 *annotation = Some(ty.into());
                                 Ok(ty.clone().into())
                             }
@@ -1125,7 +1195,31 @@ impl TypeChecker {
 
                     },
                     Expression::ClassAccess { class_name, span } => {
-                        Ok(Type::Object(class_name.segments.last().unwrap().clone(), *span))
+
+
+                        let path = self.attach_module_if_needed(class_name.to_string());
+                        if path.len() == 0 {
+                            todo!("report missing import");
+                        }
+
+                        let member_name = &field.segments[field.segments.len() - 1];
+
+                        println!("path: {:?}", path);
+
+                        let (_, attributes) = self.class_information.get(&path)
+                            .expect("class missing or not loaded");
+
+                        println!("attributes: {:#?}", attributes);
+
+                        let member = match attributes.get(member_name.as_str()) {
+                            Some(ClassAttribute::Method(method)) => method,
+                            Some(ClassAttribute::Member(member)) => member,
+                            Some(ClassAttribute::StaticMember(member)) => member,
+                            None => &object.get_type().unwrap().unwrap_left().into(),
+                        };
+
+
+                        Ok(member.into())
                     }
                     x => todo!("report member access on non-variable expression: {:?}", x),
                 }

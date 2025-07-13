@@ -1,4 +1,6 @@
-import std::collections::ArrayList;
+module main;
+
+import std::collections::arraylist::ArrayList;
 
 class Main {
 

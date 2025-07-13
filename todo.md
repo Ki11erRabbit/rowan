@@ -10,11 +10,11 @@ can be implemented.
   * [x] Classes
   * [ ] Methods
 * [ ] Throwing Exceptions
-* [ ] Module Paths
+* [x] Module Paths
   * [x] Static method Paths
-  * [ ] Method Paths
+  * [x] Method Paths
   * [x] Static Field Paths
-  * [ ] Core paths
+  * [x] Core paths
 * [ ] Native Method Interface
   * [x] Generate C Header File
   * [x] Generate Function that gives a function pointer for cleaning up native members

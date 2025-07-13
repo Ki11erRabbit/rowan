@@ -1,0 +1,9 @@
+module std::io::iolock;
+
+class IOLock {
+    lock: native;
+
+    pub native fn lock(self)
+    pub native fn release(self)
+
+}

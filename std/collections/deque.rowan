@@ -1,4 +1,4 @@
-module std::collections;
+module std::collections::deque;
 
 class ArrayDeque[T] {
     buffer: [T];

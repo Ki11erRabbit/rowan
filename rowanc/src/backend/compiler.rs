@@ -14,31 +14,31 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     let mut classes = HashMap::new();
 
     let mut object = PartialClass::new();
-    object.set_name("Object");
+    object.set_name("core::Object");
     let functions = vec![
         VTableEntry::default(),
     ];
     let names = vec![
-        "downcast",
+        "core::Object::downcast",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
     ];
     let vtable = VTable::new(functions);
-    object.add_vtable(&vec![String::from("Object")], vtable, &names, &signatures);
+    object.add_vtable(&vec![String::from("core"), String::from("Object")], vtable, &names, &signatures);
     object.make_not_printable();
     classes.insert(vec![String::from("Object")], object);
 
     let mut printer = PartialClass::new();
-    printer.set_name("Printer");
+    printer.set_name("core::Printer");
     let functions = vec![
         VTableEntry::default(),
         VTableEntry::default(),
     ];
     let names = vec![
-        "println-int",
-        "println-float",
-        "println",
+        "core::Printer::println-int",
+        "core::Printer::println-float",
+        "core::Printer::println",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::U64]),
@@ -47,7 +47,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    printer.add_vtable(&vec![String::from("Printer")], vtable, &names, &signatures);
+    printer.add_vtable(&vec![String::from("core"), String::from("Printer")], vtable, &names, &signatures);
     printer.make_not_printable();
     classes.insert(vec![String::from("Printer")], printer);
 
@@ -71,169 +71,148 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     ];
     let vtable = VTable::new(functions);
     
-    string.add_vtable(&vec![String::from("String")], vtable, &names, &signatures);
+    string.add_vtable(&vec![String::from("core"), String::from("String")], vtable, &names, &signatures);
     string.make_not_printable();
     classes.insert(vec![String::from("String")], string);
 
     
     let mut array = PartialClass::new();
-    array.set_name("Array8");
+    array.set_name("core::Array8");
     let functions = vec![
-        VTableEntry::default(),
         VTableEntry::default(),
         VTableEntry::default(),
     ];
     let names = vec![
-        "load-str",
-        "init",
-        "len",
+        "core::Array8::init",
+        "core::Array8::len",
     ];
     let signatures = vec![
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
         SignatureEntry::new(vec![TypeTag::U64]),
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable(&vec![String::from("Array8")], vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("core"), String::from("Array8")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Array8")], array);
 
     let mut array = PartialClass::new();
-    array.set_name("Array16");
+    array.set_name("core::Array16");
     let functions = vec![
-        VTableEntry::default(),
         VTableEntry::default(),
         VTableEntry::default(),
     ];
     let names = vec![
-        "load-str",
-        "init",
-        "len",
+        "core::Array16::init",
+        "core::Array16::len",
     ];
     let signatures = vec![
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
         SignatureEntry::new(vec![TypeTag::U64]),
     ];
     let vtable = VTable::new(functions);
-    
-    array.add_vtable(&vec![String::from("Array16")], vtable, &names, &signatures);
+
+    array.add_vtable(&vec![String::from("core"), String::from("Array16")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Array16")], array);
 
     let mut array = PartialClass::new();
-    array.set_name("Array32");
+    array.set_name("core::Array32");
     let functions = vec![
-        VTableEntry::default(),
         VTableEntry::default(),
         VTableEntry::default(),
     ];
     let names = vec![
-        "load-str",
-        "init",
-        "len",
+        "core::Array32::init",
+        "core::Array32::len",
     ];
     let signatures = vec![
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
         SignatureEntry::new(vec![TypeTag::U64]),
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable(&vec![String::from("Array32")], vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("core"), String::from("Array32")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Array32")], array);
 
     let mut array = PartialClass::new();
-    array.set_name("Array64");
+    array.set_name("core::Array64");
     let functions = vec![
-        VTableEntry::default(),
         VTableEntry::default(),
         VTableEntry::default(),
     ];
     let names = vec![
-        "load-str",
-        "init",
-        "len",
+        "core::Array64::init",
+        "core::Array64::len",
     ];
     let signatures = vec![
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
         SignatureEntry::new(vec![TypeTag::U64]),
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable(&vec![String::from("Array64")], vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("core"), String::from("Array64")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Array64")], array);
 
     let mut array = PartialClass::new();
-    array.set_name("Arrayf32");
+    array.set_name("core::Arrayf32");
     let functions = vec![
-        VTableEntry::default(),
         VTableEntry::default(),
         VTableEntry::default(),
     ];
     let names = vec![
-        "load-str",
-        "init",
-        "len",
+        "core::Arrayf32::init",
+        "core::Arrayf32::len",
     ];
     let signatures = vec![
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
         SignatureEntry::new(vec![TypeTag::U64]),
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable(&vec![String::from("Arrayf32")], vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("core"), String::from("Arrayf32")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Arrayf32")], array);
 
     let mut array = PartialClass::new();
-    array.set_name("Arrayf64");
+    array.set_name("core::Arrayf64");
     let functions = vec![
-        VTableEntry::default(),
         VTableEntry::default(),
         VTableEntry::default(),
     ];
     let names = vec![
-        "load-str",
-        "init",
-        "len",
+        "core::Arrayf64::init",
+        "core::Arrayf64::len",
     ];
     let signatures = vec![
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
         SignatureEntry::new(vec![TypeTag::U64]),
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable(&vec![String::from("Arrayf64")], vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("core"), String::from("Arrayf64")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Arrayf64")], array);
 
     let mut array = PartialClass::new();
-    array.set_name("ArrayObject");
+    array.set_name("core::Arrayobject");
     let functions = vec![
-        VTableEntry::default(),
         VTableEntry::default(),
         VTableEntry::default(),
     ];
     let names = vec![
-        "load-str",
-        "init",
-        "len",
+        "core::Arrayobject::init",
+        "core::Arrayobject::len",
     ];
     let signatures = vec![
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
         SignatureEntry::new(vec![TypeTag::Void]),
         SignatureEntry::new(vec![TypeTag::U64]),
     ];
     let vtable = VTable::new(functions);
     
-    array.add_vtable(&vec![String::from("Arrayobject")], vtable, &names, &signatures);
+    array.add_vtable(&vec![String::from("core"), String::from("Arrayobject")], vtable, &names, &signatures);
     array.make_not_printable();
     classes.insert(vec![String::from("Arrayobject")], array);
     
@@ -600,7 +579,10 @@ impl Compiler {
         if parents.len() == 0 {
             let object_class = self.classes.get(&vec!["Object".to_string()]).expect("Object not added to known classes");
 
-            let vtables = object_class.get_vtables(&[String::from("Object")]);
+            let vtables = object_class.get_vtables(&[
+                String::from("core"),
+                String::from("Object"),
+            ]);
             let (vtable, names, signatures) = &vtables[0];
             let names = names.iter()
                 .map(|n| format!("core::Object::{n}"))
@@ -1486,7 +1468,9 @@ impl Compiler {
                 };
                 let path = partial_class.add_string(class_name.join("::"));
                 let class = self.classes.get(&class_name).unwrap_or(partial_class);
-                let (member_index, member_type) = class.get_static_member_offset(field.segments.last().unwrap().as_str());
+                let mut field_name = class.get_class_name();
+                field_name.push(field.segments.last().unwrap().to_string());
+                let (member_index, member_type) = class.get_static_member_offset(&field_name.join("::"));
 
                 output.push(Bytecode::GetStaticMember(path, member_index, member_type));
                 return Ok(());
@@ -1914,9 +1898,11 @@ impl Compiler {
         else if let Some(class) = self.classes.get(&ty) {
             //println!("{:#?}", class);
             let mut class_name_path = class.get_class_name();
+            let mut field_path = class_name_path.clone();
+            field_path.push(name.to_string());
             //println!("class name: {class_name}");
-            let vtable = class.get_vtable(name).expect("add proper handling of missing vtable");
-            let method_entry = class.get_method_entry(name).expect("add proper handling of missing method");
+            let vtable = class.get_vtable(field_path.join("::")).expect("add proper handling of missing vtable");
+            let method_entry = class.get_method_entry(field_path.join("::")).expect("add proper handling of missing method");
 
             //println!("{}", class.index_string_table(vtable.class_name));
 

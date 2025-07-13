@@ -1,6 +1,8 @@
 use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use clap::Parser;
+use petgraph::graph::UnGraph;
 use crate::ast::TopLevelStatement;
 
 pub mod backend;
@@ -75,43 +77,71 @@ fn main() {
 
 
     let mut class_files = Vec::new();
+    let mut index = HashMap::new();
     for (name, path, contents) in files.iter() {
-        //println!("{name}");
+        //println!("{name} {path:?}");
         let file = parser::parse(&name, &contents).unwrap();
+        index.insert(path.join("::"), class_files.len());
         class_files.push((path, file, contents));
     }
 
-    class_files.sort_by(|(pa, a, _), (path, _, _)| {
-        //println!("{:?}\n{:?}", pa, path);
-        let a_imports = a.content.iter()
+    let mut edges = Vec::new();
+    for (i, (_, file, _)) in class_files.iter().enumerate() {
+        let imports = file.content.iter()
             .filter_map(|x| {
                 match x {
                     TopLevelStatement::Import(import) => {
-                        Some(&import.path.segments)
+                        let mut import = import.path.segments.clone();
+                        import.pop();
+
+                        Some(import.join("::"))
                     }
                     _ => None
                 }
             }).collect::<Vec<_>>();
 
-        for import in &a_imports {
-            let mut matching_parts = 0;
-            for (import, part) in import.iter().zip(path.iter()) {
-                if import.as_str() == part.as_str() {
-                    matching_parts += 1;
-                } else {
-                    break;
-                }
-            }
-            if matching_parts > 0 {
-                return Ordering::Greater
-            }
+        for import in imports {
+            //println!("{import}");
+            edges.push((i as u32, *index.get(&import).expect("import not found") as u32));
         }
-        return Ordering::Less
+    }
+    let mut class_files = class_files.into_iter().map(Some).collect::<Vec<_>>();
+    drop(index);
+
+    let graph = UnGraph::<u32, ()>::from_edges(edges);
+
+    let sccs = petgraph::algo::kosaraju_scc(&graph);
+    let mut seen_indicies = HashSet::new();
+    let mut new_class_files = Vec::new();
+    for scc in sccs {
+        for index in scc.into_iter().rev() {
+            if seen_indicies.contains(&index.index()) {
+                continue;
+            }
+            let class_file = class_files[index.index()].take().unwrap();
+            new_class_files.push(class_file);
+            seen_indicies.insert(index.index());
+        }
+    }
+
+    new_class_files.sort_by(|(ap, _, _), (bp, _ ,_)| {
+        if ap[0].as_str() == "std" && bp[0].as_str() != "std" {
+            Ordering::Less
+        } else if ap[0].as_str() != "std" && bp[0].as_str() == "std" {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
     });
 
-    /*class_files.iter().for_each(|(path, _, _)| {
+    let class_files = new_class_files;
+
+
+
+    class_files.iter().for_each(|(path, file, _)| {
         println!("path: {:?}", path);
-    });*/
+        //println!("file: {:#?}", file);
+    });
 
     let class_files = class_files.into_iter().map(|(_, file, _)| file).collect();
 

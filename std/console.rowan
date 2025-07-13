@@ -1,0 +1,36 @@
+module std::console;
+
+import std::io::iolock::IOLock;
+
+class Console {
+
+    static stdout-lock: IOLock = new IOLock();
+    static stderr-lock: IOLock = new IOLock();
+
+    pub fn print(text: String) {
+        Console.stdout-lock.lock();
+        Console::print-internal(text);
+        Console.stdout-lock.release();
+    }
+    pub fn println(text: String) {
+        Console.stdout-lock.lock();
+        Console::println-internal(text);
+        Console.stdout-lock.release();
+    }
+    pub fn eprint(text: String) {
+        Console.stderr-lock.lock();
+        Console::eprint-internal(text);
+        Console.stderr-lock.release();
+    }
+    pub fn eprintln(text: String) {
+        Console.stderr-lock.lock();
+        Console::eprintln-internal(text);
+        Console.stderr-lock.release();
+    }
+
+    pub native fn print-internal(text: String)
+    pub native fn println-internal(text: String)
+    pub native fn eprint-internal(text: String)
+    pub native fn eprintln-internal(text: String)
+
+}
