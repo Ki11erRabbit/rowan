@@ -668,31 +668,31 @@ struct StringObject {
 
 pub fn generate_string_class() -> VMClass {
     let vtable = VMVTable::new(
-        "String",
+        "core::String",
         None,
         vec![
             VMMethod::new(
-                "load-str",
+                "core::String::load-str",
                 string_load_str as *const (),
                 vec![TypeTag::Void, TypeTag::Object, TypeTag::U64]
                 ),
             VMMethod::new(
-                "init",
+                "core::String::init",
                 string_init as *const (),
                 vec![TypeTag::Void, TypeTag::Object]
                 ),
             VMMethod::new(
-                "len",
+                "core::String::len",
                 string_len as *const (),
                 vec![TypeTag::U64, TypeTag::Object]
                 ),
             VMMethod::new(
-                "is-char-boundary",
+                "core::String::is-char-boundary",
                 string_is_char_boundary as *const (),
                 vec![TypeTag::U8, TypeTag::Object, TypeTag::U64]
             ),
             VMMethod::new(
-                "as-bytes",
+                "core::String::as-bytes",
                 string_is_char_boundary as *const (),
                 vec![TypeTag::Object, TypeTag::Object]
             ),
@@ -700,12 +700,12 @@ pub fn generate_string_class() -> VMClass {
     );
 
     let elements = vec![
-        VMMember::new("length", TypeTag::U64),
-        VMMember::new("capacity", TypeTag::U64),
-        VMMember::new("pointer", TypeTag::U64)
+        VMMember::new("core::String::length", TypeTag::U64),
+        VMMember::new("core::String::capacity", TypeTag::U64),
+        VMMember::new("core::String::pointer", TypeTag::U64)
     ];
 
-    VMClass::new("String", vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
+    VMClass::new("core::String", vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 extern "C" fn string_len(context: &mut Context, this: Reference) -> u64 {

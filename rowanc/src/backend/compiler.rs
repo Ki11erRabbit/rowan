@@ -53,16 +53,16 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
 
     
     let mut string = PartialClass::new();
-    string.set_name("String");
+    string.set_name("core::String");
     let functions = vec![
         VTableEntry::default(),
         VTableEntry::default(),
         VTableEntry::default(),
     ];
     let names = vec![
-        "load-str",
-        "init",
-        "len",
+        "core::String::load-str",
+        "core::String::init",
+        "core::String::len",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
@@ -978,6 +978,18 @@ impl Compiler {
 
                                 let string_ref = partial_class.add_string(string);
                                 output.push(Bytecode::GetStrRef(string_ref));
+                                output.push(Bytecode::StoreArgument(1));
+
+                                // Code for constructing a new String object and setting its value to the str ref
+                                let string_path = partial_class.add_string("core::String");
+                                output.push(Bytecode::NewObject(string_path));
+                                output.push(Bytecode::Dup);
+                                output.push(Bytecode::StoreArgument(0));
+
+                                let class_name = partial_class.add_string("core::String");
+                                let method_name = partial_class.add_string("core::String::load-str");
+
+                                output.push(Bytecode::InvokeVirt(class_name, class_name, method_name));
                             }
                             Constant::Float(value, ty, _) => {
                                 match ty {

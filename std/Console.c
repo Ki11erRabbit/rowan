@@ -27,16 +27,11 @@ void std__console__Console__print_dash_internal(rowan_context_t context, object_
 }
 
 void std__console__Console__println_dash_internal(rowan_context_t context, object_t* text) {
-    printf("println internal start\n");
-    printf("%p", text);
     string_t* str = (string_t*) text;
     uint8_t* buff = NULL;
-    printf("getting length\n");
     ssize_t length = str->length;
     buff = (uint8_t*)malloc(length + 1);
-    printf("allocated\n");
     memcpy(buff, str->buffer, str->length);
-    printf("memcopied\n");
     buff[str->length] = '\n';
     rowan_print_internal(1, buff, str->length + 1);
     rowan_flush(1);

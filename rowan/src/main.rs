@@ -62,7 +62,7 @@ fn main() {
     //println!("String Map: {string_map:#?}");
 
     Context::finish_linking_classes(pre_class_table);
-    println!("String Map: {string_map:#?}");
+    //println!("String Map: {string_map:#?}");
     let mut gc = GarbageCollection::new();
     std::thread::Builder::new().name("Garbage Collection".to_owned())
         .spawn(move || {

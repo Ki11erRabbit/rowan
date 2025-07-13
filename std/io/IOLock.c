@@ -19,15 +19,12 @@ typedef struct io_lock {
 } io_lock_t;
 
 void rowan_lock_init(io_lock_t* io_lock) {
-    printf("initializing semaphore\n");
     sem_init(&io_lock->lock, 0, 0);
     sem_post(&io_lock->lock);
 }
 
 void rowan_acquire_lock(io_lock_t* io_lock) {
-    printf("acquiring semaphore\n");
     sem_wait(&io_lock->lock);
-    printf("semaphore acquired\n");
 }
 
 void rowan_release_lock(io_lock_t* io_lock) {
@@ -52,11 +49,9 @@ size_t lock__get_dash_size() {
 void std__io__iolock__IOLock__lock(rowan_context_t context, object_t* self) {
     io_lock_t* io_lock = (io_lock_t*)self;
     if (io_lock->set != 1) {
-        printf("creating semaphore\n");
         rowan_lock_init(io_lock);
         io_lock->set = 1;
     } else {
-        printf("semaphore is already initialized\n");
     }
     rowan_acquire_lock(io_lock);
 }

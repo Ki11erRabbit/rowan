@@ -611,7 +611,7 @@ impl FunctionTranslator<'_> {
 
     pub fn translate(&mut self, bytecode: &[Bytecode], module: &mut JITModule) -> Result<(), String> {
 
-        println!("\nBytecode: {:#?}", bytecode);
+        //println!("\nBytecode: {:#?}", bytecode);
 
         for bytecode in bytecode.iter() {
             //println!("{:?}", bytecode);
