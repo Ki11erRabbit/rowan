@@ -1,6 +1,7 @@
 module std::io::iolock;
 
 class IOLock {
+    lock-initalized: bool;
     lock: native;
 
     pub native fn lock(self)

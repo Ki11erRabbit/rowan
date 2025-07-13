@@ -3,6 +3,7 @@ Features that need to be implemented in base compiler or runtime before the text
 can be implemented.
 
 ## Text Editor Must haves
+* [ ] Functional booleans in compiler
 * [ ] Compiler Error Reporting
   * [ ] Parse Errors
   * [ ] Typechecker Errors

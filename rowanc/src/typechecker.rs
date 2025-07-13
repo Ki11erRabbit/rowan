@@ -667,8 +667,6 @@ impl TypeChecker {
                 };
                 let method_name = &name.segments[name.segments.len() - 1];
 
-                println!("class name: {:?}", class_name);
-
                 let (_, attributes) = self.class_information.get(&class_name)
                     .expect("class missing or not loaded");
 
@@ -703,13 +701,7 @@ impl TypeChecker {
 
             }
             Expression::MemberAccess { object, field, annotation, .. } => {
-                if format!("{object:?}").contains("stdout-lock") {
-                    println!("found stdout-lock");
-                }
                 self.check_expr(return_type, object)?;
-                println!("checked expr");
-
-
                 let ty = match object.as_ref() {
                     Expression::ClassAccess { .. } => {
                         self.get_type(object.as_mut())?
@@ -744,13 +736,8 @@ impl TypeChecker {
 
                 let member_name = &field.segments[field.segments.len() - 1];
 
-                println!("path: {:?}", path);
-
                 let (_, attributes) = self.class_information.get(&path)
                     .expect("class missing or not loaded");
-
-                println!("object: {object:?}");
-                println!("{class_name} {member_name}");
 
                 let member = match attributes.get(member_name.as_str()) {
                     Some(ClassAttribute::Method(method)) => method,
@@ -759,10 +746,7 @@ impl TypeChecker {
                     None => &object.get_type().unwrap().unwrap_left().into(),
                 };
 
-                println!("member: {member:?}");
-
                 *annotation = Some(member.into());
-                println!("{class_name} {member_name}: {annotation:?}")
 
             }
             Expression::Literal(Literal::Array(body, typ, _)) => {
@@ -1204,12 +1188,9 @@ impl TypeChecker {
 
                         let member_name = &field.segments[field.segments.len() - 1];
 
-                        println!("path: {:?}", path);
-
                         let (_, attributes) = self.class_information.get(&path)
                             .expect("class missing or not loaded");
 
-                        println!("attributes: {:#?}", attributes);
 
                         let member = match attributes.get(member_name.as_str()) {
                             Some(ClassAttribute::Method(method)) => method,
@@ -1217,7 +1198,6 @@ impl TypeChecker {
                             Some(ClassAttribute::StaticMember(member)) => member,
                             None => &object.get_type().unwrap().unwrap_left().into(),
                         };
-
 
                         Ok(member.into())
                     }

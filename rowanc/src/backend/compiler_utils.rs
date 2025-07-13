@@ -329,7 +329,6 @@ impl PartialClass {
     }
 
     pub fn add_static_member<S: AsRef<str>>(&mut self, mut member: StaticMember, member_name: S) {
-        println!("member: {}", member_name.as_ref());
         member.name = self.add_string(member_name);
 
         self.static_members.push(member);
@@ -400,9 +399,6 @@ impl PartialClass {
         Vec<String>,
         Vec<SignatureEntry>)> {
 
-        println!("class name: {class_name:?}");
-        println!("class to vtable: {:#?}", self.class_to_vtable);
-
         let vtable_indices = self.class_to_vtable.get(class_name).unwrap();
 
         let mut output = Vec::new();
@@ -427,7 +423,6 @@ impl PartialClass {
     }
 
     pub fn add_string<S: AsRef<str>>(&mut self, string: S) -> u64 {
-        println!("adding: {}", string.as_ref());
         if let Some(index) = self.string_to_index.get(string.as_ref()) {
             return *index;
         }

@@ -29,6 +29,12 @@ fn explore_directories<P: AsRef<Path>>(path: P, files: &mut Vec<(String, Vec<Str
             dirs_to_explore.push(entry.path());
             continue;
         }
+        // Skip non-Rowan source files since we can't recognize them
+        let entry_path = entry.path();
+        let extension = entry_path.extension().unwrap();
+        if extension != "rowan" {
+            continue;
+        }
         let content = std::fs::read_to_string(entry.path()).unwrap();
         let name = entry.file_name().to_str().unwrap().to_string();
         let path = dir_path.join(name.replace(".rowan", "")).into_iter()
@@ -50,6 +56,12 @@ fn explore_directories_start<P: AsRef<Path>>(path: P, files: &mut Vec<(String, V
         let entry = entry.unwrap();
         if entry.file_type().unwrap().is_dir() {
             dirs_to_explore.push(entry.path());
+            continue;
+        }
+        // Skip non-Rowan source files since we can't recognize them
+        let entry_path = entry.path();
+        let extension = entry_path.extension().unwrap();
+        if extension != "rowan" {
             continue;
         }
         let content = std::fs::read_to_string(entry.path()).unwrap();
@@ -108,6 +120,7 @@ fn main() {
     let mut class_files = class_files.into_iter().map(Some).collect::<Vec<_>>();
     drop(index);
 
+    // Use Strongly Connected Components algo to figure out the propper order of compiling
     let graph = UnGraph::<u32, ()>::from_edges(edges);
 
     let sccs = petgraph::algo::kosaraju_scc(&graph);
@@ -124,6 +137,7 @@ fn main() {
         }
     }
 
+    // Ensure that all stdlib files get compiled first
     new_class_files.sort_by(|(ap, _, _), (bp, _ ,_)| {
         if ap[0].as_str() == "std" && bp[0].as_str() != "std" {
             Ordering::Less
@@ -138,10 +152,10 @@ fn main() {
 
 
 
-    class_files.iter().for_each(|(path, file, _)| {
+    /*class_files.iter().for_each(|(path, file, _)| {
         println!("path: {:?}", path);
         //println!("file: {:#?}", file);
-    });
+    });*/
 
     let class_files = class_files.into_iter().map(|(_, file, _)| file).collect();
 

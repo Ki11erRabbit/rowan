@@ -588,7 +588,7 @@ impl Compiler {
                 .map(|n| format!("core::Object::{n}"))
                 .collect::<Vec<String>>();
 
-            partial_class.add_vtable(&vec![String::from("core::Object")], vtable.clone(), &names, signatures);
+            partial_class.add_vtable(&vec![String::from("core"), String::from("Object")], vtable.clone(), &names, signatures);
             partial_class.add_parent("core::Object");
         }
 
@@ -792,9 +792,7 @@ impl Compiler {
                 let mut class_name = partial_class.get_class_name();
                 class_name.push(name.to_string());
                 let name = class_name.join("::");
-                if !*is_native {
-                    partial_class.add_static_method(name, bytecode, *is_native);
-                }
+                partial_class.add_static_method(name, bytecode, *is_native);
             } else {
                 //println!("{}", name);
                 let mut path_name = class_name.clone();
