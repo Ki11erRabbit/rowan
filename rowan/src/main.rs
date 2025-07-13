@@ -18,7 +18,7 @@ fn main() {
     }
 
     let (classes, paths): (Vec<ClassFile>, Vec<PathBuf>) = args[1..].iter().map(|f| {
-        //println!("{}", f);
+        println!("{}", f);
         let mut file = std::fs::File::open(f).unwrap();
         let mut output = Vec::new();
         file.read_to_end(&mut output).unwrap();
@@ -58,6 +58,8 @@ fn main() {
 
 
     let (main_symbol, main_method_symbol) = Context::link_classes(classes, paths, &mut pre_class_table, &mut vtables_map, &mut string_map);
+
+    //println!("String Map: {string_map:#?}");
 
     Context::finish_linking_classes(pre_class_table);
     //println!("String Map: {string_map:#?}");

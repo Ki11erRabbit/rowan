@@ -64,7 +64,7 @@ pub fn link_class_files(
 
             symbol
         };
-        if name_str == "Main" {
+        if name_str.ends_with("Main") {
             main_class_symbol = Some(class_symbol);
         }
 
@@ -548,37 +548,68 @@ pub fn link_class_files(
             }
 
             let mut static_method_mapper = HashMap::new();
-            let functions = static_methods.into_iter()
-                .enumerate()
-                .map(|(i, (name, sig, location))| {
-                    let name_symbol = name;
-                    static_method_mapper.insert(name_symbol, i);
-                    let SymbolEntry::StringRef(name_index) = &symbol_table[name] else {
-                        unreachable!("Expected name symbol to be a string reference");
-                    };
-                    let name = &string_table[*name_index];
-                    let cranelift_sig = jit_controller.create_signature(&sig[1..], &sig[0]);
-                    let func_id = jit_controller.declare_function(name, &cranelift_sig).expect("Failed to declare function");
+            let mut location_path = location.clone();
+            let (functions, location_path) = {
+                let mut location_path = location;
+                (static_methods.into_iter()
+                    .enumerate()
+                    .map(|(i, (name, sig, location))| {
+                        let name_symbol = name;
+                        static_method_mapper.insert(name_symbol, i);
+                        let SymbolEntry::StringRef(name_index) = &symbol_table[name] else {
+                            unreachable!("Expected name symbol to be a string reference");
+                        };
+                        let name = &string_table[*name_index];
+                        let cranelift_sig = jit_controller.create_signature(&sig[1..], &sig[0]);
+                        let func_id = jit_controller.declare_function(name, &cranelift_sig).expect("Failed to declare function");
 
-                    let return_type = convert_type(&sig[0]);
-                    let arguments = sig[1..]
-                        .iter()
-                        .map(convert_type)
-                        .collect::<Vec<_>>();
+                        let return_type = convert_type(&sig[0]);
+                        let arguments = sig[1..]
+                            .iter()
+                            .map(convert_type)
+                            .collect::<Vec<_>>();
 
-                    let (value, sig) = match location {
-                        MethodLocation::Blank => panic!("we should be bytecode"),
-                        MethodLocation::Native(_) => panic!("we should be bytecode"),
-                        MethodLocation::Bytecode(code) => {
-                            let bytecode = link_bytecode(class, &code, string_map, class_map, string_table, symbol_table, class_table);
-                            let value = FunctionValue::Bytecode(bytecode, func_id);
-                            (Arc::new(RwLock::new(value)), cranelift_sig)
-                        }
-                    };
+                        let (value, sig) = match location {
+                            MethodLocation::Blank => panic!("we should be bytecode"),
+                            MethodLocation::Native(string) => {
+                                let name = class_name_str.split("::").collect::<Vec<&str>>().last().unwrap().to_string();
+                                let name = add_library_mod(&name);
 
-                    Function::new(name_symbol, value, arguments, return_type, sig)
-                })
-                .collect::<Vec<_>>();
+                                location_path.push(name);
+
+                                let value = if let Some(library) = library_table.get_mut(&location_path.to_str().unwrap()) {
+                                    let symbol = unsafe {
+                                        let symbol = library.get::<*const ()>(string.as_bytes()).expect("TODO: handle missing function reference");
+                                        *symbol
+                                    };
+                                    FunctionValue::Native(symbol)
+                                } else {
+                                    let (symbol, lib) = unsafe {
+                                        let lib = libloading::Library::new(&location_path).expect("Handle Missing library");
+                                        let symbol = lib.get::<*const ()>(string.as_bytes()).expect("TODO: handle missing function reference");
+
+                                        (*symbol, lib)
+                                    };
+                                    library_table.insert(location_path.to_str().unwrap().to_string(), lib);
+                                    FunctionValue::Native(symbol)
+                                };
+
+                                location_path.pop();
+
+                                (Arc::new(RwLock::new(value)), cranelift_sig)
+                            },
+                            MethodLocation::Bytecode(code) => {
+                                let bytecode = link_bytecode(class, &code, string_map, class_map, string_table, symbol_table, class_table);
+                                let value = FunctionValue::Bytecode(bytecode, func_id);
+                                (Arc::new(RwLock::new(value)), cranelift_sig)
+                            }
+                        };
+
+                        Function::new(name_symbol, value, arguments, return_type, sig)
+                    })
+                    .collect::<Vec<_>>(), location_path)
+            };
+            location = location_path;
 
             let vtable = VTable::new(functions, static_method_mapper);
             let vtable_index = vtables_table.add_vtable(vtable);
@@ -875,6 +906,7 @@ fn link_bytecode(
             }
             compiled::Bytecode::InvokeVirt(class_index, source_class, method_index) => {
                 let class_str = class_file.index_string_table(class_index);
+                println!("{class_str}");
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let source_class = if source_class != 0 {
@@ -1177,6 +1209,11 @@ pub fn link_vm_classes(
                     symbol
                 }
             };
+
+            if vtable_class_name_symbol == 8 {
+                println!("class: {class}");
+            }
+
             let source_class_name = if let Some(source_class) = source_class {
                 if let Some(symbol) = class_map.get(source_class) {
                     Some(*symbol)
@@ -1221,6 +1258,7 @@ pub fn link_vm_classes(
                 let value = Arc::new(RwLock::new(value));
                 current_vtable.push((name_symbol, signature, MethodLocation::Blank, value, cranelift_sig));
             }
+            println!("vtable class name symbol: {vtable_class_name_symbol}");
             vtables_map.entry(vtable_class_name_symbol)
                 .and_modify(|map| {
                     map.insert(class_symbol, current_vtable.clone());
@@ -1336,6 +1374,8 @@ pub fn link_vm_classes(
                     // We also update vtables_map to hold updated function values so that we can link future vtables
 
                     let derived_functions = vtables_map.get(class_name).unwrap().get(&class_symbol).unwrap();
+                    println!("class_name: {class_name}");
+                    println!("string map: {string_map:#?}");
                     let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
 
                     for (_,_,_,value, _) in base_functions {

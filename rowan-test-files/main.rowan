@@ -11,10 +11,6 @@ class Main {
 
         Console::println(string);
 
-        Main::thrash();
-        while True {
-            Main::thrash();
-        }
     }
 
     fn thrash() {

@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <rowan.h>
+#include <stdio.h>
 
 #ifdef linux
 
@@ -18,10 +19,13 @@ typedef struct io_lock {
 } io_lock_t;
 
 void rowan_lock_init(io_lock_t* io_lock) {
+    printf("initializing semaphore\n");
     sem_init(&io_lock->lock, 0, 0);
+    sem_post(&io_lock->lock);
 }
 
 void rowan_acquire_lock(io_lock_t* io_lock) {
+    printf("acquiring semaphore\n");
     sem_wait(&io_lock->lock);
 }
 

@@ -138,28 +138,28 @@ extern "C" fn object_downcast(context: &mut Context, this: Reference, class_inde
 
 pub fn generate_printer_class() -> VMClass {
     let vtable = VMVTable::new(
-        "Printer",
+        "core::Printer",
         None,
         vec![
             VMMethod::new(
-                "Printer::println-int",
+                "core::Printer::println-int",
                 printer_println_int as *const (),
                 vec![TypeTag::Void, TypeTag::Object, TypeTag::U64]
                 ),
             VMMethod::new(
-                "Printer::println-float",
+                "core::Printer::println-float",
                 printer_println_float as *const (),
                 vec![TypeTag::Void, TypeTag::Object, TypeTag::F64]
                 ),
             VMMethod::new(
-                "Printer::println",
+                "core::Printer::println",
                 printer_println as *const (),
                 vec![TypeTag::Void, TypeTag::Object, TypeTag::Object]
                 ),
         ]
     );
 
-    VMClass::new("Printer", vec!["core::Object"], vec![vtable], Vec::new(), Vec::new(), Vec::new())
+    VMClass::new("core::Printer", vec!["core::Object"], vec![vtable], Vec::new(), Vec::new(), Vec::new())
 }
 
 
@@ -221,17 +221,17 @@ macro_rules! array_create_class {
                     None,
                     vec![
                         VMMethod::new(
-                            "init",
+                            concat!("core::", std::stringify!($array_name), "::init"),
                             [< array $variant _init>] as *const (),
                             vec![TypeTag::Void, TypeTag::Object, TypeTag::U64]
                             ),
                         VMMethod::new(
-                            "len",
+                            concat!("core::", std::stringify!($array_name), "::len"),
                             array_len as *const (),
                             vec![TypeTag::U64, TypeTag::Object]
                             ),
                         VMMethod::new(
-                            "downcast-contents",
+                            concat!("core::", std::stringify!($array_name), "::downcast-contents"),
                             [< array $variant _upcast_contents >] as *const (),
                             vec![TypeTag::U64, TypeTag::Object, TypeTag::U64]
                             ),
@@ -239,11 +239,11 @@ macro_rules! array_create_class {
                 );
 
                 let elements = vec![
-                    VMMember::new("length", TypeTag::U64),
-                    VMMember::new("pointer", TypeTag::U64)
+                    VMMember::new(concat!("core::", std::stringify!($array_name), "::length"), TypeTag::U64),
+                    VMMember::new(concat!("core::", std::stringify!($array_name), "::pointer"), TypeTag::U64)
                 ];
 
-                VMClass::new(std::stringify!($array_name), vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
+                VMClass::new(concat!("core::", std::stringify!($array_name)), vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
             }
         }
     };

@@ -334,7 +334,7 @@ impl Context {
             panic!("Lock poisoned");
         };
 
-        linker::link_class_files(
+        let out = linker::link_class_files(
             classes,
             class_locations,
             &mut jit_controller,
@@ -347,7 +347,12 @@ impl Context {
             string_map,
             class_map.borrow_mut(),
             &mut library_table,
-        ).unwrap()
+        ).unwrap();
+
+        println!("class_map: {:#?}", &class_map);
+
+
+        out
     }
 
 
@@ -396,10 +401,10 @@ impl Context {
             panic!("Lock poisoned");
         };
         let mut init_functions = Vec::new();
-        for class in pre_class_table {
+        for (i, class) in pre_class_table.into_iter().enumerate() {
             match class {
                 TableEntry::Hole => {
-                    panic!("missing class");
+                    panic!("missing class {i}");
                 }
                 TableEntry::Entry(class) => {
                     init_functions.push(class.init_function);
