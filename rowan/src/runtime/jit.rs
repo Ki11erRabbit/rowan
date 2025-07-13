@@ -283,6 +283,7 @@ impl JITCompiler {
                 runtime::class::TypeTag::Str => ir::types::I64,
                 runtime::class::TypeTag::Void => ir::types::I64,
                 runtime::class::TypeTag::Object => ir::types::I64,
+                runtime::class::TypeTag::Sized(_) => unreachable!("Native Members are not ABI Compatible"),
             };
 
             self.context.func.signature.params.push(AbiParam::new(ty));
@@ -298,6 +299,7 @@ impl JITCompiler {
             runtime::class::TypeTag::Str => self.context.func.signature.returns.push(AbiParam::new(ir::types::I64)),
             runtime::class::TypeTag::Void => (),
             runtime::class::TypeTag::Object => self.context.func.signature.returns.push(AbiParam::new(ir::types::I64)),
+            runtime::class::TypeTag::Sized(_) => unreachable!("Native Members are not ABI Compatible"),
         }
 
         let mut function_translator = FunctionTranslator::new(
@@ -422,6 +424,7 @@ impl FunctionTranslator<'_> {
                 runtime::class::TypeTag::Str => (ir::types::I64, false),
                 runtime::class::TypeTag::Void => (ir::types::I64, false),
                 runtime::class::TypeTag::Object => (ir::types::I64, true),
+                runtime::class::TypeTag::Sized(_) => unreachable!("Native Members are not ABI Compatible"),
             };
             start_block_args.push(ty.clone());
             let var = Variable::new(i + 1);
@@ -1705,6 +1708,7 @@ impl FunctionTranslator<'_> {
             runtime::class::TypeTag::F64 => &[self.builder.ins().f64const(0.0)],
             runtime::class::TypeTag::Object | runtime::class::TypeTag::Str => &[self.builder.ins().iconst(types::I64, 0)],
             runtime::class::TypeTag::Void => &[],
+            runtime::class::TypeTag::Sized(_) => unreachable!("Native Members are not ABI Compatible"),
         };
         let ret_result = self.builder.ins().return_(returns);
         self.builder.inst_results(ret_result);

@@ -170,7 +170,7 @@ pub fn link_class_files(
     }
 
     let mut class_parts: Vec<(&str, PathBuf, Symbol, Symbol, Vec<Symbol>, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, MethodLocation)>, &ClassFile, Vec<(Symbol, Option<Symbol>)>, Vec<ClassMember>, Vec<u8>)> = Vec::new();
-    for (class, location) in classes.iter().zip(class_locations.into_iter()) {
+    for (class, mut location) in classes.iter().zip(class_locations.into_iter()) {
         let ClassFile { name, parents, members, static_methods, vtables, static_members, static_init, .. } = &class;
         let class_name_str = class.index_string_table(*name);
         
@@ -195,7 +195,41 @@ pub fn link_class_files(
                 symbol
             };
 
-            let type_tag = convert_type(type_tag);
+            let type_tag = match type_tag {
+                TypeTag::Native => {
+                    let name = class_name_str.split("::").collect::<Vec<&str>>().last().unwrap().to_string();
+                    let name = add_library_mod(&name);
+
+                    location.push(name);
+
+                    let mut string = name_str.replace("::", "__")
+                        .replace("-", "_dash_");
+
+                    string.push_str("__get_dash_size");
+
+                    let value = if let Some(library) = library_table.get_mut(&location.to_str().unwrap()) {
+                        let symbol = unsafe {
+                            let symbol = library.get::<extern "C" fn() -> usize>(string.as_bytes()).expect("TODO: handle missing function reference");
+                            *symbol
+                        };
+                        class::TypeTag::Sized(symbol())
+                    } else {
+                        let (symbol, lib) = unsafe {
+                            let lib = libloading::Library::new(&location).expect("Handle Missing library");
+                            let symbol = lib.get::<extern "C" fn() -> usize>(string.as_bytes()).expect("TODO: handle missing function reference");
+
+                            (*symbol, lib)
+                        };
+                        library_table.insert(location.to_str().unwrap().to_string(), lib);
+
+                        class::TypeTag::Sized(symbol())
+                    };
+
+                    location.pop();
+                    value
+                }
+                x => convert_type(x),
+            };
 
             class_members.push(MemberInfo::new(name_symbol, type_tag));
         }

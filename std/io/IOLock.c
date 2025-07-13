@@ -48,7 +48,7 @@ size_t lock__get_dash_size() {
 
 void std__io__iolock__IOLock__lock(rowan_context_t context, object_t* self) {
     io_lock_t* io_lock = (io_lock_t*)self;
-    if (io_lock->set != 1) {
+    if (!io_lock->set) {
         rowan_lock_init(io_lock);
         io_lock->set = 1;
     } else {

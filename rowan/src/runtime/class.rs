@@ -17,6 +17,7 @@ pub enum TypeTag {
     Object, // u64
     Str,
     Void,
+    Sized(usize),
 }
 
 impl TypeTag {
@@ -36,6 +37,7 @@ impl TypeTag {
             Object => 8,
             Str => 8,
             Void => 1,
+            Sized(x) => x,
         }
     }
 }

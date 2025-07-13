@@ -21,7 +21,7 @@ impl Object {
         //println!("layout size: {}", layout.size());
         let data_layout = Layout::array::<u8>(data_size).expect("Wrong layout or too big");
 
-        let (whole_layout, _) = layout.extend(data_layout).expect("Wrong layout or too big");
+        let (whole_layout, size) = layout.extend(data_layout).expect("Wrong layout or too big");
         //println!("size: {}", whole_layout.size());
         //println!("padded size: {}", whole_layout.pad_to_align().size());
         let pointer = unsafe { alloc(whole_layout.pad_to_align()) };
@@ -32,10 +32,13 @@ impl Object {
         }        
         let pointer = pointer as *mut Object;
         unsafe {
-            for i in 0..data_size {
-                let pointer = pointer.add(1) as *mut u8;
-                pointer.add(i).write(0);
+            {
+                let pointer = pointer as *mut u8;
+                for i in 0..size {
+                    pointer.add(i).write(0);
+                }
             }
+
             std::ptr::write(pointer, Object {
                 class,
                 parent_objects: parents,
