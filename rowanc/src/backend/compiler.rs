@@ -1460,9 +1460,15 @@ impl Compiler {
                     );
                     active_path
                 } else {
-                    class_name.segments[..class_name.segments.len()].iter()
+                    let path = class_name.segments[..class_name.segments.len()].iter()
                         .map(ToString::to_string)
-                        .collect::<Vec<_>>()
+                        .collect::<Vec<_>>();
+
+                    if path.len() == 1 {
+                        self.add_path_if_needed(path[0].clone())
+                    } else {
+                        path
+                    }
                 };
                 let path = partial_class.add_string(class_name.join("::"));
                 let class = self.classes.get(&class_name).unwrap_or(partial_class);

@@ -906,7 +906,6 @@ fn link_bytecode(
             }
             compiled::Bytecode::InvokeVirt(class_index, source_class, method_index) => {
                 let class_str = class_file.index_string_table(class_index);
-                println!("{class_str}");
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let source_class = if source_class != 0 {
@@ -1210,8 +1209,8 @@ pub fn link_vm_classes(
                 }
             };
 
-            if vtable_class_name_symbol == 8 {
-                println!("class: {class}");
+            if vtable_class_name_symbol == 31 {
+                println!("31 class: {class}");
             }
 
             let source_class_name = if let Some(source_class) = source_class {
@@ -1258,7 +1257,6 @@ pub fn link_vm_classes(
                 let value = Arc::new(RwLock::new(value));
                 current_vtable.push((name_symbol, signature, MethodLocation::Blank, value, cranelift_sig));
             }
-            println!("vtable class name symbol: {vtable_class_name_symbol}");
             vtables_map.entry(vtable_class_name_symbol)
                 .and_modify(|map| {
                     map.insert(class_symbol, current_vtable.clone());
@@ -1374,8 +1372,8 @@ pub fn link_vm_classes(
                     // We also update vtables_map to hold updated function values so that we can link future vtables
 
                     let derived_functions = vtables_map.get(class_name).unwrap().get(&class_symbol).unwrap();
-                    println!("class_name: {class_name}");
-                    println!("string map: {string_map:#?}");
+                    //println!("class_name: {class_name}");
+                    //println!("string map: {string_map:#?}");
                     let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
 
                     for (_,_,_,value, _) in base_functions {

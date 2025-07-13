@@ -349,8 +349,7 @@ impl Context {
             &mut library_table,
         ).unwrap();
 
-        println!("class_map: {:#?}", &class_map);
-
+        //println!("class_map: {:#?}", &class_map);
 
         out
     }
@@ -401,10 +400,10 @@ impl Context {
             panic!("Lock poisoned");
         };
         let mut init_functions = Vec::new();
-        for (i, class) in pre_class_table.into_iter().enumerate() {
+        for class in pre_class_table {
             match class {
                 TableEntry::Hole => {
-                    panic!("missing class {i}");
+                    panic!("missing class");
                 }
                 TableEntry::Entry(class) => {
                     init_functions.push(class.init_function);

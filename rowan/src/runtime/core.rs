@@ -217,7 +217,7 @@ macro_rules! array_create_class {
         paste! {
             pub fn $fn_name() -> VMClass {
                 let vtable = VMVTable::new(
-                    std::stringify!($array_name),
+                    concat!("core::",std::stringify!($array_name)),
                     None,
                     vec![
                         VMMethod::new(
