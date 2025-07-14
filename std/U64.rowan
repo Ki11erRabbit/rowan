@@ -1,0 +1,23 @@
+module std::U64;
+
+class U64 {
+
+    static const MIN: u64 = 0;
+    static const MAX: u64 = 18446744073709551615;
+    item: u64
+
+    pub fn pow(base: u64, exp: u32) -> u64 {
+        if exp == 0 {
+            return 1;
+        }
+
+        let temp: u64 = U64::pow(base, exp / 2);
+
+        if exp % 2 == 0 {
+            return temp * temp;
+        } else {
+            return base * temp * temp;
+        }
+    }
+
+}

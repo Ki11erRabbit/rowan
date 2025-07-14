@@ -4,6 +4,9 @@ can be implemented.
 
 ## Text Editor Must haves
 * [ ] Functional booleans in compiler
+* [ ] Stability Improvements
+  * [ ] In runtime, convert panics into exceptions thrown
+  * [ ] Only panic when state is invalid.
 * [ ] Compiler Error Reporting
   * [ ] Parse Errors
   * [ ] Typechecker Errors
