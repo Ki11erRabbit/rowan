@@ -666,6 +666,51 @@ struct StringObject {
     pub buffer: *mut u8,
 }
 
+impl StringObject {
+    fn resize_if_needed(&mut self, needed_size: usize) {
+        use std::alloc::*;
+        if needed_size <= (self.capacity - self.length) as usize {
+            // We have enough space to just add the data needed
+            return;
+        }
+        let new_capacity = self.capacity as f64 * 1.6;
+        let mut new_capacity = new_capacity.ceil() as usize;
+        if new_capacity == 0 {
+            new_capacity = 1;
+        }
+        let layout = Layout::array::<u8>(new_capacity).expect("string layout is wrong or too big");
+        let pointer = unsafe { alloc(layout) };
+        if pointer.is_null() {
+            eprintln!("Out of memory");
+            handle_alloc_error(layout);
+        }
+        unsafe {
+            std::ptr::copy_nonoverlapping(self.buffer, pointer, self.length as usize);
+        }
+        if !self.buffer.is_null() {
+            let old_layout = Layout::array::<u8>(self.capacity as usize).expect("string layout is wrong or too big");
+            unsafe {
+                dealloc(self.buffer, old_layout);
+            }
+        }
+        self.buffer = pointer;
+        self.capacity = new_capacity as u64;
+    }
+
+    fn push_char(&mut self, c: char) {
+        let size = c.len_utf8();
+        self.resize_if_needed(size);
+        let mut char_buffer = [0; 4];
+        let bytes = c.encode_utf8(&mut char_buffer).as_bytes();
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.buffer.add(self.length as usize), bytes.len());
+        }
+
+        self.length += size as u64;
+    }
+}
+
 pub fn generate_string_class() -> VMClass {
     let vtable = VMVTable::new(
         "core::String",
@@ -693,8 +738,13 @@ pub fn generate_string_class() -> VMClass {
             ),
             VMMethod::new(
                 "core::String::as-bytes",
-                string_is_char_boundary as *const (),
+                string_as_bytes as *const (),
                 vec![TypeTag::Object, TypeTag::Object]
+            ),
+            VMMethod::new(
+                "core::String::push",
+                string_push as *const (),
+                vec![TypeTag::Void, TypeTag::U32]
             ),
         ]
     );
@@ -708,63 +758,47 @@ pub fn generate_string_class() -> VMClass {
     VMClass::new("core::String", vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
-extern "C" fn string_len(context: &mut Context, this: Reference) -> u64 {
+extern "C" fn string_len(_: &mut Context, this: Reference) -> u64 {
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
     object.length
 }
 
-extern "C" fn string_load_str(context: &mut Context, this: Reference, string_ref: Reference) {
+extern "C" fn string_load_str(_: &mut Context, this: Reference, string_ref: Reference) {
     use std::alloc::*;
     let string = Context::get_string(string_ref as Symbol);
     let bytes = string.as_bytes();
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
+    object.resize_if_needed(bytes.len());
     object.length = bytes.len() as u64;
-    object.capacity = bytes.len() as u64;
-    let layout = Layout::array::<u8>(bytes.len()).expect("string layout is wrong or too big");
-    let pointer = unsafe { alloc(layout) };
-    if pointer.is_null() {
-        eprintln!("Out of memory");
-        handle_alloc_error(layout);
-    }
     unsafe {
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), pointer, bytes.len())
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), object.buffer, bytes.len())
     }
-    object.buffer = pointer;
 }
 
-extern "C" fn string_init(context: &mut Context, this: Reference) {
+extern "C" fn string_init(_: &mut Context, this: Reference) {
     use std::alloc::*;
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
     object.length = 0;
-    object.capacity = 4;
-    let layout = Layout::array::<u8>(4).expect("string layout is wrong or too big");
-    let pointer = unsafe { alloc(layout) };
-    if pointer.is_null() {
-        eprintln!("Out of memory");
-        handle_alloc_error(layout);
-    }
-    unsafe {
-        std::ptr::copy_nonoverlapping(b"\0\0\0\0".as_ptr(), pointer, 4)
-    }
-    object.buffer = pointer;
+    object.capacity = 0;
+    object.buffer = std::ptr::null_mut();
 }
 
-pub fn string_from_str(context: &Context, this: Reference, string: String) {
+pub fn string_from_str(_: &Context, this: Reference, string: &str) {
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
-    object.length = string.len() as u64;
-    object.capacity = string.len() as u64;
-    let mut string_box = string.into_boxed_str();
-    let string_pointer = string_box.as_mut_ptr();
-    let _ = Box::into_raw(string_box);
-    object.buffer = string_pointer;
+    let bytes = string.as_bytes();
+    object.resize_if_needed(bytes.len());
+    object.length = bytes.len() as u64;
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), object.buffer, bytes.len())
+    }
 }
 
 pub fn string_drop(object: &mut StringObject) {
@@ -777,7 +811,7 @@ pub fn string_drop(object: &mut StringObject) {
     }
 }
 
-extern "C" fn string_is_char_boundary(context: &mut Context, this: Reference, index: u64) -> u8 {
+extern "C" fn string_is_char_boundary(_: &mut Context, this: Reference, index: u64) -> u8 {
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
@@ -824,4 +858,13 @@ extern "C" fn string_as_bytes(context: &mut Context, this: Reference) -> Referen
         }
     }
     byte_array
+}
+
+extern "C" fn string_push(context: &mut Context, this: Reference, character: u32) {
+    let object = this;
+    let object = object as *mut StringObject;
+    let object = unsafe { object.as_mut().unwrap() };
+    object.push_char(unsafe {
+        char::from_u32_unchecked(character)
+    })
 }
