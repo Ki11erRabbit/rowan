@@ -1,8 +1,6 @@
-use std::cell::Ref;
 use std::ops::Add;
 use std::ptr::slice_from_raw_parts;
 use paste::paste;
-use quote::format_ident;
 use super::{object::Object, Context, Reference, Symbol};
 use rowan_shared::TypeTag;
 
@@ -619,7 +617,7 @@ extern "C" fn out_of_bounds_init(context: &mut Context, this: Reference, bounds:
 
     let message = Context::new_object("String"); // String Class Symbol
 
-    string_from_str(context, message, format!("Index was {index} but length was {bounds}"));
+    string_from_str(context, message, &format!("Index was {index} but length was {bounds}"));
 
     let base_exception = object.parent_objects[0];
     exception_init(context, base_exception, message);
@@ -650,7 +648,7 @@ pub extern "C" fn null_pointer_init(context: &Context, this: Reference) {
 
     let message = Context::new_object("String"); // String Class Symbol
 
-    string_from_str(context, message, String::from("NullPointerException"));
+    string_from_str(context, message, "NullPointerException");
 
     let base_exception = object.parent_objects[0];
     exception_init(context, base_exception, message);
@@ -772,6 +770,9 @@ extern "C" fn string_load_str(_: &mut Context, this: Reference, string_ref: Refe
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
+    object.buffer = std::ptr::null_mut();
+    object.capacity = 0;
+    object.length = 0;
     object.resize_if_needed(bytes.len());
     object.length = bytes.len() as u64;
     unsafe {
@@ -793,6 +794,9 @@ pub fn string_from_str(_: &Context, this: Reference, string: &str) {
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
+    object.buffer = std::ptr::null_mut();
+    object.capacity = 0;
+    object.length = 0;
     let bytes = string.as_bytes();
     object.resize_if_needed(bytes.len());
     object.length = bytes.len() as u64;

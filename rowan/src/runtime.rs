@@ -267,7 +267,7 @@ impl Context {
 
         let name = &string_table[method_name_index];
 
-        core::string_from_str(self, string_ref, name.to_string());
+        core::string_from_str(self, string_ref, name);
 
         string_ref
     }

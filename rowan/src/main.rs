@@ -8,9 +8,18 @@ use crate::runtime::garbage_collection::{GarbageCollection, GC_SENDER};
 
 mod runtime;
 
+extern "C" {
+    #[link_name = "rowan_main"]
+    pub fn rowan_main();
+}
+
 fn main() {
 
-    env_logger::init();
+    unsafe {
+        rowan_main();
+    }
+
+    /*env_logger::init();
     let args = std::env::args().collect::<Vec<String>>();
 
     if args.len() < 2 {
@@ -91,5 +100,5 @@ fn main() {
         println!("{message_str}");
         exception_print_stack_trace(&mut context, base_exception_ref);
         std::process::exit(1);
-    }
+    }*/
 }

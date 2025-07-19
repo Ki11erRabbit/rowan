@@ -1,10 +1,13 @@
 use std::collections::HashSet;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread::yield_now;
+use crate::fake_lock::FakeLock;
 use crate::runtime::{Context, Reference, WrappedReference, DO_GARBAGE_COLLECTION, THREAD_COUNT};
 
-pub static mut GC_SENDER: Option<Sender<HashSet<WrappedReference>>> = None;
+pub static GC_SENDER: LazyLock<FakeLock<Option<Sender<HashSet<WrappedReference>>>>> = LazyLock::new(|| {
+    FakeLock::new(None)
+});
 
 pub struct GarbageCollection {
     live_objects: HashSet<Reference>,
@@ -16,7 +19,7 @@ impl GarbageCollection {
         let (sender, receiver) = std::sync::mpsc::channel();
 
         unsafe {
-            GC_SENDER = Some(sender);
+            *GC_SENDER.write() = Some(sender);
         }
 
         Self {
@@ -33,7 +36,7 @@ impl GarbageCollection {
 
             if duration.as_secs() >= 300 {// TODO: make this 5 mins configurable
                 let mut thread_count = unsafe {
-                    THREAD_COUNT.load(std::sync::atomic::Ordering::Relaxed)
+                    THREAD_COUNT.read().load(std::sync::atomic::Ordering::Relaxed)
                 };
 
                 let lock = unsafe {

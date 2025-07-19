@@ -13,10 +13,10 @@ use core::VMClass;
 use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{FunctionValue, VTables}};
 use std::borrow::BorrowMut;
 use std::collections::HashSet;
-use std::num::NonZeroU64;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32};
 use std::sync::mpsc::Sender;
+use crate::fake_lock::FakeLock;
 use crate::runtime::class::{ClassMember, ClassMemberData};
 
 mod tables;
@@ -45,9 +45,15 @@ pub type Index = usize;
 
 pub type VTableIndex = usize;
 
-pub static DO_GARBAGE_COLLECTION: RwLock<()> = RwLock::new(());
 
-pub static mut THREAD_COUNT: AtomicU32 = AtomicU32::new(1);
+pub static DO_GARBAGE_COLLECTION: LazyLock<Arc<RwLock<()>>> = LazyLock::new(|| {
+    Arc::new(RwLock::new(()))
+});
+
+
+pub static THREAD_COUNT: LazyLock<FakeLock<AtomicU32>> = LazyLock::new(|| {
+    FakeLock::new(AtomicU32::new(1))
+});
 
 static VTABLES: LazyLock<RwLock<VTables>> = LazyLock::new(|| {
     let table = VTables::new();
@@ -267,7 +273,7 @@ impl Context {
 
         let name = &string_table[method_name_index];
 
-        core::string_from_str(self, string_ref, name.to_string());
+        core::string_from_str(self, string_ref, name);
 
         string_ref
     }

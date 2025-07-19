@@ -94,7 +94,7 @@ impl Class {
         let mut out = 0;
         for member in &self.members {
             let size = member.get_size();
-            out += size + (size % std::mem::size_of::<usize>()); // we are padding the struct so that it is compatible with C
+            out += size + (std::mem::size_of::<usize>() - size);  // we are padding the struct so that it is compatible with C
         }
         out
     }

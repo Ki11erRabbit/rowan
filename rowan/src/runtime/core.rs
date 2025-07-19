@@ -619,7 +619,7 @@ extern "C" fn out_of_bounds_init(context: &mut Context, this: Reference, bounds:
 
     let message = Context::new_object("String"); // String Class Symbol
 
-    string_from_str(context, message, format!("Index was {index} but length was {bounds}"));
+    string_from_str(context, message, &format!("Index was {index} but length was {bounds}"));
 
     let base_exception = object.parent_objects[0];
     exception_init(context, base_exception, message);
@@ -650,7 +650,7 @@ pub extern "C" fn null_pointer_init(context: &Context, this: Reference) {
 
     let message = Context::new_object("String"); // String Class Symbol
 
-    string_from_str(context, message, String::from("NullPointerException"));
+    string_from_str(context, message, "NullPointerException");
 
     let base_exception = object.parent_objects[0];
     exception_init(context, base_exception, message);

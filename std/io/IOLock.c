@@ -2,7 +2,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <rowan.h>
-#include <stdio.h>
 
 #ifdef linux
 

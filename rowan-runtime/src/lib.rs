@@ -7,13 +7,14 @@ use crate::runtime::core::exception_print_stack_trace;
 use crate::runtime::garbage_collection::{GarbageCollection, GC_SENDER};
 
 mod runtime;
+mod fake_lock;
 
 
 /// The start function for calling the main method in Rowan.
 /// This function will parse commandline arguments from a Rust Context so don't call it from anywhere else.
 /// It will initialize the state of the Rowan runtime by configuring the VM, linking core, and user classes, and start the garbage collector.
 /// After that, it will call the main method.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rowan_main() {
     env_logger::init();
     let args = std::env::args().collect::<Vec<String>>();
@@ -74,7 +75,7 @@ pub extern "C" fn rowan_main() {
             gc.main_loop()
         }).expect("Thread 'new' panicked at 'Garbage Collection'");
 
-    let sender = unsafe { GC_SENDER.clone().unwrap() };
+    let sender = unsafe { GC_SENDER.read().clone().unwrap() };
     let mut context = Context::new(sender);
 
     //println!("main_symbol: {}, main_method_symbol: {}", main_symbol, main_method_symbol);

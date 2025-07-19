@@ -6,3 +6,4 @@ resolver = "2"
 rowan_shared = { path = "rowan_shared" }
 libunwind = { path = "libunwind" }
 rowan-unwind = { path = "rowan-unwind" }
+rowan-runtime = { path = "rowan-runtime" }
