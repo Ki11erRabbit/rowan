@@ -6,6 +6,7 @@ use rowan_shared::classfile::{self, ClassFile, VTableEntry};
 use rowan_shared::TypeTag;
 use crate::runtime::class::{ClassMember, ClassMemberData};
 use crate::runtime::jit::JITCompiler;
+use crate::runtime::object::Object;
 use crate::runtime::tables::native_object_table::NativeObjectTable;
 use super::{class::{self, Class, MemberInfo}, jit::JITController, core::{VMClass, VMMember, VMMethod, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Context, Symbol, VTableIndex};
 
@@ -583,7 +584,7 @@ pub fn link_class_files(
 
             let mut static_method_mapper = HashMap::new();
             let mut location_path = location.clone();
-            let (functions, location_path) = {
+            let (functions, mut location_path) = {
                 let mut location_path = location;
                 (static_methods.into_iter()
                     .enumerate()
@@ -662,8 +663,47 @@ pub fn link_class_files(
             };
 
 
+            let name = class_name_str.split("::").collect::<Vec<&str>>().last().unwrap().to_string();
+            let name = add_library_mod(&name);
+
+            location.push(name);
+
+            let members_has_natives = members.iter().any(|m| m.has_native_type());
+
+            let custom_drop = if members_has_natives {
+                let custom_drop = if let Some(library) = library_table.get_mut(&location.to_str().unwrap()) {
+                    let symbol = unsafe {
+                        let symbol = library.get::<*const ()>(b"custom_drop");
+                        symbol.map(|symbol| *symbol).ok()
+                    };
+
+                    symbol.map(|symbol| {
+                        unsafe {
+                            std::mem::transmute::<_, extern "C" fn(&mut Object)>(symbol)
+                        }
+                    })
+                } else {
+                    let (symbol, lib) = unsafe {
+                        let lib = libloading::Library::new(&location).expect("Handle Missing library");
+                        let symbol = lib.get::<*const ()>(b"custom_drop");
+
+                        (symbol.map(|symbol| *symbol).ok(), lib)
+                    };
+                    library_table.insert(location.to_str().unwrap().to_string(), lib);
+                    symbol.map(|symbol| {
+                        unsafe {
+                            std::mem::transmute::<_, extern "C" fn(&mut Object)>(symbol)
+                        }
+                    })
+                };
+                custom_drop
+            } else {
+                None
+            };
+            location.pop();
+
             // Create new class
-            let class = Class::new(class_name_symbol, parents, class_vtable_mapper, members, vtable_index, static_members, static_init);
+            let class = Class::new(class_name_symbol, parents, class_vtable_mapper, members, vtable_index, static_members, static_init, custom_drop);
 
             let SymbolEntry::ClassRef(class_index) = &symbol_table[class_symbol] else {
                 unreachable!("Class symbol should have been a symbol to a class");
@@ -1492,7 +1532,7 @@ pub fn link_vm_classes(
             let vtable_index = vtables_table.add_vtable(vtable);
 
             // Create new class
-            let class = Class::new(class_symbol, parents, class_vtable_mapper, members, vtable_index, static_members, |_| {});
+            let class = Class::new(class_symbol, parents, class_vtable_mapper, members, vtable_index, static_members, |_| {}, None);
 
             let SymbolEntry::ClassRef(class_index) = &symbol_table[class_symbol] else {
                 unreachable!("Class symbol should have been a symbol to a class");

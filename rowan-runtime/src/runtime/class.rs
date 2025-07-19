@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-
+use crate::runtime::object::Object;
 use super::{Context, Reference, Symbol, VTableIndex};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -67,6 +67,7 @@ pub struct Class {
     pub static_methods: VTableIndex,
     pub class_members: Vec<ClassMember>,
     pub init_function: fn(&mut Context),
+    pub drop_function: Option<extern "C" fn(&mut Object)>,
 }
 
 impl Class {
@@ -78,6 +79,8 @@ impl Class {
         static_methods: VTableIndex,
         class_members: Vec<ClassMember>,
         init_function: fn(&mut Context),
+        drop_function: Option<extern "C" fn(&mut Object)>,
+
     ) -> Self {
         Class {
             name,
@@ -87,6 +90,7 @@ impl Class {
             static_methods,
             class_members,
             init_function,
+            drop_function,
         }
     }
     
@@ -108,6 +112,10 @@ impl Class {
     }
     pub fn get_member_mut(&mut self, index: usize) -> Option<&mut ClassMember> {
         self.class_members.get_mut(index)
+    }
+
+    pub fn get_drop(&self) -> Option<extern "C" fn(&mut Object)> {
+        self.drop_function
     }
 
     pub fn get_object_member_indices(&self) -> Vec<usize> {
@@ -141,6 +149,13 @@ impl MemberInfo {
 
     pub fn get_size(&self) -> usize {
         self.ty.size()
+    }
+
+    pub fn has_native_type(&self) -> bool {
+        match self.ty {
+            TypeTag::Sized(_) => true,
+            _ => false
+        }
     }
 }
 

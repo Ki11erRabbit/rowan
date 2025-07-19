@@ -14,7 +14,12 @@ pub struct Object {
 
 
 impl Object {
-    pub fn new(class: Symbol, parents: Box<[Reference]>, data_size: usize) -> *mut Object {
+    pub fn new(
+        class: Symbol,
+        parents: Box<[Reference]>,
+        data_size: usize,
+        drop: Option<extern "C" fn(&mut Object)>,
+    ) -> *mut Object {
         use std::alloc::*;
 
         let layout = Layout::new::<Object>();
@@ -42,7 +47,7 @@ impl Object {
             std::ptr::write(pointer, Object {
                 class,
                 parent_objects: parents,
-                custom_drop: None,
+                custom_drop: drop,
             });
 
         }

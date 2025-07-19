@@ -8,7 +8,7 @@ use crate::runtime::garbage_collection::{GarbageCollection, GC_SENDER};
 
 mod runtime;
 mod fake_lock;
-
+mod external;
 
 /// The start function for calling the main method in Rowan.
 /// This function will parse commandline arguments from a Rust Context so don't call it from anywhere else.
@@ -55,15 +55,14 @@ pub extern "C" fn rowan_main() {
         core::generate_null_pointer_class(),
     ];
 
-    let mut string_map = HashMap::new();
 
     let mut pre_class_table = Vec::new();
     let mut vtables_map = HashMap::new();
 
-    Context::link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map, &mut string_map);
+    Context::link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map);
 
 
-    let (main_symbol, main_method_symbol) = Context::link_classes(classes, paths, &mut pre_class_table, &mut vtables_map, &mut string_map);
+    let (main_symbol, main_method_symbol) = Context::link_classes(classes, paths, &mut pre_class_table, &mut vtables_map);
 
     //println!("String Map: {string_map:#?}");
 

@@ -11,7 +11,7 @@ use object::Object;
 use rowan_shared::classfile::ClassFile;
 use core::VMClass;
 use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{FunctionValue, VTables}};
-use std::borrow::BorrowMut;
+use std::borrow::{BorrowMut, Cow};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32};
@@ -95,6 +95,11 @@ static LIBRARY_TABLE: LazyLock<RwLock<NativeObjectTable>> = LazyLock::new(|| {
     RwLock::new(table)
 });
 
+static STRING_MAP: LazyLock<RwLock<HashMap<String, Symbol>>> = LazyLock::new(|| {
+    let map = HashMap::new();
+    RwLock::new(map)
+});
+
 trait MakeObject<N> {
     fn make_self() -> Self;
     fn new_object(&self, class_name: N) -> Reference;
@@ -131,7 +136,7 @@ impl MakeObject<Symbol> for ContextHelper {
         }
 
         let data_size = class.get_member_size();
-        let object = Object::new(class_symbol, parents.into_boxed_slice(), data_size);
+        let object = Object::new(class_symbol, parents.into_boxed_slice(), data_size, class.drop_function);
 
         let Ok(mut object_table) = OBJECT_TABLE.write() else {
             panic!("Lock poisoned");
@@ -177,7 +182,7 @@ impl MakeObject<&str> for ContextHelper {
 
         let data_size = class.get_member_size();
 
-        let object = Object::new(class_symbol, parents.into_boxed_slice(), data_size);
+        let object = Object::new(class_symbol, parents.into_boxed_slice(), data_size, class.drop_function);
 
         let Ok(mut object_table) = OBJECT_TABLE.write() else {
             panic!("Lock poisoned");
@@ -273,7 +278,7 @@ impl Context {
 
         let name = &string_table[method_name_index];
 
-        core::string_from_str(self, string_ref, name);
+        core::string_from_str(string_ref, name);
 
         string_ref
     }
@@ -318,7 +323,6 @@ impl Context {
         // The second hashmap is the class that has a custom version of the vtable
         // For example, two matching symbols means that that is the vtable of that particular class
         vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<rowan_shared::TypeTag>, linker::MethodLocation, Arc<RwLock<FunctionValue>>, Signature)>>>,
-        string_map: &mut HashMap<String, Symbol>,
     ) -> (Symbol, Symbol) {
         let Ok(mut string_table) = STRING_TABLE.write() else {
             panic!("Lock poisoned");
@@ -339,6 +343,9 @@ impl Context {
         let Ok(mut library_table) = LIBRARY_TABLE.write() else {
             panic!("Lock poisoned");
         };
+        let Ok(mut string_map) = STRING_MAP.write() else {
+            panic!("Lock poisoned");
+        };
 
         let out = linker::link_class_files(
             classes,
@@ -350,7 +357,7 @@ impl Context {
             &mut string_table,
             &mut vtable_tables,
             vtables_map,
-            string_map,
+            &mut string_map,
             class_map.borrow_mut(),
             &mut library_table,
         ).unwrap();
@@ -368,7 +375,6 @@ impl Context {
         // The second hashmap is the class that has a custom version of the vtable
         // For example, two matching symbols means that that is the vtable of that particular class
         vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<rowan_shared::TypeTag>, linker::MethodLocation, Arc<RwLock<FunctionValue>>, Signature)>>>,
-        string_map: &mut HashMap<String, Symbol>,
     ) {
         let Ok(mut string_table) = STRING_TABLE.write() else {
             panic!("Lock poisoned");
@@ -385,6 +391,9 @@ impl Context {
         let Ok(mut class_map) = CLASS_MAPPER.write() else {
             panic!("Lock poisoned");
         };
+        let Ok(mut string_map) = STRING_MAP.write() else {
+            panic!("Lock poisoned");
+        };
 
         linker::link_vm_classes(
             classes,
@@ -394,7 +403,7 @@ impl Context {
             &mut string_table,
             &mut vtable_tables,
             vtables_map,
-            string_map,
+            &mut string_map,
             class_map.borrow_mut(),
         );
     }
@@ -742,33 +751,24 @@ impl Context {
 
         let libunwind_context = libunwind::common::Context::get_context().unwrap();
         let mut cursor = libunwind_context.cursor().unwrap();
-        _ = cursor.next(); // skip this function
-        _ = cursor.next(); // skip calling function
+
 
         //println!("backtrace len {}", self.function_backtrace.len());
+        let mut backtrace_iter = self.function_backtrace.iter().rev();
 
-        let iterator = cursor.zip(self.function_backtrace.iter().rev());
-
-        for (data, backtrace) in iterator {
+        for data in cursor {
             let mut buffer = [0; 1024];
             match data.get_procedure_name(&mut buffer) {
                 Ok(_) => {
-
-                    let string = std::str::from_utf8(&buffer).unwrap();
-
-                    let sp = data.get_register(libunwind::machine::Register::RSP);
-                    let ip = data.get_register(libunwind::machine::Register::RIP).unwrap_or(0);
-                    /*if let Ok(sp) = sp {
-                        println!("{string}: RSP: {sp:x}, RIP: {ip:x}");
-                    } else {
-                        println!("{string}: RIP: {ip:x}");
-                    }*/
-                    break
                 },
                 Err(libunwind::common::Error::Unspecified) => {
                     let sp = data.get_register(libunwind::machine::Register::RSP).unwrap_or(0);
                     let ip = data.get_register(libunwind::machine::Register::RIP).unwrap_or(0);
                     //println!("RSP: {:x}, RIP: {:x}", sp, ip);
+                    let Some(backtrace) = backtrace_iter.next() else {
+                        break;
+                    };
+
                     info.push((*backtrace, sp as usize, ip as usize))
                 }
                 Err(e) => panic!("{:?}", e),
@@ -932,6 +932,48 @@ impl Context {
         for reference in objects_to_delete {
             object_table.free(reference, &symbol_table, &class_table);
         }
+    }
+
+    pub fn get_virtual_method(&mut self, object: Reference, class: &str, source_class: Option<&str>, method_name: &str) -> *const () {
+        self.check_and_do_garbage_collection();
+
+        let Ok(mut class_map) = CLASS_MAPPER.write() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut string_map) = STRING_MAP.write() else {
+            panic!("Lock poisoned");
+        };
+
+        let class_symbol = *class_map.get(class).expect("unable to find class symbol");
+        let source_class = source_class.map(|c| *class_map.get(c).expect("unable to find class symbol"));
+        let method_name = *string_map.get(method_name).expect("unable to find method name");
+        drop(class_map);
+        drop(string_map);
+
+        let object_class = unsafe {
+            let object = object.as_ref().unwrap();
+            object.class
+        };
+
+        self.get_method(object_class, class_symbol, source_class, method_name)
+    }
+
+    pub fn get_static_function(&mut self, class: &str, method_name: &str) -> *const () {
+        self.check_and_do_garbage_collection();
+
+        let Ok(mut class_map) = CLASS_MAPPER.write() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut string_map) = STRING_MAP.write() else {
+            panic!("Lock poisoned");
+        };
+
+        let class_symbol = *class_map.get(class).expect("unable to find class symbol");
+        let method_name = *string_map.get(method_name).expect("unable to find method name");
+        drop(class_map);
+        drop(string_map);
+
+        self.get_static_method(class_symbol, method_name)
     }
 }
 

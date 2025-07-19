@@ -450,7 +450,7 @@ pub fn generate_exception_class() -> VMClass {
     VMClass::new("Exception", vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
-extern "C" fn exception_init(context: &Context, this: Reference, message: Reference) {
+extern "C" fn exception_init(_: &Context, this: Reference, message: Reference) {
     use std::alloc::*;
     let object = this;
     let object = object as *mut Exception;
@@ -617,7 +617,7 @@ extern "C" fn out_of_bounds_init(context: &mut Context, this: Reference, bounds:
 
     let message = Context::new_object("String"); // String Class Symbol
 
-    string_from_str(context, message, &format!("Index was {index} but length was {bounds}"));
+    string_from_str(message, &format!("Index was {index} but length was {bounds}"));
 
     let base_exception = object.parent_objects[0];
     exception_init(context, base_exception, message);
@@ -648,7 +648,7 @@ pub extern "C" fn null_pointer_init(context: &Context, this: Reference) {
 
     let message = Context::new_object("String"); // String Class Symbol
 
-    string_from_str(context, message, "NullPointerException");
+    string_from_str(message, "NullPointerException");
 
     let base_exception = object.parent_objects[0];
     exception_init(context, base_exception, message);
@@ -778,19 +778,28 @@ extern "C" fn string_load_str(_: &mut Context, this: Reference, string_ref: Refe
     unsafe {
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), object.buffer, bytes.len())
     }
+    object.custom_drop = Some(unsafe {
+        std::mem::transmute::<_, fn(&mut Object)>(string_drop as *const ())
+    });
 }
 
 extern "C" fn string_init(_: &mut Context, this: Reference) {
-    use std::alloc::*;
+    string_initialize(this);
+}
+
+pub fn string_initialize(this: Reference) {
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
     object.length = 0;
     object.capacity = 0;
     object.buffer = std::ptr::null_mut();
+    object.custom_drop = Some(unsafe {
+        std::mem::transmute::<_, fn(&mut Object)>(string_drop as *const ())
+    });
 }
 
-pub fn string_from_str(_: &Context, this: Reference, string: &str) {
+pub fn string_from_str(this: Reference, string: &str) {
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
@@ -803,6 +812,9 @@ pub fn string_from_str(_: &Context, this: Reference, string: &str) {
     unsafe {
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), object.buffer, bytes.len())
     }
+    object.custom_drop = Some(unsafe {
+        std::mem::transmute::<_, fn(&mut Object)>(string_drop as *const ())
+    });
 }
 
 pub fn string_drop(object: &mut StringObject) {
