@@ -91,7 +91,11 @@ impl Class {
     }
     
     pub fn get_member_size(&self) -> usize {
-        let out = self.members.iter().map(|member| member.get_size()).sum();
+        let mut out = 0;
+        for member in &self.members {
+            let size = member.get_size();
+            out += size + (size % std::mem::size_of::<usize>()); // we are padding the struct so that it is compatible with C
+        }
         out
     }
 
