@@ -1,6 +1,7 @@
 
 #[cfg(unix)]
 mod unix;
+#[cfg(windows)]
 mod windows;
 
 pub trait Cursor<T: ThreadContext>: Iterator<Item=T> {}

@@ -58,6 +58,7 @@ impl LibUnwindContext {
     }
 }
 
+#[cfg(target_arch = "x86_64")]
 impl ThreadContext for LibUnwindContext {
     fn stack_pointer(&self) -> u64 {
         const STACK_POINTER_INDEX: u64 = 7;
