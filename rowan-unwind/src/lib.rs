@@ -18,3 +18,9 @@ where
 TC: ThreadContext,{
     unix::LibUnwindCursor::new()
 }
+#[cfg(windows)]
+pub fn get_cursor<TC>() -> impl Cursor<TC>
+where
+    TC: ThreadContext,{
+    windows::WindowsUnwindCursor::new()
+}
