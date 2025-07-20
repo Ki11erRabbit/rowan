@@ -115,7 +115,7 @@ impl ThreadContext for WindowsUnwindContext {
         symbol.MaxNameLen = MAX_SYM_NAME;
 
         let mut displacement = 0;
-        if SymFromAddr(self.process_handle, self.stack.AddrPC.Offset, &mut displacement, symbol) {
+        if unsafe { *SymFromAddr(self.process_handle, self.stack.AddrPC.Offset, &mut displacement, symbol) } {
             true
         } else {
             false

@@ -38,7 +38,8 @@ impl TypeTag {
             TypeTag::F32 => 9,
             TypeTag::F64 => 10,
             TypeTag::Str => 11,
-            _ => 12
+            TypeTag::Object => 12,
+            TypeTag::Native => 13,
         }
     }
 }
@@ -58,7 +59,9 @@ impl From<u8> for TypeTag {
             9 => TypeTag::F32,
             10 => TypeTag::F64,
             11 => TypeTag::Str,
-            _ => TypeTag::Object
+            12 => TypeTag::Object,
+            13 => TypeTag::Native,
+            _ => unreachable!("unknown type"),
         }
     }
 }

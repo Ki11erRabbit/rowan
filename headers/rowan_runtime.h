@@ -37,4 +37,5 @@ void* rowan_get_virtual_function(context_t ctx, object_t* object, unsigned char*
 void* rowan_get_static_function(context_t ctx, unsigned char* class_name, unsigned char* method_name);
 
 void rowan_set_exception(context_t ctx, object_t* exception);
+void rowan_normal_return(context_t ctx);
 #endif

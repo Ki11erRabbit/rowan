@@ -11,7 +11,8 @@ class U64 {
             return 1;
         }
 
-        let temp: u64 = U64::pow(base, exp / 2);
+        //let temp: u64 = U64::pow(base, exp / 2);
+        let temp: u64 = 0;
 
         if exp % 2 == 0 {
             return temp * temp;

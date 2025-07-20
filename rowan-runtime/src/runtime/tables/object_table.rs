@@ -20,6 +20,9 @@ impl ObjectTable {
     }
 
     pub fn add(&mut self, ptr: *mut Object) -> Reference {
+        if ptr as usize == 0x1b {
+            panic!("not in address space")
+        }
         self.table.insert(ptr);
         ptr
     }
@@ -27,7 +30,7 @@ impl ObjectTable {
     pub fn free(&mut self, reference: Reference, symbol_table: &SymbolTable, class_table: &ClassTable) {
         let pointer = reference;
 
-        if pointer.is_null() {// We have already handled this object
+        if pointer.is_null() || !self.table.contains(&pointer) {// We have already handled this object or it isn't collectable
             return;
         }
         //println!("Freeing: {reference}");

@@ -98,7 +98,11 @@ impl Class {
         let mut out = 0;
         for member in &self.members {
             let size = member.get_size();
-            out += size + (std::mem::size_of::<usize>() - size);  // we are padding the struct so that it is compatible with C
+            let mut padding = std::mem::size_of::<usize>();
+            while padding < size {
+                padding += std::mem::size_of::<usize>();
+            }
+            out += size + (padding - size);  // we are padding the struct so that it is compatible with C
         }
         out
     }
@@ -149,6 +153,15 @@ impl MemberInfo {
 
     pub fn get_size(&self) -> usize {
         self.ty.size()
+    }
+
+    pub fn get_size_and_padding(&self) -> usize {
+        let size = self.ty.size();
+        let mut padding = std::mem::size_of::<usize>();
+        while padding < size {
+            padding += std::mem::size_of::<usize>();
+        }
+        size + (std::mem::size_of::<usize>() - size)
     }
 
     pub fn has_native_type(&self) -> bool {

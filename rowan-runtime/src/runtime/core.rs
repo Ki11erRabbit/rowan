@@ -756,14 +756,15 @@ pub fn generate_string_class() -> VMClass {
     VMClass::new("core::String", vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
-extern "C" fn string_len(_: &mut Context, this: Reference) -> u64 {
+extern "C" fn string_len(context: &mut Context, this: Reference) -> u64 {
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
+    Context::normal_return(context);
     object.length
 }
 
-extern "C" fn string_load_str(_: &mut Context, this: Reference, string_ref: Reference) {
+extern "C" fn string_load_str(context: &mut Context, this: Reference, string_ref: Reference) {
     use std::alloc::*;
     let string = Context::get_string(string_ref as Symbol);
     let bytes = string.as_bytes();
@@ -781,6 +782,7 @@ extern "C" fn string_load_str(_: &mut Context, this: Reference, string_ref: Refe
     object.custom_drop = Some(unsafe {
         std::mem::transmute::<_, fn(&mut Object)>(string_drop as *const ())
     });
+    Context::normal_return(context);
 }
 
 extern "C" fn string_init(_: &mut Context, this: Reference) {
@@ -827,7 +829,7 @@ pub fn string_drop(object: &mut StringObject) {
     }
 }
 
-extern "C" fn string_is_char_boundary(_: &mut Context, this: Reference, index: u64) -> u8 {
+extern "C" fn string_is_char_boundary(context: &mut Context, this: Reference, index: u64) -> u8 {
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
@@ -838,6 +840,7 @@ extern "C" fn string_is_char_boundary(_: &mut Context, this: Reference, index: u
         return 0;
     }
 
+    Context::normal_return(context);
     unsafe {
         if *pointer.add(index as usize) ^ 0b10000000 == 0b10000000 {
             1
@@ -873,6 +876,7 @@ extern "C" fn string_as_bytes(context: &mut Context, this: Reference) -> Referen
             array_pointer.add(i as usize).write(*pointer.add(i as usize))
         }
     }
+    Context::normal_return(context);
     byte_array
 }
 
@@ -880,6 +884,7 @@ extern "C" fn string_push(context: &mut Context, this: Reference, character: u32
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
+    Context::normal_return(context);
     object.push_char(unsafe {
         char::from_u32_unchecked(character)
     })

@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <rowan.h>
+#include <rowan_runtime.h>
 
 #ifdef linux
 
@@ -53,12 +54,14 @@ void std__io__iolock__IOLock__lock(rowan_context_t context, object_t* self) {
     } else {
     }
     rowan_acquire_lock(io_lock);
+    rowan_normal_return(context);
 }
 
 void std__io__iolock__IOLock__release(rowan_context_t context, object_t* self) {
     io_lock_t* io_lock = (io_lock_t*)self;
 
     rowan_release_lock(io_lock);
+    rowan_normal_return(context);
 }
 
 void custom_drop(object_t* self) {

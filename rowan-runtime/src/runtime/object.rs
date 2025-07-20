@@ -109,7 +109,10 @@ impl Object {
         let class = unsafe { class.as_ref()? };
         let mut pointer_offset = 0;
         for field in class.members.iter() {
-            pointer_offset += field.get_size();
+            println!("field type: {:?}", field);
+            let offset_part = field.get_size_and_padding();
+            println!("offset_part: {}", offset_part);
+            pointer_offset += field.get_size_and_padding();
             if offset == 0 {
                 break;
             }
@@ -329,10 +332,11 @@ impl Object {
         let class = unsafe { class.as_ref().unwrap() };
         let live_objects_indices = class.get_object_member_indices();
         for index in live_objects_indices {
-            Self::garbage_collect(object.get_safe(index as usize).unwrap(), live_objects);
+            let result = object.get_safe(index).unwrap();
+            Self::garbage_collect(result, live_objects);
         }
 
-        let array_object = Context::get_class_symbol("Arrayobject");
+        let array_object = Context::get_class_symbol("core::Arrayobject");
         if array_object == object.class {
             let object_ptr = object_ptr as *mut Array;
             let object = unsafe { object_ptr.as_ref().unwrap() };

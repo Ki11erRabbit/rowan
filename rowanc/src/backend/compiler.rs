@@ -1318,6 +1318,7 @@ impl Compiler {
                                 *self.current_type_args.get(name.as_str()).unwrap()
                             }
                         },
+                        Type::Native => unreachable!("new array can't have native"),
                         _ => TypeTag::Object,
                     };
                     self.compile_expression(class_name, partial_class, arr_size.as_ref(), output, lhs)?;
