@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicU32};
 use std::sync::mpsc::Sender;
 use crate::fake_lock::FakeLock;
 use crate::runtime::class::{ClassMember, ClassMemberData};
+use rowan_unwind::{Cursor, ThreadContext};
 
 mod tables;
 pub mod class;
@@ -749,29 +750,22 @@ impl Context {
         
         let mut info = Vec::new();
 
-        let libunwind_context = libunwind::common::Context::get_context().unwrap();
-        let mut cursor = libunwind_context.cursor().unwrap();
+        let unwind_cursor = rowan_unwind::get_cursor();
 
 
         //println!("backtrace len {}", self.function_backtrace.len());
         let mut backtrace_iter = self.function_backtrace.iter().rev();
 
-        for data in cursor {
-            let mut buffer = [0; 1024];
-            match data.get_procedure_name(&mut buffer) {
-                Ok(_) => {
-                },
-                Err(libunwind::common::Error::Unspecified) => {
-                    let sp = data.get_register(libunwind::machine::Register::RSP).unwrap_or(0);
-                    let ip = data.get_register(libunwind::machine::Register::RIP).unwrap_or(0);
-                    //println!("RSP: {:x}, RIP: {:x}", sp, ip);
-                    let Some(backtrace) = backtrace_iter.next() else {
-                        break;
-                    };
+        for frame in unwind_cursor {
+            if !frame.has_name() {
+                let sp = frame.stack_pointer();
+                let ip = frame.instruction_pointer();
+                //println!("RSP: {:x}, RIP: {:x}", sp, ip);
+                let Some(backtrace) = backtrace_iter.next() else {
+                    break;
+                };
 
-                    info.push((*backtrace, sp as usize, ip as usize))
-                }
-                Err(e) => panic!("{:?}", e),
+                info.push((*backtrace, sp as usize, ip as usize))
             }
         }
 

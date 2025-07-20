@@ -13,14 +13,10 @@ pub trait ThreadContext {
 }
 
 #[cfg(unix)]
-pub fn get_cursor<TC>() -> impl Cursor<TC>
-where
-TC: ThreadContext,{
+pub fn get_cursor() -> impl Cursor<unix::LibUnwindContext> {
     unix::LibUnwindCursor::new()
 }
 #[cfg(windows)]
-pub fn get_cursor<TC>() -> impl Cursor<TC>
-where
-    TC: ThreadContext,{
+pub fn get_cursor<TC>() -> impl Cursor<windows::WindowsUnwindContext> {
     windows::WindowsUnwindCursor::new()
 }
