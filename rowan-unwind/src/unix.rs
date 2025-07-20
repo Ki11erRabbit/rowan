@@ -1,4 +1,5 @@
 use std::cell::UnsafeCell;
+use std::ffi::{c_char, c_int};
 use libunwind_sys as unwind;
 use crate::{Cursor, ThreadContext};
 
@@ -61,7 +62,7 @@ impl LibUnwindContext {
 #[cfg(target_arch = "x86_64")]
 impl ThreadContext for LibUnwindContext {
     fn stack_pointer(&self) -> u64 {
-        const STACK_POINTER_INDEX: u64 = 7;
+        const STACK_POINTER_INDEX: c_int = 7;
         let mut value = 0;
         let result = unsafe {
             unwind::unw_get_reg(self.cursor, STACK_POINTER_INDEX, &mut value)
@@ -71,7 +72,7 @@ impl ThreadContext for LibUnwindContext {
     }
 
     fn instruction_pointer(&self) -> u64 {
-        const INSTRUCTION_POINTER_INDEX: u64 = 16;
+        const INSTRUCTION_POINTER_INDEX: c_int = 16;
         let mut value = 0;
         let result = unsafe {
             unwind::unw_get_reg(self.cursor, INSTRUCTION_POINTER_INDEX, &mut value)
@@ -83,7 +84,39 @@ impl ThreadContext for LibUnwindContext {
     fn has_name(&self) -> bool {
         let mut buf: [u8; 1024] = [0; 1024];
         let result = unsafe {
-            unwind::unw_get_proc_name(self.cursor, buf.as_mut_ptr(), buf.len(), &mut 0)
+            unwind::unw_get_proc_name(self.cursor, buf.as_mut_ptr() as *mut c_char, buf.len(), &mut 0)
+        };
+
+        result == 0
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+impl ThreadContext for LibUnwindContext {
+    fn stack_pointer(&self) -> u64 {
+        const STACK_POINTER_INDEX: u64 = 31;
+        let mut value = 0;
+        let result = unsafe {
+            unwind::unw_get_reg(self.cursor, STACK_POINTER_INDEX, &mut value)
+        };
+        assert_eq!(result, 0, "unw_get_reg() returned an error");
+        value
+    }
+
+    fn instruction_pointer(&self) -> u64 {
+        const INSTRUCTION_POINTER_INDEX: u64 = 32;
+        let mut value = 0;
+        let result = unsafe {
+            unwind::unw_get_reg(self.cursor, INSTRUCTION_POINTER_INDEX, &mut value)
+        };
+        assert_eq!(result, 0, "unw_get_reg() returned an error");
+        value
+    }
+
+    fn has_name(&self) -> bool {
+        let mut buf: [u8; 1024] = [0; 1024];
+        let result = unsafe {
+            unwind::unw_get_proc_name(self.cursor, buf.as_mut_ptr() as *mut c_char, buf.len(), &mut 0)
         };
 
         result == 0

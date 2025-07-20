@@ -1,6 +1,6 @@
 use windows_sys::Win32::System::Threading::{GetCurrentThread, GetCurrentProcess};
 use windows_sys::Win32::Foundation::HANDLE;
-use windows_sys::Win32::System::Diagnostics::Debug::{CONTEXT, CONTEXT_FLAGS, STACKFRAME64, StackWalk64, AddrModeFlat, SymFunctionTableAccess64, SymGetModuleBase64, PREAD_PROCESS_MEMORY_ROUTINE64, PTRANSLATE_ADDRESS_ROUTINE64, PFUNCTION_TABLE_ACCESS_ROUTINE64, PGET_MODULE_BASE_ROUTINE64};
+use windows_sys::Win32::System::Diagnostics::Debug::{CONTEXT, CONTEXT_FLAGS, STACKFRAME64, StackWalk64, AddrModeFlat, SymFunctionTableAccess64, SymGetModuleBase64, PREAD_PROCESS_MEMORY_ROUTINE64, PTRANSLATE_ADDRESS_ROUTINE64, PFUNCTION_TABLE_ACCESS_ROUTINE64, PGET_MODULE_BASE_ROUTINE64, SYMBOL_INFO, MAX_SYM_NAME, SymFromAddr};
 use windows_sys::Win32::System::SystemInformation::{IMAGE_FILE_MACHINE, IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64};
 use crate::{Cursor, ThreadContext};
 
@@ -46,7 +46,7 @@ impl WindowsUnwindCursor {
 
     #[cfg(target_arch = "aarch64")]
     fn initialize_stack(stack: &mut STACKFRAME64, context: &CONTEXT) {
-
+        unimplemented!("Implement initializing stack on Windows for ARM64")
     }
 }
 
@@ -96,7 +96,7 @@ impl WindowsUnwindContext {
     }
 }
 
-#[cfg(target_arch = "x86_64")]
+
 impl ThreadContext for WindowsUnwindContext {
     fn stack_pointer(&self) -> u64 {
         self.stack.AddrStack.Offset
@@ -107,6 +107,18 @@ impl ThreadContext for WindowsUnwindContext {
     }
 
     fn has_name(&self) -> bool {
-        let symbol = PSYMBOL_
+        let mut buffer = [0; std::mem::size_of::<SYMBOL_INFO>() + MAX_SYM_NAME];
+        let mut symbol = unsafe {
+            (buffer.as_mut_ptr() as *mut SYMBOL_INFO).as_mut().unwrap()
+        };
+        symbol.SizeOfStruct = std::mem::size_of::<SYMBOL_INFO>() as u32;
+        symbol.MaxNameLen = MAX_SYM_NAME;
+
+        let mut displacement = 0;
+        if SymFromAddr(self.process_handle, self.stack.AddrPC.Offset, &mut displacement, symbol) {
+            true
+        } else {
+            false
+        }
     }
 }
