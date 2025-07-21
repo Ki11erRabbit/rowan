@@ -676,6 +676,9 @@ impl StringObject {
         if new_capacity == 0 {
             new_capacity = 1;
         }
+        if new_capacity < needed_size {
+            new_capacity += needed_size;
+        }
         let layout = Layout::array::<u8>(new_capacity).expect("string layout is wrong or too big");
         let pointer = unsafe { alloc(layout) };
         if pointer.is_null() {

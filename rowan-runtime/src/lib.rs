@@ -24,7 +24,7 @@ pub extern "C" fn rowan_main() {
     }
 
     let (classes, paths): (Vec<ClassFile>, Vec<PathBuf>) = args[1..].iter().map(|f| {
-        //println!("{}", f);
+        println!("{}", f);
         let mut file = std::fs::File::open(f).unwrap();
         let mut output = Vec::new();
         file.read_to_end(&mut output).unwrap();
