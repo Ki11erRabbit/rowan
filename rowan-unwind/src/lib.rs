@@ -17,6 +17,6 @@ pub fn get_cursor() -> impl Cursor<unix::LibUnwindContext> {
     unix::LibUnwindCursor::new()
 }
 #[cfg(windows)]
-pub fn get_cursor<TC>() -> impl Cursor<windows::WindowsUnwindContext> {
+pub fn get_cursor() -> impl Cursor<windows::WindowsUnwindContext> {
     windows::WindowsUnwindCursor::new()
 }

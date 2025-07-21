@@ -64,14 +64,14 @@ impl Iterator for WindowsUnwindCursor {
                 self.thread_handle,
                 &mut stack,
                 &mut self.context as *mut CONTEXT as *mut _,
-                std::ptr::null_mut() as PREAD_PROCESS_MEMORY_ROUTINE64,
-                std::mem::transmute::<_, PFUNCTION_TABLE_ACCESS_ROUTINE64>(SymFunctionTableAccess64),
-                std::mem::transmute::<_, PGET_MODULE_BASE_ROUTINE64>(SymGetModuleBase64),
-                std::ptr::null_mut() as PTRANSLATE_ADDRESS_ROUTINE64,
+                std::mem::transmute::<_, PREAD_PROCESS_MEMORY_ROUTINE64>(std::ptr::null_mut::<usize>()),
+                Some(SymFunctionTableAccess64),
+                Some(SymGetModuleBase64),
+                std::mem::transmute::<_, PTRANSLATE_ADDRESS_ROUTINE64>(std::ptr::null_mut::<usize>()),
             )
         };
 
-        if !result {
+        if result != 0 {
             None
         } else {
             Some(WindowsUnwindContext::new(stack, self.process_handle))
@@ -115,7 +115,7 @@ impl ThreadContext for WindowsUnwindContext {
         symbol.MaxNameLen = MAX_SYM_NAME;
 
         let mut displacement = 0;
-        if unsafe { *SymFromAddr(self.process_handle, self.stack.AddrPC.Offset, &mut displacement, symbol) } {
+        if unsafe { SymFromAddr(self.process_handle, self.stack.AddrPC.Offset, &mut displacement, symbol) } == 0 {
             true
         } else {
             false

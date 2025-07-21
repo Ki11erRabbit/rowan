@@ -4,19 +4,3 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rowan_shared = { workspace = true }
-cranelift = "0.121.1"
-cranelift-codegen = { version = "0.121.1", features = ["unwind"] }
-cranelift-module = "0.121.1"
-cranelift-jit = { version = "0.121.1", features = ["selinux-fix"] }
-cranelift-native = "0.121.1"
-crossbeam-deque = "0.8.6"
-quote = "1.0.40"
-paste = "1.0.15"
-backtrace = "0.3.75"
-clap = { version = "4.5.40", features = ["derive"] }
-libunwind = { workspace = true }
-#gimli = "0.32.0"
-env_logger = "0.11.8"
-log = "0.4.27"
-libloading = "0.8.8"
