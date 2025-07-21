@@ -1,8 +1,12 @@
 use windows_sys::Win32::System::Threading::{GetCurrentThread, GetCurrentProcess};
 use windows_sys::Win32::Foundation::HANDLE;
-use windows_sys::Win32::System::Diagnostics::Debug::{CONTEXT, CONTEXT_FLAGS, STACKFRAME64, StackWalk64, AddrModeFlat, SymFunctionTableAccess64, SymGetModuleBase64, PREAD_PROCESS_MEMORY_ROUTINE64, PTRANSLATE_ADDRESS_ROUTINE64, PFUNCTION_TABLE_ACCESS_ROUTINE64, PGET_MODULE_BASE_ROUTINE64, SYMBOL_INFO, MAX_SYM_NAME, SymFromAddr};
+use windows_sys::Win32::System::Diagnostics::Debug::*;
 use windows_sys::Win32::System::SystemInformation::{IMAGE_FILE_MACHINE, IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64};
 use crate::{Cursor, ThreadContext};
+
+unsafe extern "system" {
+    fn RtlCaptureContext(context: *mut CONTEXT);
+}
 
 #[cfg(target_arch = "x86_64")]
 const CONTEXT_FULL: CONTEXT_FLAGS = windows_sys::Win32::System::Diagnostics::Debug::CONTEXT_FULL_AMD64;
@@ -25,6 +29,9 @@ impl WindowsUnwindCursor {
         let thread_handle = unsafe { GetCurrentThread() };
         let mut context = CONTEXT::default();
         context.ContextFlags = CONTEXT_FULL;
+        unsafe {
+            RtlCaptureContext(&mut context);
+        }
         let process_handle = unsafe { GetCurrentProcess() };
 
         Self {
@@ -71,7 +78,7 @@ impl Iterator for WindowsUnwindCursor {
             )
         };
 
-        if result != 0 {
+        if result == 0 {
             None
         } else {
             Some(WindowsUnwindContext::new(stack, self.process_handle))
@@ -115,7 +122,7 @@ impl ThreadContext for WindowsUnwindContext {
         symbol.MaxNameLen = MAX_SYM_NAME;
 
         let mut displacement = 0;
-        if unsafe { SymFromAddr(self.process_handle, self.stack.AddrPC.Offset, &mut displacement, symbol) } == 0 {
+        if unsafe { SymFromAddr(self.process_handle, self.stack.AddrPC.Offset, &mut displacement, symbol) } != 0 {
             true
         } else {
             false
