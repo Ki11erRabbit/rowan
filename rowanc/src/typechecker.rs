@@ -14,6 +14,7 @@ fn create_stdlib<'a>() -> HashMap<Vec<String>, (Vec<String>, HashMap<String, Cla
 
     let mut printer_attributes = HashMap::new();
     printer_attributes.insert("println-int".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64], Box::new(TypeCheckerType::Void))));
+    printer_attributes.insert("println".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::Object(String::from("String"))], Box::new(TypeCheckerType::Void))));
 
     info.insert(vec!["Printer".to_string()], (vec![String::from("Object")], printer_attributes));
 

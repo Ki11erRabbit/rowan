@@ -107,7 +107,7 @@ impl ThreadContext for WindowsUnwindContext {
     }
 
     fn has_name(&self) -> bool {
-        let mut buffer = [0; std::mem::size_of::<SYMBOL_INFO>() + MAX_SYM_NAME];
+        let mut buffer = [0; std::mem::size_of::<SYMBOL_INFO>() + MAX_SYM_NAME as usize];
         let mut symbol = unsafe {
             (buffer.as_mut_ptr() as *mut SYMBOL_INFO).as_mut().unwrap()
         };

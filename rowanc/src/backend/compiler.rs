@@ -1365,7 +1365,14 @@ impl Compiler {
                         _ => todo!("handle array new")
                     };
 
-                    let name = self.add_path_if_needed(name.to_string());
+                    // This is a nasty hack that shouldn't be here.
+                    // However, this only applies to Printer objects for some reason
+                    // which will be removed at some point so this is fine.
+                    let name = if name.as_str() == "Printer" {
+                        vec![String::from("core"), name.to_string()]
+                    } else {
+                        self.add_path_if_needed(name.to_string())
+                    };
 
                     let string_ref = partial_class.add_string(name.join("::"));
 

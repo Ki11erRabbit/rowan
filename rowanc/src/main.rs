@@ -91,7 +91,7 @@ fn main() {
     let mut class_files = Vec::new();
     let mut index = HashMap::new();
     for (name, path, contents) in files.iter() {
-        //println!("{name} {path:?}");
+        println!("{name} {path:?}");
         let file = parser::parse(&name, &contents).unwrap();
         index.insert(path.join("::"), class_files.len());
         class_files.push((path, file, contents));
@@ -134,6 +134,13 @@ fn main() {
             let class_file = class_files[index.index()].take().unwrap();
             new_class_files.push(class_file);
             seen_indicies.insert(index.index());
+        }
+    }
+
+    // Somehow the above process removes some files for some unknown reason
+    for class_file in class_files {
+        if class_file.is_some() {
+            new_class_files.push(class_file.unwrap());
         }
     }
 
