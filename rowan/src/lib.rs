@@ -10,8 +10,12 @@ mod runtime;
 mod fake_lock;
 mod external;
 
-
-pub fn main() {
+/// The start function for calling the main method in Rowan.
+/// This function will parse commandline arguments from a Rust Context so don't call it from anywhere else.
+/// It will initialize the state of the Rowan runtime by configuring the VM, linking core, and user classes, and start the garbage collector.
+/// After that, it will call the main method.
+#[unsafe(no_mangle)]
+pub extern "C" fn rowan_main() {
     env_logger::init();
     let args = std::env::args().collect::<Vec<String>>();
 
