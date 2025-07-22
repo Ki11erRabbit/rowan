@@ -1,10 +1,41 @@
-use std::ffi::CStr;
+use std::ffi::{c_char, CStr};
 use std::mem::MaybeUninit;
+use std::sync::LazyLock;
 use windows_sys::Win32::System::Threading::{GetCurrentThread, GetCurrentProcess, OpenThread, THREAD_ALL_ACCESS, GetCurrentThreadId};
-use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE};
+use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, FALSE, HANDLE};
 use windows_sys::Win32::System::Diagnostics::Debug::*;
 use windows_sys::Win32::System::SystemInformation::{IMAGE_FILE_MACHINE, IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64};
 use crate::{Cursor, ThreadContext};
+
+static PROCESS_HANDLE: LazyLock<ProcessHandle> = LazyLock::new(|| ProcessHandle::new());
+
+pub struct ProcessHandle(HANDLE);
+
+impl ProcessHandle {
+    pub fn new() -> Self {
+        unsafe {
+            let handle = GetCurrentProcess();
+            SymInitialize(handle, std::ptr::null_mut::<u8>(), 1);
+            ProcessHandle(handle)
+        }
+    }
+
+    pub fn get_handle(&self) -> HANDLE {
+        self.0
+    }
+}
+
+impl Drop for ProcessHandle {
+    fn drop(&mut self) {
+        unsafe {
+            SymCleanup(self.0);
+        }
+    }
+}
+
+unsafe impl Sync for ProcessHandle {}
+unsafe impl Send for ProcessHandle {}
+
 
 #[link(name = "kernel32")]
 unsafe extern "system" {
@@ -35,11 +66,8 @@ impl WindowsUnwindCursor {
             RtlCaptureContext(context.as_mut_ptr());
             context.assume_init()
         };
-        let process_handle = unsafe { GetCurrentProcess() };
+        let process_handle = PROCESS_HANDLE.get_handle();
 
-        unsafe {
-            SymInitialize(process_handle, std::ptr::null_mut::<u8>(), 1);
-        }
 
         Self {
             thread_handle,
@@ -98,7 +126,6 @@ impl Drop for WindowsUnwindCursor {
     fn drop(&mut self) {
         unsafe {
             CloseHandle(self.thread_handle);
-            SymCleanup(self.process_handle);
         }
     }
 }
@@ -140,10 +167,22 @@ impl ThreadContext for WindowsUnwindContext {
         let mut displacement = 0;
         if unsafe { SymFromAddr(self.process_handle, self.stack.AddrPC.Offset, &mut displacement, symbol) } != 0 {
             let cstring = unsafe { CStr::from_ptr(symbol.Name.as_ptr()) };
-            println!("cstring: {}", cstring);
+            println!("cstring: {:?}", cstring);
             true
         } else {
             false
         }
+    }
+}
+
+pub fn register_name(name: *const c_char, address: usize, size: usize) {
+    let result = unsafe {
+        let result = SymAddSymbol(PROCESS_HANDLE.get_handle(), 0, name as *const u8, address as u64, size as u32, 0);
+        result
+    };
+
+    if result == 0 {
+        let code = unsafe { GetLastError() };
+        panic!("Failed to register name. Error code: {code}");
     }
 }

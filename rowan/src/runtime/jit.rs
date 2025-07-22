@@ -241,7 +241,7 @@ impl JITCompiler {
         module.finalize_definitions().unwrap();
         
         let code = module.get_finalized_function(*id) as *const ();
-        rowan_register_debug::register_name(name, code, size as usize);
+        rowan_unwind::register_name(name, code, size as usize);
         //println!("code: {:x}", code as usize);
         let mut object_locations = HashMap::new();
         locations.into_iter()
