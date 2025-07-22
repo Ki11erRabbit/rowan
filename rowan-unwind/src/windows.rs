@@ -1,9 +1,11 @@
-use windows_sys::Win32::System::Threading::{GetCurrentThread, GetCurrentProcess};
-use windows_sys::Win32::Foundation::HANDLE;
+use std::mem::MaybeUninit;
+use windows_sys::Win32::System::Threading::{GetCurrentThread, GetCurrentProcess, OpenThread, THREAD_ALL_ACCESS, GetCurrentThreadId};
+use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE};
 use windows_sys::Win32::System::Diagnostics::Debug::*;
 use windows_sys::Win32::System::SystemInformation::{IMAGE_FILE_MACHINE, IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64};
 use crate::{Cursor, ThreadContext};
 
+#[link(name = "kernel32")]
 unsafe extern "system" {
     fn RtlCaptureContext(context: *mut CONTEXT);
 }
@@ -26,13 +28,17 @@ pub struct WindowsUnwindCursor {
 
 impl WindowsUnwindCursor {
     pub fn new() -> Self {
-        let thread_handle = unsafe { GetCurrentThread() };
-        let mut context = CONTEXT::default();
-        context.ContextFlags = CONTEXT_FULL;
-        unsafe {
-            RtlCaptureContext(&mut context);
-        }
+        let thread_handle = unsafe { OpenThread(THREAD_ALL_ACCESS, FALSE, GetCurrentThreadId()) };
+        let mut context = MaybeUninit::uninit();
+        let context = unsafe {
+            RtlCaptureContext(context.as_mut_ptr());
+            context.assume_init()
+        };
         let process_handle = unsafe { GetCurrentProcess() };
+
+        unsafe {
+            SymInitialize(process_handle, std::ptr::null_mut::<u8>(), 1);
+        }
 
         Self {
             thread_handle,
@@ -84,6 +90,15 @@ impl Iterator for WindowsUnwindCursor {
             Some(WindowsUnwindContext::new(stack, self.process_handle))
         }
 
+    }
+}
+
+impl Drop for WindowsUnwindCursor {
+    fn drop(&mut self) {
+        unsafe {
+            CloseHandle(self.thread_handle);
+            SymCleanup(self.process_handle);
+        }
     }
 }
 
