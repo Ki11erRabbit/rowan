@@ -1,14 +1,12 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+use std::ffi::CString;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[cfg(windows)]
+mod windows;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+#[cfg(windows)]
+pub fn register_name(name: &str, address: *const (), size: usize) {
+    let c_string = CString::new(format!("jitted::{name}")).unwrap();
+    let address = address as usize;
+
+    windows::register_name(c_string.as_ptr(), address, size);
 }
