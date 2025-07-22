@@ -189,9 +189,9 @@ pub fn register_name(name: *const c_char, address: usize, size: usize) {
         );
         if base == 0 {
             let code = GetLastError();
-            panic!("failed to load module: {}", code);
+            panic!("failed to load module: code: {code} base: {base}");
         }
-        let result = SymAddSymbol(PROCESS_HANDLE.get_handle(), address as u64, name as *const u8, address as u64, size as u32, 0);
+        let result = SymAddSymbol(PROCESS_HANDLE.get_handle(), base, name as *const u8, address as u64, size as u32, 0);
         result
     };
 
