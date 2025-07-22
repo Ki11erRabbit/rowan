@@ -1,5 +1,5 @@
 [workspace]
-members = [ "rowan", "rowan_shared","rowanc", "rowan-unwind"]
+members = [ "rowan", "rowan_shared","rowanc", "rowan-unwind", "rowan-register-debug"]
 resolver = "2"
 
 [workspace.dependencies]
