@@ -1,3 +1,4 @@
+use std::ffi::CStr;
 use std::mem::MaybeUninit;
 use windows_sys::Win32::System::Threading::{GetCurrentThread, GetCurrentProcess, OpenThread, THREAD_ALL_ACCESS, GetCurrentThreadId};
 use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE};
@@ -138,6 +139,8 @@ impl ThreadContext for WindowsUnwindContext {
 
         let mut displacement = 0;
         if unsafe { SymFromAddr(self.process_handle, self.stack.AddrPC.Offset, &mut displacement, symbol) } != 0 {
+            let cstring = unsafe { CStr::from_ptr(symbol.Name.as_ptr()) };
+            println!("cstring: {}", cstring);
             true
         } else {
             false

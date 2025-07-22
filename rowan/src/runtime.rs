@@ -479,6 +479,15 @@ impl Context {
         let SymbolEntry::ClassRef(object_class_index) = symbol_table[object_class_symbol] else {
             panic!("class wasn't a class");
         };
+        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
+            panic!("method wasn't a string");
+        };
+
+        let Ok(string_table) = STRING_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let name = &string_table[method_name_index];
 
         let class = &class_table[object_class_index];
         let vtable_index = if source_class.is_some() {
@@ -517,7 +526,7 @@ impl Context {
                     panic!("Lock poisoned");
                 };
                 
-                compiler.compile(&function, &mut jit_controller.module).unwrap();
+                compiler.compile(&function, &mut jit_controller.module, name).unwrap();
 
                 let value = function.value.read().expect("Lock poisoned");
                 match &*value {
@@ -556,6 +565,15 @@ impl Context {
         let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol] else {
             panic!("class wasn't a class");
         };
+        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
+            panic!("method wasn't a string");
+        };
+
+        let Ok(string_table) = STRING_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let name = &string_table[method_name_index];
 
 
         let class = &class_table[class_index];
@@ -581,7 +599,7 @@ impl Context {
                     unreachable!("Lock poisoned");
                 };
 
-                match compiler.compile(&function, &mut jit_controller.module) {
+                match compiler.compile(&function, &mut jit_controller.module, name) {
                     Ok(_) => {}
                     Err(e) => panic!("Compilation error:\n{}", e)
                 }
