@@ -177,7 +177,21 @@ impl ThreadContext for WindowsUnwindContext {
 
 pub fn register_name(name: *const c_char, address: usize, size: usize) {
     let result = unsafe {
-        let result = SymAddSymbol(PROCESS_HANDLE.get_handle(), 0, name as *const u8, address as u64, size as u32, 0);
+        let base = SymLoadModuleEx(
+            PROCESS_HANDLE.get_handle(),
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            std::ptr::null(),
+            address as u64,
+            size as u32,
+            std::ptr::null(),
+            0
+        );
+        if base == 0 {
+            let code = GetLastError();
+            panic!("failed to load module: {}", code);
+        }
+        let result = SymAddSymbol(PROCESS_HANDLE.get_handle(), address as u64, name as *const u8, address as u64, size as u32, 0);
         result
     };
 
