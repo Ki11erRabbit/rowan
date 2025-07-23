@@ -1,7 +1,7 @@
 use std::mem::MaybeUninit;
 use std::sync::LazyLock;
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenThread, THREAD_ALL_ACCESS, GetCurrentThreadId};
-use windows_sys::Win32::Foundation::{FALSE, HANDLE};
+use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE};
 use windows_sys::Win32::System::Diagnostics::Debug::*;
 use windows_sys::Win32::System::SystemInformation::{IMAGE_FILE_MACHINE, IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64};
 use crate::Frame;
@@ -36,8 +36,8 @@ unsafe impl Sync for ProcessHandle {}
 unsafe impl Send for ProcessHandle {}
 
 
-#[link(name = "kernel32")]
-unsafe extern "system" {
+#[link(name = "ntdll")]
+unsafe extern "C" {
     fn RtlCaptureContext(context: *mut CONTEXT);
 }
 
@@ -51,14 +51,13 @@ const MACHINE_TYPE: IMAGE_FILE_MACHINE = IMAGE_FILE_MACHINE_AMD64;
 #[cfg(target_arch = "aarch64")]
 const MACHINE_TYPE: IMAGE_FILE_MACHINE = IMAGE_FILE_MACHINE_ARM64;
 
-
+#[inline]
 pub fn backtrace<F>(mut func: F) where F: FnMut(Frame) -> bool {
     let thread_handle = unsafe { OpenThread(THREAD_ALL_ACCESS, FALSE, GetCurrentThreadId()) };
-    let mut context = MaybeUninit::uninit();
-    let mut context = unsafe {
-        RtlCaptureContext(context.as_mut_ptr());
-        context.assume_init()
-    };
+    let mut context = unsafe { Box::new(std::mem::zeroed()) };
+    unsafe {
+        RtlCaptureContext(context.as_mut());
+    }
     let process_handle = PROCESS_HANDLE.get_handle();
     let mut stack = STACKFRAME64::default();
     initialize_stack(&mut stack, &context);
@@ -69,22 +68,25 @@ pub fn backtrace<F>(mut func: F) where F: FnMut(Frame) -> bool {
                 process_handle,
                 thread_handle,
                 &mut stack,
-                &mut context as *mut CONTEXT as *mut _,
-                std::mem::transmute::<_, PREAD_PROCESS_MEMORY_ROUTINE64>(std::ptr::null_mut::<usize>()),
+                context.as_mut() as *mut CONTEXT as *mut _,
+                None,
                 Some(SymFunctionTableAccess64),
                 Some(SymGetModuleBase64),
-                std::mem::transmute::<_, PTRANSLATE_ADDRESS_ROUTINE64>(std::ptr::null_mut::<usize>()),
+                None
             )
         };
         if result == 0 {
             break
         }
 
-        let frame = Frame::new(stack.AddrStack.Offset as usize, stack.AddrStack.Offset as usize);
+        let frame = Frame::new(stack.AddrStack.Offset as usize, stack.AddrPC.Offset as usize);
 
         if !func(frame) {
             break
         }
+    }
+    unsafe {
+        CloseHandle(thread_handle);
     }
 }
 
