@@ -18,7 +18,6 @@ use std::sync::atomic::{AtomicU32};
 use std::sync::mpsc::Sender;
 use crate::fake_lock::FakeLock;
 use crate::runtime::class::{ClassMember, ClassMemberData};
-use rowan_unwind::{Cursor, ThreadContext};
 
 mod tables;
 pub mod class;
@@ -768,24 +767,23 @@ impl Context {
         
         let mut info = Vec::new();
 
-        let unwind_cursor = rowan_unwind::get_cursor();
-
-
         //println!("backtrace len {}", self.function_backtrace.len());
         let mut backtrace_iter = self.function_backtrace.iter().rev();
 
-        for frame in unwind_cursor {
+        rowan_unwind::backtrace(|frame| {
             if frame.is_jitted() {
-                let sp = frame.stack_pointer();
-                let ip = frame.instruction_pointer();
+                let sp = frame.sp();
+                let ip = frame.ip();
                 //println!("RSP: {:x}, RIP: {:x}", sp, ip);
                 let Some(backtrace) = backtrace_iter.next() else {
-                    break;
+                    return false;
                 };
 
-                info.push((*backtrace, sp as usize, ip as usize))
+                info.push((*backtrace, sp as usize, ip as usize));
             }
-        }
+
+            true
+        });
 
         let live_objects = self.dereference_stack_pointer(&info);
         self.sender.send(live_objects).unwrap();

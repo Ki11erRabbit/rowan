@@ -1,7 +1,13 @@
 use std::cell::UnsafeCell;
 use std::ffi::{c_char, c_int};
 use libunwind_sys as unwind;
-use crate::{Cursor, ThreadContext};
+use crate::Frame;
+
+trait GetPointers {
+    fn stack_pointer(&self) -> u64;
+
+    fn instruction_pointer(&self) -> u64;
+}
 
 pub struct LibUnwindCursor {
     cursor: UnsafeCell<unwind::unw_cursor_t>
@@ -36,36 +42,29 @@ impl LibUnwindCursor {
     }
 }
 impl Iterator for LibUnwindCursor {
-    type Item = LibUnwindContext;
+    type Item = Frame;
 
-    fn next(&mut self) -> Option<LibUnwindContext> {
+    fn next(&mut self) -> Option<Frame> {
         if unsafe { unwind::unw_step(self.cursor.get())} > 0 {
-            Some(LibUnwindContext::new(self.cursor.get()))
+            let sp = self.stack_pointer();
+            let ip = self.instruction_pointer();
+            let frame = Frame::new(sp as usize, ip as usize);
+
+            Some(frame)
         } else {
             None
         }
     }
 }
 
-impl Cursor<LibUnwindContext> for LibUnwindCursor {}
-
-pub struct LibUnwindContext {
-    cursor: *mut unwind::unw_cursor_t
-}
-
-impl LibUnwindContext {
-    pub fn new(cursor: *mut unwind::unw_cursor_t) -> LibUnwindContext {
-        Self { cursor }
-    }
-}
 
 #[cfg(target_arch = "x86_64")]
-impl ThreadContext for LibUnwindContext {
+impl GetPointers for LibUnwindCursor {
     fn stack_pointer(&self) -> u64 {
         const STACK_POINTER_INDEX: c_int = 7;
         let mut value = 0;
         let result = unsafe {
-            unwind::unw_get_reg(self.cursor, STACK_POINTER_INDEX, &mut value)
+            unwind::unw_get_reg(self.cursor.get(), STACK_POINTER_INDEX, &mut value)
         };
         assert_eq!(result, 0, "unw_get_reg() returned an error");
         value
@@ -75,7 +74,7 @@ impl ThreadContext for LibUnwindContext {
         const INSTRUCTION_POINTER_INDEX: c_int = 16;
         let mut value = 0;
         let result = unsafe {
-            unwind::unw_get_reg(self.cursor, INSTRUCTION_POINTER_INDEX, &mut value)
+            unwind::unw_get_reg(self.cursor.get(), INSTRUCTION_POINTER_INDEX, &mut value)
         };
         assert_eq!(result, 0, "unw_get_reg() returned an error");
         value
@@ -83,12 +82,12 @@ impl ThreadContext for LibUnwindContext {
 }
 
 #[cfg(target_arch = "aarch64")]
-impl ThreadContext for LibUnwindContext {
+impl GetPointers for LibUnwindCursor {
     fn stack_pointer(&self) -> u64 {
         const STACK_POINTER_INDEX: u64 = 31;
         let mut value = 0;
         let result = unsafe {
-            unwind::unw_get_reg(self.cursor, STACK_POINTER_INDEX, &mut value)
+            unwind::unw_get_reg(self.cursor.get(), STACK_POINTER_INDEX, &mut value)
         };
         assert_eq!(result, 0, "unw_get_reg() returned an error");
         value
@@ -98,9 +97,18 @@ impl ThreadContext for LibUnwindContext {
         const INSTRUCTION_POINTER_INDEX: u64 = 32;
         let mut value = 0;
         let result = unsafe {
-            unwind::unw_get_reg(self.cursor, INSTRUCTION_POINTER_INDEX, &mut value)
+            unwind::unw_get_reg(self.cursor.get(), INSTRUCTION_POINTER_INDEX, &mut value)
         };
         assert_eq!(result, 0, "unw_get_reg() returned an error");
         value
+    }
+}
+
+#[inline]
+pub fn backtrace<F>(mut func: F) where F: FnMut(Frame) -> bool {
+    for frame in LibUnwindCursor::new() {
+        if !func(frame) {
+            break;
+        }
     }
 }

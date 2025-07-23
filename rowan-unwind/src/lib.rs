@@ -50,22 +50,36 @@ pub fn register(pointer: *const (), size: usize) {
     map.register(pointer as usize, size);
 }
 
-pub trait Cursor<T: ThreadContext>: Iterator<Item=T> {}
+pub struct Frame {
+    sp: usize,
+    ip: usize,
+}
 
-pub trait ThreadContext {
-    fn stack_pointer(&self) -> u64;
-    fn instruction_pointer(&self) -> u64;
-    fn is_jitted(&self) -> bool {
-        let ip = self.instruction_pointer() as usize;
-        test_ip(ip)
+impl Frame {
+    fn new(sp: usize, ip: usize) -> Self {
+        Frame { sp, ip }
+    }
+
+    pub fn sp(&self) -> usize {
+        self.sp
+    }
+
+    pub fn ip(&self) -> usize {
+        self.ip
+    }
+
+    pub fn is_jitted(&self) -> bool {
+        test_ip(self.ip)
     }
 }
 
 #[cfg(unix)]
-pub fn get_cursor() -> impl Cursor<unix::LibUnwindContext> {
-    unix::LibUnwindCursor::new()
+pub fn backtrace<F>(func: F) where F: FnMut(Frame) -> bool {
+    unix::backtrace(func)
 }
+
 #[cfg(windows)]
-pub fn get_cursor() -> impl Cursor<windows::WindowsUnwindContext> {
-    windows::WindowsUnwindCursor::new()
+pub fn backtrace<F>(func: F) where F: FnMut(Frame) -> bool {
+    windows::backtrace(func);
 }
+
