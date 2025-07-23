@@ -80,15 +80,6 @@ impl ThreadContext for LibUnwindContext {
         assert_eq!(result, 0, "unw_get_reg() returned an error");
         value
     }
-
-    fn has_name(&self) -> bool {
-        let mut buf: [u8; 1024] = [0; 1024];
-        let result = unsafe {
-            unwind::unw_get_proc_name(self.cursor, buf.as_mut_ptr() as *mut c_char, buf.len(), &mut 0)
-        };
-
-        result == 0
-    }
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -111,14 +102,5 @@ impl ThreadContext for LibUnwindContext {
         };
         assert_eq!(result, 0, "unw_get_reg() returned an error");
         value
-    }
-
-    fn has_name(&self) -> bool {
-        let mut buf: [u8; 1024] = [0; 1024];
-        let result = unsafe {
-            unwind::unw_get_proc_name(self.cursor, buf.as_mut_ptr() as *mut c_char, buf.len(), &mut 0)
-        };
-
-        result == 0
     }
 }

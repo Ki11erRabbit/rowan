@@ -36,7 +36,7 @@ pub type Symbol = usize;
 
 pub type Reference = *mut Object;
 
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct WrappedReference(Reference);
 
 unsafe impl Send for WrappedReference {}
@@ -775,7 +775,7 @@ impl Context {
         let mut backtrace_iter = self.function_backtrace.iter().rev();
 
         for frame in unwind_cursor {
-            if !frame.has_name() {
+            if frame.is_jitted() {
                 let sp = frame.stack_pointer();
                 let ip = frame.instruction_pointer();
                 //println!("RSP: {:x}, RIP: {:x}", sp, ip);

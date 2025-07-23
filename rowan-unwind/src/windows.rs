@@ -155,48 +155,4 @@ impl ThreadContext for WindowsUnwindContext {
     fn instruction_pointer(&self) -> u64 {
         self.stack.AddrPC.Offset
     }
-
-    fn has_name(&self) -> bool {
-        let mut buffer = [0; std::mem::size_of::<SYMBOL_INFO>() + MAX_SYM_NAME as usize];
-        let mut symbol = unsafe {
-            (buffer.as_mut_ptr() as *mut SYMBOL_INFO).as_mut().unwrap()
-        };
-        symbol.SizeOfStruct = std::mem::size_of::<SYMBOL_INFO>() as u32;
-        symbol.MaxNameLen = MAX_SYM_NAME;
-
-        let mut displacement = 0;
-        if unsafe { SymFromAddr(self.process_handle, self.stack.AddrPC.Offset, &mut displacement, symbol) } != 0 {
-            let cstring = unsafe { CStr::from_ptr(symbol.Name.as_ptr()) };
-            println!("cstring: {:?}", cstring);
-            true
-        } else {
-            false
-        }
-    }
-}
-
-pub fn register_name(name: *const c_char, address: usize, size: usize) {
-    let result = unsafe {
-        let base = SymLoadModuleEx(
-            PROCESS_HANDLE.get_handle(),
-            std::ptr::null_mut(),
-            std::ptr::null(),
-            std::ptr::null(),
-            address as u64,
-            size as u32,
-            std::ptr::null(),
-            0
-        );
-        if base == 0 {
-            let code = GetLastError();
-            panic!("failed to load module: code: {code} base: {base}");
-        }
-        let result = SymAddSymbol(PROCESS_HANDLE.get_handle(), base, name as *const u8, address as u64, size as u32, 0);
-        result
-    };
-
-    if result == 0 {
-        let code = unsafe { GetLastError() };
-        panic!("Failed to register name. Error code: {code}");
-    }
 }
