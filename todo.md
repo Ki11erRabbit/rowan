@@ -19,15 +19,15 @@ can be implemented.
   * [x] Method Paths
   * [x] Static Field Paths
   * [x] Core paths
-* [ ] Native Method Interface
+* [x] Native Method Interface
   * [x] Generate C Header File
   * [x] Generate Function that gives a function pointer for cleaning up native members
-  * [ ] Runtime Code that can handle the loading of dlls/so files during the link phase
+  * [x] Runtime Code that can handle the loading of dlls/so files during the link phase
 * [ ] Garbage Collection
   * [x] Garbage Collection doesn't collect too much 
   * [ ] Garbage Collection is cross-platform
     * [x] Garbage Collection works on Unix
-    * [ ] Garbage Collection works on Windows
+    * [x] Garbage Collection works on Windows
   * [ ] Garbage collection doesn't collect static class fields
   * [ ] There is a way to pass objects to FFI and mark that memory as uncollectable
   * [ ] Garbage collection operation skips over native methods if they call Rowan code
