@@ -54,7 +54,7 @@ const MACHINE_TYPE: IMAGE_FILE_MACHINE = IMAGE_FILE_MACHINE_ARM64;
 #[inline]
 pub fn backtrace<F>(mut func: F) where F: FnMut(Frame) -> bool {
     let thread_handle = unsafe { OpenThread(THREAD_ALL_ACCESS, FALSE, GetCurrentThreadId()) };
-    let mut context = unsafe { Box::new(std::mem::zeroed()) };
+    let mut context: Box<CONTEXT> = unsafe { Box::new(std::mem::zeroed()) };
     unsafe {
         RtlCaptureContext(context.as_mut());
     }
