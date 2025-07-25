@@ -9,6 +9,7 @@ use crate::runtime::garbage_collection::{GarbageCollection, GC_SENDER};
 mod runtime;
 mod fake_lock;
 mod external;
+mod context;
 
 /// The start function for calling the main method in Rowan.
 /// This function will parse commandline arguments from a Rust Context so don't call it from anywhere else.
