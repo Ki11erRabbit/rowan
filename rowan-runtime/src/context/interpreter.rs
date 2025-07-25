@@ -103,8 +103,74 @@ impl StackValue {
     into_type!(i64);
     into_type!(f32);
     into_type!(f64);
-
 }
+
+impl From<u8> for StackValue {
+    fn from(v: u8) -> Self {
+        StackValue::Int8(v)
+    }
+}
+
+impl From<u16> for StackValue {
+    fn from(v: u16) -> Self {
+        StackValue::Int16(v)
+    }
+}
+
+impl From<u32> for StackValue {
+    fn from(v: u32) -> Self {
+        StackValue::Int32(v)
+    }
+}
+
+impl From<u64> for StackValue {
+    fn from(v: u64) -> Self {
+        StackValue::Int64(v)
+    }
+}
+impl From<i8> for StackValue {
+    fn from(v: i8) -> Self {
+        StackValue::Int8(u8::from_ne_bytes(v.to_ne_bytes()))
+    }
+}
+
+impl From<i16> for StackValue {
+    fn from(v: i16) -> Self {
+        StackValue::Int16(u16::from_ne_bytes(v.to_ne_bytes()))
+    }
+}
+
+impl From<i32> for StackValue {
+    fn from(v: i32) -> Self {
+        StackValue::Int32(u32::from_ne_bytes(v.to_ne_bytes()))
+    }
+}
+
+impl From<i64> for StackValue {
+    fn from(v: i64) -> Self {
+        StackValue::Int64(u64::from_ne_bytes(v.to_ne_bytes()))
+    }
+}
+
+impl From<f32> for StackValue {
+    fn from(v: f32) -> Self {
+        StackValue::Float32(v)
+    }
+}
+
+impl From<f64> for StackValue {
+    fn from(v: f64) -> Self {
+        StackValue::Float64(v)
+    }
+}
+
+impl From<Reference> for StackValue {
+    fn from(v: Reference) -> Self {
+        StackValue::Reference(v)
+    }
+}
+
+
 pub struct StackFrame {
     operand_stack: Vec<StackValue>,
     ip: usize,
@@ -112,6 +178,7 @@ pub struct StackFrame {
     block_positions: HashMap<usize, usize>,
     variables: [StackValue; 256],
     call_args: [StackValue; 256],
+    is_for_bytecode: bool,
 }
 
 impl StackFrame {
@@ -136,6 +203,7 @@ impl StackFrame {
             block_positions,
             variables: [StackValue::Blank; 256],
             call_args: [StackValue::Blank; 256],
+            is_for_bytecode: bytecode.len() > 0,
         }
     }
 
@@ -175,6 +243,10 @@ impl StackFrame {
 
     pub fn get_args(&self) -> &[StackValue] {
         &self.call_args
+    }
+
+    pub fn is_for_bytecode(&self) -> bool {
+        self.is_for_bytecode
     }
 }
 
@@ -1316,5 +1388,35 @@ impl BytecodeContext {
             }
 
         }
+    }
+
+    pub extern "C" fn store_argument_int8(&mut self, index: u8, value: u8) {
+        self.current_frame_mut().push(value.into());
+        self.current_frame_mut().store_argument(index);
+    }
+
+    pub extern "C" fn store_argument_int16(&mut self, index: u8, value: u16) {
+        self.current_frame_mut().push(value.into());
+        self.current_frame_mut().store_argument(index);
+    }
+
+    pub extern "C" fn store_argument_int32(&mut self, index: u8, value: u32) {
+        self.current_frame_mut().push(value.into());
+        self.current_frame_mut().store_argument(index);
+    }
+
+    pub extern "C" fn store_argument_int64(&mut self, index: u8, value: u64) {
+        self.current_frame_mut().push(value.into());
+        self.current_frame_mut().store_argument(index);
+    }
+
+    pub extern "C" fn store_argument_float32(&mut self, index: u8, value: f32) {
+        self.current_frame_mut().push(value.into());
+        self.current_frame_mut().store_argument(index);
+    }
+
+    pub extern "C" fn store_argument_float64(&mut self, index: u8, value: f64) {
+        self.current_frame_mut().push(value.into());
+        self.current_frame_mut().store_argument(index);
     }
 }
