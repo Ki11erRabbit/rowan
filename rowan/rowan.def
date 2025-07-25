@@ -1,9 +1,0 @@
-LIBRARY rowan.exe
-EXPORTS
-    rowan_create_object
-    rowan_create_string
-    rowan_create_empty_string
-    rowan_get_virtual_function
-    rowan_get_static_function
-    rowan_set_exception
-    rowan_normal_return

@@ -188,7 +188,7 @@ impl JITCompiler {
         &mut self,
         function: &Function,
         module: &mut JITModule,
-        //name: &CStr,
+        name: &str,
     ) -> Result<(), String> {
 
         let Ok(mut value) = function.value.read() else {
@@ -234,12 +234,14 @@ impl JITCompiler {
             object_locations.push((*location, objects));
         }
         let locations = object_locations;
+        let size = compiled_code.buffer.total_size();
         trace!("resulting function:\n{}", self.context.func);
         module.clear_context(&mut self.context);
 
         module.finalize_definitions().unwrap();
         
         let code = module.get_finalized_function(*id) as *const ();
+        rowan_unwind::register(code, size as usize);
         //println!("code: {:x}", code as usize);
         let mut object_locations = HashMap::new();
         locations.into_iter()

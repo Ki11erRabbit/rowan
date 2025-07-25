@@ -1,8 +1,9 @@
 [workspace]
-members = [ "rowan", "rowan_shared","rowanc", "rowan-unwind", "rowan-register-debug"]
+members = [ "rowan", "rowan_shared", "rowan-runtime", "rowanc", "rowan-unwind", "rowan-register-debug"]
 resolver = "2"
 
 [workspace.dependencies]
+rowan_runtime = { path = "rowan_runtime" }
 rowan_shared = { path = "rowan_shared" }
 rowan-unwind = { path = "rowan-unwind" }
 rowan-register-debug = { path = "rowan-register-debug" }
