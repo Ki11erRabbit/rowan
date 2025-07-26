@@ -59,12 +59,12 @@ pub extern "C" fn rowan_get_virtual_function(
     let method_name = unsafe { CStr::from_ptr(method_name) };
     let method_name = method_name.to_string_lossy();
 
-    if let Some(source) = source {
+    /*if let Some(source) = source {
         context.get_virtual_method(object, class.as_ref(), Some(source.as_ref()), method_name.as_ref())
     } else {
         context.get_virtual_method(object, class.as_ref(), None, method_name.as_ref())
-    }
-
+    }*/
+    std::ptr::null()
 }
 
 /// This function retrieves the function pointer for a static function for a given class.
@@ -82,7 +82,8 @@ pub extern "C" fn rowan_get_static_function(
     let method_name = unsafe { CStr::from_ptr(method_name) };
     let method_name = method_name.to_string_lossy();
 
-    context.get_static_function(class.as_ref(), method_name.as_ref())
+    //context.get_static_function(class.as_ref(), method_name.as_ref())
+    std::ptr::null()
 }
 
 #[unsafe(no_mangle)]

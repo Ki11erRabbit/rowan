@@ -186,17 +186,18 @@ impl JITCompiler {
 
     pub fn compile(
         &mut self,
-        function: &Function,
+        function: &mut Function,
         module: &mut JITModule,
         name: &str,
     ) -> Result<(), String> {
 
-        let Ok(mut value) = function.value.read() else {
-            panic!("Lock poisoned");
-        };
 
-        let FunctionValue::Bytecode(bytecode, id) = &*value else {
-            todo!("add error handling for non-bytecode value");
+        let bytecode = function.bytecode.as_ref();
+        let id = match &function.value {
+            FunctionValue::Bytecode(id) => {
+                id
+            }
+            _ => unreachable!("can compile only bytecode functions"),
         };
 
         trace!("[Translating]");
@@ -254,12 +255,7 @@ impl JITCompiler {
 
         let new_function_value = FunctionValue::Compiled(code, object_locations);
 
-        drop(value);
-        let Ok(mut value) = function.value.write() else {
-            panic!("Lock poisoned");
-        };
-
-        *value = new_function_value;
+        function.value = new_function_value;
         
         Ok(())
     }

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::context::BytecodeContext;
 use crate::runtime::object::Object;
 use super::{Runtime, Reference, Symbol, VTableIndex};
 
@@ -66,7 +67,7 @@ pub struct Class {
     pub members: Vec<MemberInfo>,
     pub static_methods: VTableIndex,
     pub class_members: Vec<ClassMember>,
-    pub init_function: fn(&mut Runtime),
+    pub init_function: fn(&mut BytecodeContext),
     pub drop_function: Option<extern "C" fn(&mut Object)>,
 }
 
@@ -78,7 +79,7 @@ impl Class {
         members: Vec<MemberInfo>,
         static_methods: VTableIndex,
         class_members: Vec<ClassMember>,
-        init_function: fn(&mut Runtime),
+        init_function: fn(&mut BytecodeContext),
         drop_function: Option<extern "C" fn(&mut Object)>,
 
     ) -> Self {

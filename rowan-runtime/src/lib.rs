@@ -2,6 +2,7 @@ use std::{collections::HashMap, io::Read};
 use std::path::PathBuf;
 use rowan_shared::classfile::ClassFile;
 use runtime::{core, Runtime};
+use crate::context::BytecodeContext;
 use crate::runtime::Reference;
 use crate::runtime::core::exception_print_stack_trace;
 use crate::runtime::garbage_collection::{GarbageCollection, GC_SENDER};
@@ -75,12 +76,13 @@ pub extern "C" fn rowan_main() {
             gc.main_loop()
         }).expect("Thread 'new' panicked at 'Garbage Collection'");
 
-    let sender = unsafe { GC_SENDER.read().clone().unwrap() };
-    let mut context = Runtime::new(sender);
+    let _sender = GC_SENDER.read().clone().unwrap();
+    let mut context = BytecodeContext::new();
 
     //println!("main_symbol: {}, main_method_symbol: {}", main_symbol, main_method_symbol);
+    context.call_main(main_symbol, main_method_symbol);
 
-    let method = context.get_static_method(main_symbol, main_method_symbol);
+    /*let method = context.get_static_method(main_symbol, main_method_symbol);
 
     let method = unsafe { std::mem::transmute::<_, fn(&mut Runtime, u64)>(method) };
 
@@ -97,5 +99,5 @@ pub extern "C" fn rowan_main() {
         println!("{message_str}");
         exception_print_stack_trace(&mut context, base_exception_ref);
         std::process::exit(1);
-    }
+    }*/
 }

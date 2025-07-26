@@ -1,6 +1,5 @@
 mod interpreter;
 
-use std::arch::asm;
 pub use interpreter::BytecodeContext;
 use crate::context::interpreter::StackValue;
 
@@ -11,104 +10,116 @@ macro_rules! call_function_pointer {
     ($context:ident, $call_args:expr, $fn_ptr:ident, $return_type:expr, $return_value:expr) => {
         let mut integer_index = 1; // context takes the first slot
         let mut float_index = 0;
-        let stack_byte_size = get_stack_byte_size($call_args);
+        let stack_byte_size = super::get_stack_byte_size($call_args);
         unsafe {
-            asm!(
+            std::arch::asm!(
                 "push rsp",
-                "add rsp {offset}",
+                "add rsp, {offset}",
                 "mov rdi, {ctx}",
                 ctx = in(reg) $context,
                 offset = in(reg) stack_byte_size,
-            )
+            );
         }
         for arg in $call_args {
             match arg {
-                StackValue::Blank => break;
+                StackValue::Blank => break,
                 StackValue::Int8(value) => {
-                    place_value_in_int_reg!(arg, integer_index)
+                    place_value_in_int_reg!(value, integer_index, u8);
                     integer_index += 1;
                 }
                 StackValue::Int16(value) => {
-                    place_value_in_int_reg!(arg, integer_index)
+                    place_value_in_int_reg!(value, integer_index);
                     integer_index += 1;
                 }
                 StackValue::Int32(value) => {
-                    place_value_in_int_reg!(arg, integer_index)
+                    place_value_in_int_reg!(value, integer_index);
                     integer_index += 1;
                 }
                 StackValue::Int64(value) => {
-                    place_value_in_int_reg!(arg, integer_index)
+                    place_value_in_int_reg!(value, integer_index);
                     integer_index += 1;
                 }
                 StackValue::Reference(value) => {
-                    place_value_in_int_reg!(arg, integer_index)
+                    place_value_in_int_reg!(value, integer_index);
                     integer_index += 1;
                 }
                 StackValue::Float32(value) => {
-                    place_value_in_float_reg!(arg, integer_index)
+                    place_value_in_float_reg!(value, float_index, f32);
                     float_index += 1;
                 }
-                StackValue::Float32(value) => {
-                    place_value_in_float_reg!(arg, integer_index)
+                StackValue::Float64(value) => {
+                    place_value_in_float_reg!(value, float_index, f64);
                     float_index += 1;
                 }
             }
         }
         unsafe {
-            asm!(
+            std::arch::asm!(
                 "call {ptr}",
                 "pop rsp",
                 ptr = in(reg) $context,
-            )
+            );
         }
         match $return_type {
             runtime::class::TypeTag::U8 | runtime::class::TypeTag::I8 => {
-                let out: u8 = 0;
-                asm!(
-                    "mov {out} rax",
-                    out = out(reg) out,
-                )
-                *$return_value = StackValue::Int8(out);
+                let mut output: u8 = 0;
+                unsafe {
+                    std::arch::asm!(
+                        "nop",
+                        out("al") output,
+                    );
+                }
+                $return_value = StackValue::Int8(output);
             }
             runtime::class::TypeTag::U16 | runtime::class::TypeTag::I16 => {
-                let out: u16 = 0;
-                asm!(
-                    "mov {out} rax",
-                    out = out(reg) out,
-                )
-                *$return_value = StackValue::Int16(out);
+                let mut output: u16 = 0;
+                unsafe {
+                    std::arch::asm!(
+                        "nop",
+                        out("ax") output,
+                    );
+                }
+                $return_value = StackValue::Int16(output);
             }
             runtime::class::TypeTag::U32 | runtime::class::TypeTag::I32 => {
-                let out: u32 = 0;
-                asm!(
-                    "mov {out} rax",
-                    out = out(reg) out,
-                )
-                *$return_value = StackValue::Int32(out);
+                let mut output: u32 = 0;
+                unsafe {
+                    std::arch::asm!(
+                        "nop",
+                        out("eax") output,
+                    );
+                }
+                $return_value = StackValue::Int32(output);
             }
             runtime::class::TypeTag::U64 | runtime::class::TypeTag::I64 => {
-                let out: u64 = 0;
-                asm!(
-                    "mov {out} rax",
-                    out = out(reg) out,
-                )
-                *$return_value = StackValue::Int64(out);
+                let mut output: u64 = 0;
+                unsafe {
+                    std::arch::asm!(
+                        "nop",
+                        out("rax") output,
+                    );
+                }
+                $return_value = StackValue::Int64(output);
             }
             runtime::class::TypeTag::F32=> {
-                let out: f32 = 0.0;
-                asm!(
-                    "mov {out} xmm0",
-                    out = out(reg) out,
-                )
-                *$return_value = StackValue::Float32(out);
+                let mut output: f32 = 0.0;
+                unsafe {
+                    std::arch::asm!(
+                        "movss [{out}], xmm0",
+                        out = out(reg) output,
+                    );
+                }
+                $return_value = StackValue::Float32(output);
             }
             runtime::class::TypeTag::F64 => {
-                let out: f64 = 0.0;
-                asm!(
-                    "mov {out} xmm0",
-                    out = out(reg) out,
-                )
-                *$return_value = StackValue::Float64(out);
+                let mut output: f64 = 0.0;
+                unsafe {
+                    std::arch::asm!(
+                        "movsd [{out}], xmm0",
+                        out = out(reg) output,
+                    );
+                }
+                $return_value = StackValue::Float64(output);
             }
             _ => unreachable!("invalid return type"),
         }
@@ -116,107 +127,208 @@ macro_rules! call_function_pointer {
 }
 
 #[cfg(target_arch = "x86_64")]
+#[macro_export]
 macro_rules! place_value_in_int_reg {
     ($val:ident, $reg_index:ident) => {
         match $reg_index {
-            0 => unreachable!("We entered a state that should not have happened")
+            0 => unreachable!("We entered a state that should not have happened"),
             1 => unsafe {
-                asm!(
-                    "mov rsi {val}",
+                std::arch::asm!(
+                    "mov rsi, {val}",
                     val = in(reg) *$val,
-                )
+                );
             }
             2 => unsafe {
-                asm!(
-                    "mov rdx {val}",
+                std::arch::asm!(
+                    "mov rdx, {val}",
                     val = in(reg) *$val,
-                )
+                );
             }
             3 => unsafe {
-                asm!(
-                    "mov rcx {val}",
+                std::arch::asm!(
+                    "mov rcx, {val}",
                     val = in(reg) *$val,
-                )
+                );
             }
             4 => unsafe {
-                asm!(
-                    "mov r8 {val}",
+                std::arch::asm!(
+                    "mov r8, {val}",
                     val = in(reg) *$val,
-                )
+                );
             }
             5 => unsafe {
-                asm!(
-                    "mov r9 {val}",
+                std::arch::asm!(
+                    "mov r9, {val}",
                     val = in(reg) *$val,
-                )
+                );
             }
             _ => unsafe {
-                asm!(
+                std::arch::asm!(
                     "push {val}",
                     val = in(reg) *$val,
-                )
+                );
+            }
+        }
+    };
+    ($val:ident, $reg_index:ident, u8) => {
+        match $reg_index {
+            0 => unreachable!("We entered a state that should not have happened"),
+            1 => unsafe {
+                std::arch::asm!(
+                    "mov al, 0",
+                    in("sil") *$val,
+                );
+            }
+            2 => unsafe {
+                std::arch::asm!(
+                    "mov dl, 0",
+                    in("dl") *$val,
+                );
+            }
+            3 => unsafe {
+                std::arch::asm!(
+                    "mov cl, 0",
+                    in("cl") *$val,
+                );
+            }
+            4 => unsafe {
+                std::arch::asm!(
+                    "mov r8b, 0",
+                    in("r8b") *$val,
+                );
+            }
+            5 => unsafe {
+                std::arch::asm!(
+                    "mov r9b, 0",
+                    in("r9b") *$val,
+                );
+            }
+            _ => unsafe {
+                std::arch::asm!(
+                    "push rax",
+                    in("al") *$val,
+                );
             }
         }
     };
 }
 
 #[cfg(target_arch = "x86_64")]
+#[macro_export]
 macro_rules! place_value_in_float_reg {
-    ($val:ident, $reg_index:ident) => {
+    ($val:ident, $reg_index:ident, f32) => {
         match $reg_index {
             0 => unsafe {
-                asm!(
-                    "mov xmm0 {val}",
+                std::arch::asm!(
+                    "movss xmm0, [{val}]",
                     val = in(reg) *$val,
-                )
+                );
             }
             1 => unsafe {
-                asm!(
-                    "mov xmm1 {val}",
+                std::arch::asm!(
+                    "movss xmm1, [{val}]",
                     val = in(reg) *$val,
-                )
+                );
             }
             2 => unsafe {
-                asm!(
-                    "mov xmm2 {val}",
+                std::arch::asm!(
+                    "movss xmm2, [{val}]",
                     val = in(reg) *$val,
-                )
+                );
             }
             3 => unsafe {
-                asm!(
-                    "mov xmm3 {val}",
+                std::arch::asm!(
+                    "movss xmm3, [{val}]",
                     val = in(reg) *$val,
-                )
+                );
             }
             4 => unsafe {
-                asm!(
-                    "mov xmm4 {val}",
+                std::arch::asm!(
+                    "movss xmm4, [{val}]",
                     val = in(reg) *$val,
-                )
+                );
             }
             5 => unsafe {
-                asm!(
-                    "mov xmm5 {val}",
+                std::arch::asm!(
+                    "movss xmm5, [{val}]",
                     val = in(reg) *$val,
-                )
+                );
             }
             6 => unsafe {
-                asm!(
-                    "mov xmm6 {val}",
+                std::arch::asm!(
+                    "movss xmm6, [{val}]",
                     val = in(reg) *$val,
-                )
+                );
             }
             7 => unsafe {
-                asm!(
-                    "mov xmm7 {val}",
+                std::arch::asm!(
+                    "movss xmm7, [{val}]",
                     val = in(reg) *$val,
-                )
+                );
             }
             _ => unsafe {
-                asm!(
+                std::arch::asm!(
                     "push {val}",
                     val = in(reg) *$val,
-                )
+                );
+            }
+        }
+    };
+    ($val:ident, $reg_index:ident, f64) => {
+        match $reg_index {
+            0 => unsafe {
+                std::arch::asm!(
+                    "movsd xmm0, [{val}]",
+                    val = in(reg) *$val,
+                );
+            }
+            1 => unsafe {
+                std::arch::asm!(
+                    "movsd xmm1, [{val}]",
+                    val = in(reg) *$val,
+                );
+            }
+            2 => unsafe {
+                std::arch::asm!(
+                    "movsd xmm2, [{val}]",
+                    val = in(reg) *$val,
+                );
+            }
+            3 => unsafe {
+                std::arch::asm!(
+                    "movsd xmm3, [{val}]",
+                    val = in(reg) *$val,
+                );
+            }
+            4 => unsafe {
+                std::arch::asm!(
+                    "movsd xmm4, [{val}]",
+                    val = in(reg) *$val,
+                );
+            }
+            5 => unsafe {
+                std::arch::asm!(
+                    "movsd xmm5, [{val}]",
+                    val = in(reg) *$val,
+                );
+            }
+            6 => unsafe {
+                std::arch::asm!(
+                    "movsd xmm6, [{val}]",
+                    val = in(reg) *$val,
+                );
+            }
+            7 => unsafe {
+                std::arch::asm!(
+                    "movsd xmm7, [{val}]",
+                    val = in(reg) *$val,
+                );
+            }
+            _ => unsafe {
+                std::arch::asm!(
+                    "push {val}",
+                    val = in(reg) *$val,
+                );
             }
         }
     };

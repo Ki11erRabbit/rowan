@@ -163,10 +163,9 @@ impl Debug for FunctionValue {
                 .field("ptr", ptr)
                 .finish()
             }
-            FunctionValue::Bytecode(bytecode,_) => {
+            FunctionValue::Bytecode(_) => {
                 f.debug_struct("Bytecode")
-                .field("bytecode", bytecode)
-                .finish()
+                    .finish()
             }
         }
     }

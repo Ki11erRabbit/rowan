@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use paste::paste;
 use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
-use crate::{call_function_pointer, runtime};
+use crate::{call_function_pointer, place_value_in_float_reg, place_value_in_int_reg, runtime};
 use crate::runtime::{Reference, Runtime};
 use crate::runtime::object::Object;
 
@@ -40,7 +40,7 @@ macro_rules! into_type {
     ($typ:ty) => {
         paste! {
             pub fn [<into_ $typ>](self) -> $typ {
-                let mut buffer = [u8; std::mem::size_of::<$typ>()];
+                let mut buffer = [0u8; std::mem::size_of::<$typ>()];
                 match self {
                     StackValue::Int8(v) => {
                         for (buf, v) in buffer.iter_mut().zip(v.to_le_bytes().iter()) {
@@ -358,8 +358,9 @@ impl BytecodeContext {
                     &self.current_frame_mut().variables,
                     fn_ptr,
                     details.return_type,
-                    &mut return_value
+                    return_value
                 );
+                self.pop();
             }
             _ => {}
         }
@@ -409,13 +410,26 @@ impl BytecodeContext {
                     &self.current_frame_mut().variables,
                     fn_ptr,
                     details.return_type,
-                    &mut return_value
+                    return_value
                 );
+                self.pop();
             }
             _ => {}
         }
 
         self.handle_exception()
+    }
+
+    /// TODO: add way to pass in cmdline args
+    pub fn call_main(&mut self, class: runtime::Symbol, method: runtime::Symbol) {
+        let details = Runtime::get_static_method_details(
+            class,
+            method,
+        );
+        self.push(details.bytecode, details.fn_ptr.is_none());
+        self.current_frame_mut().call_args[0] = StackValue::Reference(std::ptr::null_mut());
+
+        self.main_loop();
     }
 
     pub fn main_loop(&mut self) {
@@ -958,8 +972,8 @@ impl BytecodeContext {
                     StackValue::Int64(value) => {
                         let value = i64::from_ne_bytes(value.to_ne_bytes());
                         let value = -value;
-                        let value = u32::from_ne_bytes(value.to_ne_bytes());
-                        self.current_frame_mut().push(StackValue::Int32(value))
+                        let value = u64::from_ne_bytes(value.to_ne_bytes());
+                        self.current_frame_mut().push(StackValue::Int64(value))
                     }
                     StackValue::Float32(value) => {
                         let value = -value;

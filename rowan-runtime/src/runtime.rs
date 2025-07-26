@@ -16,6 +16,8 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32};
 use std::sync::mpsc::Sender;
+use rowan_shared::bytecode::linked::Bytecode;
+use crate::context::BytecodeContext;
 use crate::fake_lock::FakeLock;
 use crate::runtime::class::{ClassMember, ClassMemberData};
 
@@ -323,7 +325,7 @@ impl Runtime {
         // The first hashmap is the class symbol which the vtable comes from.
         // The second hashmap is the class that has a custom version of the vtable
         // For example, two matching symbols means that that is the vtable of that particular class
-        vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<rowan_shared::TypeTag>, linker::MethodLocation, Arc<RwLock<FunctionValue>>, Signature)>>>,
+        vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<rowan_shared::TypeTag>, linker::MethodLocation, Box<[Bytecode]>, FunctionValue, Signature)>>>,
     ) -> (Symbol, Symbol) {
         let Ok(mut string_table) = STRING_TABLE.write() else {
             panic!("Lock poisoned");
@@ -375,7 +377,7 @@ impl Runtime {
         // The first hashmap is the class symbol which the vtable comes from.
         // The second hashmap is the class that has a custom version of the vtable
         // For example, two matching symbols means that that is the vtable of that particular class
-        vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<rowan_shared::TypeTag>, linker::MethodLocation, Arc<RwLock<FunctionValue>>, Signature)>>>,
+        vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<rowan_shared::TypeTag>, linker::MethodLocation, Box<[Bytecode]>, FunctionValue, Signature)>>>,
     ) {
         let Ok(mut string_table) = STRING_TABLE.write() else {
             panic!("Lock poisoned");
@@ -430,10 +432,10 @@ impl Runtime {
         }
         drop(class_table);
         for function in init_functions {
-            let (sender, _) = std::sync::mpsc::channel();
-            let mut context = Runtime::new(sender);
+            //let (sender, _) = std::sync::mpsc::channel();
+            let mut context = BytecodeContext::new();
             function(&mut context);
-            if !context.current_exception.borrow().is_null() {
+            /*if !context.current_exception.borrow().is_null() {
                 println!("Failed to initialize class static members");
                 let exception = context.get_exception();
                 let exception = unsafe { exception.as_ref().unwrap() };
@@ -445,7 +447,7 @@ impl Runtime {
                 println!("{message_str}");
                 exception_print_stack_trace(&mut context, base_exception_ref);
                 std::process::exit(1);
-            }
+            }*/
         }
     }
 
@@ -533,7 +535,7 @@ impl Runtime {
         function.create_details()
     }
 
-    pub fn get_method(
+    /*pub fn get_method(
         &mut self,
         object_class_symbol: Symbol,
         class_symbol: Symbol,
@@ -595,16 +597,15 @@ impl Runtime {
             panic!("Lock poisoned");
         };
 
-        let vtable = &vtables_table[vtable_index];
-        let function = vtable.get_function(method_name).expect("unable to find function");
+        let vtable = &mut vtables_table[vtable_index];
+        let function = vtable.get_function_mut(method_name);
 
-        let value = function.value.read().expect("Lock poisoned");
+        let value = &function.value;
         let value = match &*value {
             FunctionValue::Builtin(ptr) => *ptr,
             FunctionValue::Compiled(ptr, _) => *ptr,
             FunctionValue::Native(ptr) => *ptr,
             _ => {
-                drop(value);
                 let mut compiler = Runtime::create_jit_compiler();
                 let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
                     panic!("Lock poisoned");
@@ -612,7 +613,6 @@ impl Runtime {
                 
                 compiler.compile(&function, &mut jit_controller.module, name).unwrap();
 
-                let value = function.value.read().expect("Lock poisoned");
                 match &*value {
                     FunctionValue::Compiled(ptr,_ ) => *ptr,
                     _ => panic!("Function wasn't compiled")
@@ -669,15 +669,14 @@ impl Runtime {
         drop(class_table);
 
         let vtable = &vtables_table[vtable_index];
-        let function = vtable.get_function(method_name).expect("unable to get function");
+        let mut function = vtable.get_function_mut(method_name);
 
-        let value = function.value.read().expect("Lock poisoned");
+        let value = &function.value;
         let value = match &*value {
             FunctionValue::Builtin(ptr) => *ptr,
             FunctionValue::Native(ptr) => *ptr,
             FunctionValue::Compiled(ptr, _) => *ptr,
             _ => {
-                drop(value);
                 let mut compiler = Runtime::create_jit_compiler();
                 let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
                     unreachable!("Lock poisoned");
@@ -688,7 +687,6 @@ impl Runtime {
                     Err(e) => panic!("Compilation error:\n{}", e)
                 }
 
-                let value = function.value.read().expect("Lock poisoned");
                 match &*value {
                     FunctionValue::Compiled(ptr, _) => *ptr,
                     _ => panic!("Function wasn't compiled")
@@ -698,7 +696,7 @@ impl Runtime {
 
         self.static_memo.insert((class_symbol, method_name), value);
         value
-    }
+    }*/
 
     pub fn create_jit_compiler() -> JITCompiler {
         let Ok(jit_controller) = JIT_CONTROLLER.write() else {
@@ -892,7 +890,7 @@ impl Runtime {
     ) -> HashSet<WrappedReference> {
         let mut live_objects = HashSet::new();
 
-        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        /*let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             unreachable!("Lock poisoned");
         };
 
@@ -923,7 +921,7 @@ impl Runtime {
                     let vtable_index = class.static_methods;
                     let vtable = &vtables_table[vtable_index];
                     let function = vtable.get_function(*method_name).expect("unable to get function");
-                    let value = function.value.read().unwrap();
+                    let value = &function.value;
                     let FunctionValue::Compiled(_, map) = &*value else {
                         unreachable!("we are trying to access the stack of a non-compiled function");
                     };
@@ -993,7 +991,7 @@ impl Runtime {
                     }
                 }
             }
-        }
+        }*/
 
         live_objects.into_iter().map(WrappedReference).collect::<HashSet<_>>()
     }
@@ -1029,7 +1027,7 @@ impl Runtime {
         }
     }
 
-    pub fn get_virtual_method(&mut self, object: Reference, class: &str, source_class: Option<&str>, method_name: &str) -> *const () {
+    /*pub fn get_virtual_method(&mut self, object: Reference, class: &str, source_class: Option<&str>, method_name: &str) -> *const () {
         self.check_and_do_garbage_collection();
 
         let Ok(mut class_map) = CLASS_MAPPER.write() else {
@@ -1069,7 +1067,7 @@ impl Runtime {
         drop(string_map);
 
         self.get_static_method(class_symbol, method_name)
-    }
+    }*/
 }
 
 
@@ -1086,9 +1084,10 @@ pub extern "C" fn get_virtual_function(context: &mut Runtime, object: Reference,
         Some(source_class as Symbol)
     };
     let method_name = method_name as Symbol;
-    let method_ptr = context.get_method(object_class_symbol, class_symbol, source_class, method_name);
+    /*let method_ptr = context.get_method(object_class_symbol, class_symbol, source_class, method_name);
 
-    method_ptr as usize as u64
+    method_ptr as usize as u64*/
+    0
 }
 
 pub extern "C" fn new_object(class_symbol: u64) -> u64 {
@@ -1102,9 +1101,10 @@ pub extern "C" fn get_static_function(context: &mut Runtime, class_symbol: u64, 
 
     let class_symbol = class_symbol as Symbol;
     let method_name = method_name as Symbol;
-    let method_ptr = context.get_static_method(class_symbol, method_name);
+    /*let method_ptr = context.get_static_method(class_symbol, method_name);
 
-    method_ptr as usize as u64
+    method_ptr as usize as u64*/
+    0
 }
 
 pub extern "C" fn get_static_member8(_context: &mut Runtime, class_symbol: u64, member_index: u64) -> u8 {

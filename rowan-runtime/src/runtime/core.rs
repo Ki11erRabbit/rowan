@@ -121,7 +121,7 @@ extern "C" fn object_downcast(context: &mut BytecodeContext, this: Reference, cl
     let object = this;
     let object = unsafe { object.as_mut().unwrap() };
     if object.class == class_index as Symbol {
-        Runtime::normal_return(context);
+        //Runtime::normal_return(context);
         this
     } else {
         for obj in object.parent_objects.iter() {
@@ -129,7 +129,7 @@ extern "C" fn object_downcast(context: &mut BytecodeContext, this: Reference, cl
                 return this;
             }
         }
-        Runtime::normal_return(context);
+        //Runtime::normal_return(context);
         std::ptr::null_mut()
     }
 }
@@ -161,17 +161,17 @@ pub fn generate_printer_class() -> VMClass {
 }
 
 
-extern "C" fn printer_println_int(context: &mut Runtime, _: Reference, int: u64) {
+extern "C" fn printer_println_int(context: &mut BytecodeContext, _: Reference, int: u64) {
     //println!("{}", int);
-    Runtime::normal_return(context);
+    //Runtime::normal_return(context);
 }
 
-extern "C" fn printer_println_float(context: &mut Runtime, _: Reference, float: f64) {
+extern "C" fn printer_println_float(context: &mut BytecodeContext, _: Reference, float: f64) {
     println!("{}", float);
-    Runtime::normal_return(context);
+    //Runtime::normal_return(context);
 }
 
-extern "C" fn printer_println(context: &mut Runtime, _: Reference, string: Reference) {
+extern "C" fn printer_println(context: &mut BytecodeContext, _: Reference, string: Reference) {
     let object = string;
     let object = unsafe { object.as_ref().unwrap() };
     let length = unsafe { object.get::<u64>(0) };
@@ -180,7 +180,7 @@ extern "C" fn printer_println(context: &mut Runtime, _: Reference, string: Refer
     let slice = unsafe { std::slice::from_raw_parts(pointer, length as usize) };
     let string = unsafe { std::str::from_utf8_unchecked(slice) };
     println!("{}", string);
-    Runtime::normal_return(context);
+    //Runtime::normal_return(context);
 }
 
 macro_rules! array_downcast_contents {
@@ -195,13 +195,13 @@ macro_rules! array_downcast_contents {
                 for i in 0..length as usize {
                     if object_downcast($context, *pointer.add(i), $class_symbol).is_null() {
 
-                        Runtime::normal_return($context);
+                        //Runtime::normal_return($context);
                         return std::ptr::null_mut();
                     }
                 }
             }
 
-            Runtime::normal_return($context);
+            //Runtime::normal_return($context);
             $this
         }
     };
@@ -270,7 +270,7 @@ macro_rules! array_create_init {
                 object.buffer = pointer as *mut u8;
 
                 object.custom_drop = Some([< array $variant _drop >]);
-                Runtime::normal_return(context);
+                //Runtime::normal_return(context);
             }
         }
     };
@@ -315,9 +315,9 @@ macro_rules! array_create_get {
                 let length = object.length;
                 let pointer = pointer as *mut $ty;
                 if index >= length {
-                    let exception = Context::new_object("IndexOutOfBounds");
+                    let exception = Runtime::new_object("IndexOutOfBounds");
                     out_of_bounds_init(context, exception, length, index);
-                    context.set_exception(exception);
+                    //context.set_exception(exception);
                     return 0 as $ty;
                 }
 
@@ -340,9 +340,9 @@ macro_rules! array_create_set {
                 let length = object.length;
                 let pointer = pointer as *mut $ty;
                 if index >= length {
-                    let exception = Context::new_object("IndexOutOfBounds");
+                    let exception = Runtime::new_object("IndexOutOfBounds");
                     out_of_bounds_init(context, exception, length, index);
-                    context.set_exception(exception);
+                    //context.set_exception(exception);
                     return;
                 }
                 unsafe { *pointer.add(index as usize) = value }
@@ -354,7 +354,7 @@ macro_rules! array_create_set {
 macro_rules! array_create_downcast {
     ($variant:expr, $fn_name:ident, $ty:ty) => {
         paste! {
-            pub extern "C" fn $fn_name(context: &mut Context, this: Reference, class_symbol: u64) -> Reference {
+            pub extern "C" fn $fn_name(context: &mut BytecodeContext, this: Reference, class_symbol: u64) -> Reference {
                 array_downcast_contents!($variant, $ty, context, this, class_symbol)
             }
         }
@@ -482,7 +482,7 @@ pub fn generate_exception_class() -> VMClass {
     VMClass::new("Exception", vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
-extern "C" fn exception_init(_: &Runtime, this: Reference, message: Reference) {
+extern "C" fn exception_init(_: &BytecodeContext, this: Reference, message: Reference) {
     use std::alloc::*;
     let object = this;
     let object = object as *mut Exception;
@@ -643,7 +643,7 @@ pub fn generate_index_out_of_bounds_class() -> VMClass {
     VMClass::new("IndexOutOfBounds", vec!["Exception"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
-extern "C" fn out_of_bounds_init(context: &mut Runtime, this: Reference, bounds: u64, index: u64) {
+extern "C" fn out_of_bounds_init(context: &mut BytecodeContext, this: Reference, bounds: u64, index: u64) {
     let object = this;
     let object = unsafe { object.as_mut().unwrap() };
 
@@ -674,7 +674,7 @@ pub fn generate_null_pointer_class() -> VMClass {
     VMClass::new("NullPointerException", vec!["Exception"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
-pub extern "C" fn null_pointer_init(context: &Runtime, this: Reference) {
+pub extern "C" fn null_pointer_init(context: &BytecodeContext, this: Reference) {
     let object = this;
     let object = unsafe { object.as_mut().unwrap() };
 
@@ -891,7 +891,7 @@ extern "C" fn string_is_char_boundary(context: &mut Runtime, this: Reference, in
     }
 }
 
-extern "C" fn string_as_bytes(context: &mut Runtime, this: Reference) -> Reference {
+extern "C" fn string_as_bytes(context: &mut BytecodeContext, this: Reference) -> Reference {
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
@@ -911,7 +911,7 @@ extern "C" fn string_as_bytes(context: &mut Runtime, this: Reference) -> Referen
             array_pointer.add(i as usize).write(*pointer.add(i as usize))
         }
     }
-    Runtime::normal_return(context);
+    //Runtime::normal_return(context);
     byte_array
 }
 
