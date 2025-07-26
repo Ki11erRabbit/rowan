@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use crate::context::BytecodeContext;
 use crate::runtime::core::Array;
 use super::{Runtime, Reference, Symbol};
 
@@ -160,7 +161,7 @@ impl Object {
         self.custom_drop = Some(func);
     }
     
-    pub fn get_internal<T: Sized + Default>(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> T {
+    pub fn get_internal<T: Sized + Default>(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> T {
         let object = this;
         let object = unsafe { object.as_ref().unwrap() };
 
@@ -186,7 +187,7 @@ impl Object {
 
         todo!("Throw exception saying invalid offset")
     }
-    fn get_internal_helper<T: Sized + Default>(context: &mut Runtime, this: Reference, class_symbol: u64, offset: u64) -> Option<T> {
+    fn get_internal_helper<T: Sized + Default>(context: &mut BytecodeContext, this: Reference, class_symbol: u64, offset: u64) -> Option<T> {
         let object = this;
         let object = unsafe { object.as_ref().unwrap() };
 
@@ -212,35 +213,35 @@ impl Object {
         None
     }
 
-    pub extern "C" fn get_8(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i8 {
+    pub extern "C" fn get_8(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> u8 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub extern "C" fn get_16(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i16 {
+    pub extern "C" fn get_16(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> u16 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub extern "C" fn get_32(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i32 {
+    pub extern "C" fn get_32(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> u32 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub extern "C" fn get_64(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i64 {
+    pub extern "C" fn get_64(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> u64 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub extern "C" fn get_object(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i64 {
+    pub extern "C" fn get_object(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> u64 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub extern "C" fn get_f32(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> f32 {
+    pub extern "C" fn get_f32(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> f32 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub extern "C" fn get_f64(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> f64 {
+    pub extern "C" fn get_f64(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> f64 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub fn set_internal<T: Sized + Default + Copy>(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: T) {
+    pub fn set_internal<T: Sized + Default + Copy>(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: T) {
         let object = this;
         let object = unsafe { object.as_mut().unwrap() };
 
@@ -267,7 +268,7 @@ impl Object {
 
         todo!("Throw exception saying invalid offset")
     }
-    fn set_internal_helper<T: Sized + Default + Copy>(context: &mut Runtime, this: Reference, class_symbol: u64, offset: u64, value: T) -> Option<()> {
+    fn set_internal_helper<T: Sized + Default + Copy>(context: &mut BytecodeContext, this: Reference, class_symbol: u64, offset: u64, value: T) -> Option<()> {
         let object = this;
         let object = unsafe { object.as_mut().unwrap() };
 
@@ -292,31 +293,31 @@ impl Object {
         None
     }
 
-    pub extern "C" fn set_8(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i8) {
+    pub extern "C" fn set_8(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: u8) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 
-    pub extern "C" fn set_16(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i16) {
+    pub extern "C" fn set_16(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: u16) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 
-    pub extern "C" fn set_32(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i32) {
+    pub extern "C" fn set_32(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: u32) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 
-    pub extern "C" fn set_64(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i64) {
+    pub extern "C" fn set_64(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: u64) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 
-    pub extern "C" fn set_object(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i64) {
+    pub extern "C" fn set_object(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: u64) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 
-    pub extern "C" fn set_f32(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: f32) {
+    pub extern "C" fn set_f32(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: f32) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 
-    pub extern "C" fn set_f64(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: f64) {
+    pub extern "C" fn set_f64(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: f64) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 

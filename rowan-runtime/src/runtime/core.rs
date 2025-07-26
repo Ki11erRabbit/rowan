@@ -270,6 +270,35 @@ macro_rules! array_create_init {
                 object.buffer = pointer as *mut u8;
 
                 object.custom_drop = Some([< array $variant _drop >]);
+                Runtime::normal_return(context);
+            }
+        }
+    };
+}
+
+macro_rules! array_create_init_internal {
+    ($variant:expr, $fn_name:ident, $ty:ty) => {
+        paste! {
+            pub fn $fn_name(context: &mut BytecodeContext, this: Reference, length: u64) {
+                use std::alloc::*;
+                let object = this;
+                let object = object as *mut Array;
+                let object = unsafe { object.as_mut().unwrap() };
+                object.length = length;
+                let layout = Layout::array::<$ty>(length as usize).expect("Wrong layout or too big");
+                let pointer = unsafe { alloc(layout) };
+                if pointer.is_null() {
+                    eprintln!("Out of memory");
+                    handle_alloc_error(layout);
+                }
+                unsafe {
+                    for i in 0..(length as usize * std::mem::size_of::<$ty>()) {
+                        std::ptr::write(pointer.add(i), 0);
+                    }
+                }
+                object.buffer = pointer as *mut u8;
+
+                object.custom_drop = Some([< array $variant _drop >]);
             }
         }
     };
@@ -359,6 +388,9 @@ macro_rules! create_array_class {
 
         paste!{
         array_create_init!($variant, [< array $variant _init >], $ty);
+        }
+        paste!{
+        array_create_init_internal!($variant, [< array $variant _init_internal >], $ty);
         }
 
         paste!{

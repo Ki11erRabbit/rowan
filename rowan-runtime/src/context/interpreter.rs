@@ -256,6 +256,7 @@ impl StackFrame {
 pub struct BytecodeContext {
     active_bytecodes: Vec<&'static [Bytecode]>,
     active_frames: Vec<StackFrame>,
+    current_exception: Reference,
 }
 
 
@@ -264,6 +265,7 @@ impl BytecodeContext {
         BytecodeContext {
             active_bytecodes: Vec::new(),
             active_frames: Vec::new(),
+            current_exception: std::ptr::null_mut(),
         }
     }
 
@@ -287,7 +289,17 @@ impl BytecodeContext {
         &mut self.active_frames[self.active_bytecodes.len() - 1]
     }
 
-    pub fn interpret(&mut self, bytecode: &Bytecode) {
+    /// This function will unwind the stack if needed when an exception is thrown.
+    /// The bool return dictates whether execution should continue or not.
+    /// `true` means that we can continue from a bytecode context.
+    /// `false` means that we can't continue from a bytecode context meaning that we have to unwind
+    /// to a function call to either continue unwinding or catch the exception.
+    pub fn handle_exception(&mut self) -> bool {
+        true
+    }
+
+    /// The bool return dictates whether execution should continue or not.
+    pub fn interpret(&mut self, bytecode: &Bytecode) -> bool {
         match bytecode {
             Bytecode::Nop => {}
             Bytecode::Breakpoint => {}
@@ -1396,25 +1408,25 @@ impl BytecodeContext {
                 };
                 let (class_name, init): (&str, fn(&mut BytecodeContext, Reference, u64)) = match tag {
                     TypeTag::U8 | TypeTag::I8 => {
-                        ("core::Array8", runtime::core::array8_init)
+                        ("core::Array8", runtime::core::array8_init_internal)
                     }
                     TypeTag::U16 | TypeTag::I16 => {
-                        ("core::Array16", runtime::core::array16_init)
+                        ("core::Array16", runtime::core::array16_init_internal)
                     }
                     TypeTag::U32 | TypeTag::I32 => {
-                        ("core::Array32", runtime::core::array32_init)
+                        ("core::Array32", runtime::core::array32_init_internal)
                     }
                     TypeTag::U64 | TypeTag::I64 => {
-                        ("core::Array64", runtime::core::array64_init)
+                        ("core::Array64", runtime::core::array64_init_internal)
                     }
                     TypeTag::F32 => {
-                        ("core::Arrayf32", runtime::core::arrayf32_init)
+                        ("core::Arrayf32", runtime::core::arrayf32_init_internal)
                     }
                     TypeTag::F64 => {
-                        ("core::Arrayf64", runtime::core::arrayf64_init)
+                        ("core::Arrayf64", runtime::core::arrayf64_init_internal)
                     }
                     TypeTag::Object => {
-                        ("core::Arrayobject", runtime::core::arrayobject_init)
+                        ("core::Arrayobject", runtime::core::arrayobject_init_internal)
                     }
                     _ => unreachable!("Invalid Type Tag")
                 };
@@ -1424,10 +1436,250 @@ impl BytecodeContext {
                 self.current_frame_mut().push(StackValue::Reference(object));
             }
             Bytecode::ArrayGet(tag) => {
-
+                let index = self.current_frame_mut().pop();
+                let index = match index {
+                    StackValue::Int64(index) => index,
+                    _ => todo!("report needing u64"),
+                };
+                let array = self.current_frame_mut().pop();
+                let array = match array {
+                    StackValue::Reference(object) => object,
+                    _ => todo!("report needing reference for index"),
+                };
+                match tag {
+                    TypeTag::U8 | TypeTag::I8 => {
+                        let value = runtime::core::array8_get(self, array, index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        self.current_frame_mut().push(StackValue::Int8(value));
+                    }
+                    TypeTag::U16 | TypeTag::I16 => {
+                        let value = runtime::core::array16_get(self, array, index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        self.current_frame_mut().push(StackValue::Int16(value));
+                    }
+                    TypeTag::U32 | TypeTag::I32 => {
+                        let value = runtime::core::array32_get(self, array, index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        self.current_frame_mut().push(StackValue::Int32(value));
+                    }
+                    TypeTag::U64 | TypeTag::I64 => {
+                        let value = runtime::core::array64_get(self, array, index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        self.current_frame_mut().push(StackValue::Int64(value));
+                    }
+                    TypeTag::F32 => {
+                        let value = runtime::core::arrayf32_get(self, array, index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        self.current_frame_mut().push(StackValue::Float32(value));
+                    }
+                    TypeTag::F64 => {
+                        let value = runtime::core::arrayf64_get(self, array, index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        self.current_frame_mut().push(StackValue::Float64(value));
+                    }
+                    TypeTag::Object => {
+                        let value = runtime::core::arrayobject_get(self, array, index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        let value = value as usize as Reference;
+                        self.current_frame_mut().push(StackValue::Reference(value));
+                    }
+                    _ => unreachable!("Invalid Type Tag"),
+                }
             }
+            Bytecode::ArraySet(tag) => {
+                let value = self.current_frame_mut().pop();
+                let index = self.current_frame_mut().pop();
+                let index = match index {
+                    StackValue::Int64(index) => index,
+                    _ => todo!("report needing u64"),
+                };
+                let array = self.current_frame_mut().pop();
+                let array = match array {
+                    StackValue::Reference(object) => object,
+                    _ => todo!("report needing reference for index"),
+                };
+                match (tag, value) {
+                    (TypeTag::U8, StackValue::Int8(value)) | (TypeTag::I8, StackValue::Int8(value)) => {
+                        runtime::core::array8_set(self, array, index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    (TypeTag::U16, StackValue::Int16(value)) | (TypeTag::I16, StackValue::Int16(value)) => {
+                        runtime::core::array16_set(self, array, index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    (TypeTag::U32, StackValue::Int32(value)) | (TypeTag::I32, StackValue::Int32(value)) => {
+                        runtime::core::array32_set(self, array, index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    (TypeTag::U64, StackValue::Int64(value)) | (TypeTag::I64, StackValue::Int64(value)) => {
+                        runtime::core::array64_set(self, array, index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    (TypeTag::F32, StackValue::Float32(value)) => {
+                        runtime::core::arrayf32_set(self, array, index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    (TypeTag::F64, StackValue::Float64(value)) => {
+                        runtime::core::arrayf64_set(self, array, index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    (TypeTag::Object, StackValue::Reference(value)) => {
+                        let value = value as usize as u64;
+                        runtime::core::arrayobject_set(self, array, index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    _ => unreachable!("Invalid Type Tag"),
+                }
+            }
+            Bytecode::NewObject(sym) => {
+                let object = Runtime::new_object(*sym as usize);
+                self.current_frame_mut().push(StackValue::Reference(object));
+            }
+            Bytecode::GetField(access, parent_name, index, tag) => {
+                let object = self.current_frame_mut().pop();
+                let object = match object {
+                    StackValue::Reference(object) => object,
+                    _ => todo!("report not accessing object correctly"),
+                };
 
+                match tag {
+                    TypeTag::U8 | TypeTag::I8 => {
+                        let value = Object::get_8(self, object, *access, *parent_name, *index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        self.current_frame_mut().push(StackValue::Int8(value));
+                    }
+                    TypeTag::U16 | TypeTag::I16 => {
+                        let value = Object::get_16(self, object, *access, *parent_name, *index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        self.current_frame_mut().push(StackValue::Int16(value));
+                    }
+                    TypeTag::U32 | TypeTag::I32 => {
+                        let value = Object::get_32(self, object, *access, *parent_name, *index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        self.current_frame_mut().push(StackValue::Int32(value));
+                    }
+                    TypeTag::U64 | TypeTag::I64 => {
+                        let value = Object::get_64(self, object, *access, *parent_name, *index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        self.current_frame_mut().push(StackValue::Int64(value));
+                    }
+                    TypeTag::F32 => {
+                        let value = Object::get_f32(self, object, *access, *parent_name, *index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        self.current_frame_mut().push(StackValue::Float32(value));
+                    }
+                    TypeTag::F64 => {
+                        let value = Object::get_f64(self, object, *access, *parent_name, *index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        self.current_frame_mut().push(StackValue::Float64(value));
+                    }
+                    TypeTag::Object => {
+                        let value = Object::get_object(self, object, *access, *parent_name, *index);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                        let value = value as usize as Reference;
+                        self.current_frame_mut().push(StackValue::Reference(value));
+                    }
+                    _ => unreachable!("Invalid Type Tag"),
+                }
+            }
+            Bytecode::SetField(access, parent_name, index, tag) => {
+                let value = self.current_frame_mut().pop();
+                let object = self.current_frame_mut().pop();
+                let object = match object {
+                    StackValue::Reference(object) => object,
+                    _ => todo!("report needing u64"),
+                };
+                match (tag, value) {
+                    (TypeTag::U8, StackValue::Int8(value)) | (TypeTag::I8, StackValue::Int8(value)) => {
+                        Object::set_8(self, object, *access, *parent_name, *index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    (TypeTag::U16, StackValue::Int16(value)) | (TypeTag::I16, StackValue::Int16(value)) => {
+                        Object::set_16(self, object, *access, *parent_name, *index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    (TypeTag::U32, StackValue::Int32(value)) | (TypeTag::I32, StackValue::Int32(value)) => {
+                        Object::set_32(self, object, *access, *parent_name, *index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    (TypeTag::U64, StackValue::Int64(value)) | (TypeTag::I64, StackValue::Int64(value)) => {
+                        Object::set_64(self, object, *access, *parent_name, *index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    (TypeTag::F32, StackValue::Float32(value)) => {
+                        Object::set_f32(self, object, *access, *parent_name, *index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    (TypeTag::F64, StackValue::Float64(value)) => {
+                        Object::set_f64(self, object, *access, *parent_name, *index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    (TypeTag::Object, StackValue::Reference(value)) => {
+                        let value = value as usize as u64;
+                        Object::set_object(self, object, *access, *parent_name, *index, value);
+                        if !self.handle_exception() {
+                            return false;
+                        }
+                    }
+                    _ => unreachable!("Invalid Type Tag"),
+                }
+            }
         }
+        true
     }
 
     pub extern "C" fn store_argument_int8(&mut self, index: u8, value: u8) {
