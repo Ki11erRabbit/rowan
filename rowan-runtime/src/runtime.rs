@@ -455,12 +455,9 @@ impl Runtime {
         source_class: Option<Symbol>,
         method_name: Symbol,
     ) -> FunctionDetails {
-
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
-
-
         let Ok(class_table) = CLASS_TABLE.read() else {
             panic!("Lock poisoned");
         };
@@ -502,6 +499,36 @@ impl Runtime {
 
         let vtable = &vtables_table[vtable_index];
         let function = vtable.get_function(method_name).expect("unable to find function");
+
+        function.create_details()
+    }
+
+    pub fn get_static_method_details(
+        class_symbol: Symbol,
+        method_name: Symbol,
+    ) -> FunctionDetails {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            unreachable!("Lock poisoned");
+        };
+
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            unreachable!("Lock poisoned");
+        };
+
+        let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol] else {
+            panic!("class wasn't a class");
+        };
+
+        let class = &class_table[class_index];
+
+        let vtable_index = class.static_methods;
+        let Ok(vtables_table) = VTABLES.read() else {
+            unreachable!("Lock poisoned");
+        };
+        drop(class_table);
+
+        let vtable = &vtables_table[vtable_index];
+        let function = vtable.get_function(method_name).expect("unable to get function");
 
         function.create_details()
     }

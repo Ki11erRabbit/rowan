@@ -250,6 +250,12 @@ impl StackFrame {
     pub fn is_for_bytecode(&self) -> bool {
         self.is_for_bytecode
     }
+
+    pub fn goto(&mut self, block_offset: usize) {
+        let next_block = self.current_block + block_offset;
+        let pc = self.block_positions[&next_block];
+        self.ip = pc;
+    }
 }
 
 
@@ -320,6 +326,57 @@ impl BytecodeContext {
             object.class,
             specified,
             origin,
+            method_name,
+        );
+
+        for pair in self.current_frame().call_args.iter().zip(details.arguments.iter()) {
+            match pair {
+                (StackValue::Int8(_), runtime::class::TypeTag::U8) |
+                (StackValue::Int8(_), runtime::class::TypeTag::I8) => {}
+                (StackValue::Int16(_), runtime::class::TypeTag::U16) |
+                (StackValue::Int16(_), runtime::class::TypeTag::I16) => {}
+                (StackValue::Int32(_), runtime::class::TypeTag::U32) |
+                (StackValue::Int32(_), runtime::class::TypeTag::I32) => {}
+                (StackValue::Int64(_), runtime::class::TypeTag::U64) |
+                (StackValue::Int64(_), runtime::class::TypeTag::I64) => {}
+                (StackValue::Float32(_), runtime::class::TypeTag::F32) => {}
+                (StackValue::Float64(_), runtime::class::TypeTag::F64) => {}
+                (StackValue::Reference(_), runtime::class::TypeTag::Object) => {}
+                _ => {
+                    todo!("report type error in typing")
+                }
+            }
+        }
+
+        self.push(details.bytecode, details.fn_ptr.is_none());
+
+        match details.fn_ptr {
+            Some(fn_ptr) => {
+                let mut return_value = StackValue::Blank;
+                call_function_pointer!(
+                    self,
+                    &self.current_frame_mut().variables,
+                    fn_ptr,
+                    details.return_type,
+                    &mut return_value
+                );
+            }
+            _ => {}
+        }
+
+        self.handle_exception()
+    }
+
+    /// The bool return dictates whether execution should continue or not.
+    /// `true` means that we can continue from a bytecode context.
+    /// `false` means that we can't continue from a bytecode context meaning that we have to unwind
+    pub fn invoke_static(
+        &mut self,
+        class_name: runtime::Symbol,
+        method_name: runtime::Symbol
+    ) -> bool {
+        let details = Runtime::get_static_method_details(
+            class_name,
             method_name,
         );
 
@@ -1773,6 +1830,69 @@ impl BytecodeContext {
             }
             Bytecode::InvokeVirtTail(..) => {
                 todo!("Tail Recursion Virtual")
+            }
+            Bytecode::InvokeStatic(class_name, method_name) => {
+                return self.invoke_static(
+                    *class_name as runtime::Symbol,
+                    *method_name as runtime::Symbol,
+                )
+            }
+            Bytecode::InvokeStaticTail(..) => {
+                todo!("Tail Recursion Static")
+            }
+            Bytecode::GetStaticMethod(..) => {
+                todo!("conversion of a static method into an object")
+            }
+            Bytecode::GetStaticMember(..) => {
+                todo!("access of static members")
+            }
+            Bytecode::SetStaticMember(..) => {
+                todo!("access of static members")
+            }
+            Bytecode::GetStrRef(sym) => {
+                self.current_frame_mut().push(StackValue::Int64(*sym));
+            }
+            Bytecode::Return => {
+                let value = self.current_frame_mut().pop();
+                self.pop();
+                self.current_frame_mut().push(value);
+            }
+            Bytecode::ReturnVoid => {
+                self.pop();
+            }
+            Bytecode::RegisterException(..) => {
+                todo!("registering of exceptions");
+            }
+            Bytecode::UnregisterException(..) => {
+                todo!("unregistering of exceptions");
+            }
+            Bytecode::Throw => {
+                let exception = self.current_frame_mut().pop();
+                let exception = match exception {
+                    StackValue::Reference(exception) => exception,
+                    _ => todo!("report exception needing to be an object"),
+                };
+                self.current_exception = exception;
+            }
+            Bytecode::StartBlock(_) => {}
+            Bytecode::Goto(offset) => {
+                self.current_frame_mut().goto(*offset as usize);
+            }
+            Bytecode::If(then_offset, else_offset) => {
+                let value = self.current_frame_mut().pop();
+                let boolean = match value {
+                    StackValue::Int8(v) => v,
+                    _ => todo!("report invalid type for boolean"),
+                };
+
+                if boolean != 0 {
+                    self.current_frame_mut().goto(*then_offset as usize);
+                } else {
+                    self.current_frame_mut().goto(*else_offset as usize);
+                }
+            }
+            Bytecode::Switch(..) => {
+                todo!("switching conditional");
             }
         }
         true
