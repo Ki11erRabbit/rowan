@@ -1,5 +1,5 @@
 use std::ffi::{c_char, CStr};
-use crate::runtime::{Context, Reference};
+use crate::runtime::{Runtime, Reference};
 use crate::runtime::core::{string_from_str, string_initialize};
 
 /// This function constructs an object from a given class name from a CStr.
@@ -9,7 +9,7 @@ use crate::runtime::core::{string_from_str, string_initialize};
 pub extern "C" fn rowan_create_object(class_name: *const c_char) -> Reference {
     let class_name = unsafe { CStr::from_ptr(class_name) };
     let name = class_name.to_string_lossy();
-    Context::new_object(name.as_ref())
+    Runtime::new_object(name.as_ref())
 }
 
 /// This function is a convenience function to allow for quickly making strings from a CStr.
@@ -17,7 +17,7 @@ pub extern "C" fn rowan_create_object(class_name: *const c_char) -> Reference {
 /// Returns a valid reference to a string object
 #[unsafe(no_mangle)]
 pub extern "C" fn rowan_create_string(string_contents: *const c_char) -> Reference {
-    let string = Context::new_object("core::String");
+    let string = Runtime::new_object("core::String");
     let string_contents = unsafe { CStr::from_ptr(string_contents) };
     let contents = string_contents.to_string_lossy();
     string_from_str(string, contents.as_ref());
@@ -28,7 +28,7 @@ pub extern "C" fn rowan_create_string(string_contents: *const c_char) -> Referen
 /// Returns a valid reference to a string object
 #[unsafe(no_mangle)]
 pub extern "C" fn rowan_create_empty_string() -> Reference {
-    let string = Context::new_object("core::String");
+    let string = Runtime::new_object("core::String");
     string_initialize(string);
     string
 }
@@ -41,7 +41,7 @@ pub extern "C" fn rowan_create_empty_string() -> Reference {
 /// Returns a pointer to a function. It is up to the caller to cast it correctly
 #[unsafe(no_mangle)]
 pub extern "C" fn rowan_get_virtual_function(
-    context: &mut Context,
+    context: &mut Runtime,
     object: Reference,
     class: *const c_char,
     source_class: *const c_char,
@@ -73,7 +73,7 @@ pub extern "C" fn rowan_get_virtual_function(
 /// Returns a pointer to a function. It is up to the caller to cast it correctly
 #[unsafe(no_mangle)]
 pub extern "C" fn rowan_get_static_function(
-    context: &mut Context,
+    context: &mut Runtime,
     class: *const c_char,
     method_name: *const c_char,
 ) -> *const () {
@@ -86,11 +86,11 @@ pub extern "C" fn rowan_get_static_function(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rowan_set_exception(context: &mut Context, exception: Reference) {
+pub extern "C" fn rowan_set_exception(context: &mut Runtime, exception: Reference) {
     context.set_exception(exception);
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rowan_normal_return(context: &mut Context) {
-    Context::normal_return(context);
+pub extern "C" fn rowan_normal_return(context: &mut Runtime) {
+    Runtime::normal_return(context);
 }

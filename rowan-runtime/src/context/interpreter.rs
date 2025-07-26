@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use paste::paste;
 use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
-use crate::runtime::Reference;
+use crate::runtime;
+use crate::runtime::{Reference, Runtime};
+use crate::runtime::object::Object;
 
 #[derive(Clone, Copy)]
 pub enum StackValue {
@@ -1385,6 +1387,44 @@ impl BytecodeContext {
                     }
                     _ => unreachable!("Invalid Type Tag")
                 }
+            }
+            Bytecode::CreateArray(tag) => {
+                let size = self.current_frame_mut().pop();
+                let size = match size {
+                    StackValue::Int64(size) => size,
+                    _ => todo!("report needing u64 for array alloc"),
+                };
+                let (class_name, init): (&str, fn(&mut BytecodeContext, Reference, u64)) = match tag {
+                    TypeTag::U8 | TypeTag::I8 => {
+                        ("core::Array8", runtime::core::array8_init)
+                    }
+                    TypeTag::U16 | TypeTag::I16 => {
+                        ("core::Array16", runtime::core::array16_init)
+                    }
+                    TypeTag::U32 | TypeTag::I32 => {
+                        ("core::Array32", runtime::core::array32_init)
+                    }
+                    TypeTag::U64 | TypeTag::I64 => {
+                        ("core::Array64", runtime::core::array64_init)
+                    }
+                    TypeTag::F32 => {
+                        ("core::Arrayf32", runtime::core::arrayf32_init)
+                    }
+                    TypeTag::F64 => {
+                        ("core::Arrayf64", runtime::core::arrayf64_init)
+                    }
+                    TypeTag::Object => {
+                        ("core::Arrayobject", runtime::core::arrayobject_init)
+                    }
+                    _ => unreachable!("Invalid Type Tag")
+                };
+                // TODO: add call to stack so that it can record the backtrace correctly
+                let object = Runtime::new_object(class_name);
+                init(self, object, size);
+                self.current_frame_mut().push(StackValue::Reference(object));
+            }
+            Bytecode::ArrayGet(tag) => {
+
             }
 
         }

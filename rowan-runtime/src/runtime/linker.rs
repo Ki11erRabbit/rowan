@@ -8,7 +8,7 @@ use crate::runtime::class::{ClassMember, ClassMemberData};
 use crate::runtime::jit::JITCompiler;
 use crate::runtime::object::Object;
 use crate::runtime::tables::native_object_table::NativeObjectTable;
-use super::{class::{self, Class, MemberInfo}, jit::JITController, core::{VMClass, VMMember, VMMethod, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Context, Symbol, VTableIndex};
+use super::{class::{self, Class, MemberInfo}, jit::JITController, core::{VMClass, VMMember, VMMethod, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Runtime, Symbol, VTableIndex};
 
 #[derive(Debug)]
 pub enum TableEntry<T> {
@@ -655,11 +655,11 @@ pub fn link_class_files(
                 let cranelift_sig = jit_controller.create_signature(&[], &TypeTag::Void);
                 let func_id = jit_controller.declare_function(format!("{class_name_str}::static-init").as_str(), &cranelift_sig).expect("Failed to declare function");
                 let static_init = jit_compiler.compile_bytecode(&bytecode, &mut jit_controller.module, func_id).unwrap();
-                let static_init = unsafe { std::mem::transmute::<_, fn(&mut Context)>(static_init) };
+                let static_init = unsafe { std::mem::transmute::<_, fn(&mut Runtime)>(static_init) };
 
                 static_init
             } else {
-                |_: &mut Context| {}
+                |_: &mut Runtime| {}
             };
 
 

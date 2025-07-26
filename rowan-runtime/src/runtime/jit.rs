@@ -8,7 +8,7 @@ use cranelift_module::{FuncId, FuncOrDataId, Linkage, Module, ModuleError, Modul
 use rowan_shared::bytecode::linked::Bytecode;
 
 use rowan_shared::TypeTag;
-use super::{tables::vtable::{Function, FunctionValue}, Context, Symbol};
+use super::{tables::vtable::{Function, FunctionValue}, Runtime, Symbol};
 use cranelift::codegen::ir::BlockArg;
 use cranelift_codegen::gimli::{Encoding, Format, LittleEndian, Register, RunTimeEndian};
 use cranelift_codegen::gimli::write::{Address, CommonInformationEntry, Dwarf, EhFrame, EndianVec, FrameTable, Range, RangeList, Sections, Writer};
@@ -58,8 +58,8 @@ impl Default for JITController {
         builder.symbol("arrayf64_init", super::core::arrayf64_init as *const u8);
         builder.symbol("arrayf64_set", super::core::arrayf64_set as *const u8);
         builder.symbol("arrayf64_get", super::core::arrayf64_get as *const u8);
-        builder.symbol("context_should_unwind", Context::should_unwind as *const u8);
-        builder.symbol("context_normal_return", Context::normal_return as *const u8);
+        builder.symbol("context_should_unwind", Runtime::should_unwind as *const u8);
+        builder.symbol("context_normal_return", Runtime::normal_return as *const u8);
         builder.symbol("member8_get", super::object::Object::get_8 as *const u8);
         builder.symbol("member16_get", super::object::Object::get_16 as *const u8);
         builder.symbol("member32_get", super::object::Object::get_32 as *const u8);
@@ -946,25 +946,25 @@ impl FunctionTranslator<'_> {
 
                     let array_symbol = match tag {
                         TypeTag::U8 | TypeTag::I8 => {
-                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Array8") as i64)
+                            self.builder.ins().iconst(ir::types::I64, Runtime::get_class_symbol("Array8") as i64)
                         }
                         TypeTag::U16 | TypeTag::I16 => {
-                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Array16") as i64)
+                            self.builder.ins().iconst(ir::types::I64, Runtime::get_class_symbol("Array16") as i64)
                         }
                         TypeTag::U32 | TypeTag::I32 => {
-                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Array32") as i64)
+                            self.builder.ins().iconst(ir::types::I64, Runtime::get_class_symbol("Array32") as i64)
                         }
                         TypeTag::U64 | TypeTag::I64 => {
-                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Array64") as i64)
+                            self.builder.ins().iconst(ir::types::I64, Runtime::get_class_symbol("Array64") as i64)
                         }
                         TypeTag::Object | TypeTag::Str | TypeTag::Void => {
-                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Arrayobject") as i64)
+                            self.builder.ins().iconst(ir::types::I64, Runtime::get_class_symbol("Arrayobject") as i64)
                         }
                         TypeTag::F32 => {
-                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Arrayf32") as i64)
+                            self.builder.ins().iconst(ir::types::I64, Runtime::get_class_symbol("Arrayf32") as i64)
                         }
                         TypeTag::F64 => {
-                            self.builder.ins().iconst(ir::types::I64, Context::get_class_symbol("Arrayf64") as i64)
+                            self.builder.ins().iconst(ir::types::I64, Runtime::get_class_symbol("Arrayf64") as i64)
                         }
                         TypeTag::Native => unreachable!("Native Type not ABI compatible"),
                     };
@@ -1306,7 +1306,7 @@ impl FunctionTranslator<'_> {
                     let get_virt_func_func = module.declare_func_in_func(fn_id, self.builder.func);
 
                     //println!("[translate] class_name from invoke virt: {}", class_name);
-                    let (sig, is_object) = Context::get_method_signature(*class_name as Symbol, *method_name as Symbol);
+                    let (sig, is_object) = Runtime::get_method_signature(*class_name as Symbol, *method_name as Symbol);
                     
                     let class_name_value = self.builder
                         .ins()
@@ -1373,7 +1373,7 @@ impl FunctionTranslator<'_> {
 
                     let get_static_func_func = module.declare_func_in_func(fn_id, self.builder.func);
 
-                    let (sig, is_object) = Context::get_static_method_signature(*class_name as Symbol, *method_name as Symbol);
+                    let (sig, is_object) = Runtime::get_static_method_signature(*class_name as Symbol, *method_name as Symbol);
 
                     let class_name_value = self.builder
                         .ins()

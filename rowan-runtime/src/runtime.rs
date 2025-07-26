@@ -105,13 +105,13 @@ trait MakeObject<N> {
     fn new_object(&self, class_name: N) -> Reference;
 }
 
-struct ContextHelper;
+struct RuntimeHelper;
 
-impl MakeObject<Symbol> for ContextHelper {
+impl MakeObject<Symbol> for RuntimeHelper {
 
     #[inline]
     fn make_self() -> Self {
-        ContextHelper
+        RuntimeHelper
     }
 
     #[inline]
@@ -132,7 +132,7 @@ impl MakeObject<Symbol> for ContextHelper {
         let mut parents = Vec::new();
 
         for parent in parent_objects.iter() {
-            parents.push(Context::new_object(*parent));
+            parents.push(Runtime::new_object(*parent));
         }
 
         let data_size = class.get_member_size();
@@ -148,11 +148,11 @@ impl MakeObject<Symbol> for ContextHelper {
     }
 }
 
-impl MakeObject<&str> for ContextHelper {
+impl MakeObject<&str> for RuntimeHelper {
 
     #[inline]
     fn make_self() -> Self {
-        ContextHelper
+        RuntimeHelper
     }
 
     #[inline]
@@ -177,7 +177,7 @@ impl MakeObject<&str> for ContextHelper {
         let mut parents = Vec::new();
 
         for parent in parent_objects.iter() {
-            parents.push(Context::new_object(*parent));
+            parents.push(Runtime::new_object(*parent));
         }
 
         let data_size = class.get_member_size();
@@ -217,7 +217,7 @@ impl MethodName {
     }
 }
 
-pub struct Context {
+pub struct Runtime {
     /// The reference to the current exception
     /// If the reference is non-zero then we should unwind until we hit a registered exception
     pub current_exception: RefCell<Reference>,
@@ -231,9 +231,9 @@ pub struct Context {
     sender: Sender<HashSet<WrappedReference>>,
 }
 
-impl Context {
+impl Runtime {
     pub fn new(sender: Sender<HashSet<WrappedReference>>) -> Self {
-        Context {
+        Runtime {
             current_exception: RefCell::new(std::ptr::null_mut()),
             function_backtrace: Vec::new(),
             registered_exceptions: HashMap::new(),
@@ -333,7 +333,7 @@ impl Context {
         let Ok(mut vtable_tables) = VTABLES.write() else {
             panic!("Lock poisoned");
         };
-        let mut jit_compiler = Context::create_jit_compiler();
+        let mut jit_compiler = Runtime::create_jit_compiler();
         let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
             panic!("Lock poisoned");
         };
@@ -430,7 +430,7 @@ impl Context {
         drop(class_table);
         for function in init_functions {
             let (sender, _) = std::sync::mpsc::channel();
-            let mut context = Context::new(sender);
+            let mut context = Runtime::new(sender);
             function(&mut context);
             if !context.current_exception.borrow().is_null() {
                 println!("Failed to initialize class static members");
@@ -520,7 +520,7 @@ impl Context {
             FunctionValue::Native(ptr) => *ptr,
             _ => {
                 drop(value);
-                let mut compiler = Context::create_jit_compiler();
+                let mut compiler = Runtime::create_jit_compiler();
                 let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
                     panic!("Lock poisoned");
                 };
@@ -593,7 +593,7 @@ impl Context {
             FunctionValue::Compiled(ptr, _) => *ptr,
             _ => {
                 drop(value);
-                let mut compiler = Context::create_jit_compiler();
+                let mut compiler = Runtime::create_jit_compiler();
                 let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
                     unreachable!("Lock poisoned");
                 };
@@ -693,8 +693,8 @@ impl Context {
 
     pub fn new_object<N>(class_name: N) -> Reference
     where
-        ContextHelper: MakeObject<N> {
-        let creator = ContextHelper::make_self();
+        RuntimeHelper: MakeObject<N> {
+        let creator = RuntimeHelper::make_self();
         creator.new_object(class_name)
     }
 
@@ -988,7 +988,7 @@ impl Context {
 }
 
 
-pub extern "C" fn get_virtual_function(context: &mut Context, object: Reference, class_symbol: u64, source_class: i64, method_name: u64) -> u64 {
+pub extern "C" fn get_virtual_function(context: &mut Runtime, object: Reference, class_symbol: u64, source_class: i64, method_name: u64) -> u64 {
     context.check_and_do_garbage_collection();
 
     let object = unsafe {object.as_mut().unwrap()};
@@ -1008,11 +1008,11 @@ pub extern "C" fn get_virtual_function(context: &mut Context, object: Reference,
 
 pub extern "C" fn new_object(class_symbol: u64) -> u64 {
     let class_symbol = class_symbol as Symbol;
-    let object = Context::new_object(class_symbol);
+    let object = Runtime::new_object(class_symbol);
     object as usize as u64
 }
 
-pub extern "C" fn get_static_function(context: &mut Context, class_symbol: u64, method_name: u64) -> u64 {
+pub extern "C" fn get_static_function(context: &mut Runtime, class_symbol: u64, method_name: u64) -> u64 {
     context.check_and_do_garbage_collection();
 
     let class_symbol = class_symbol as Symbol;
@@ -1022,7 +1022,7 @@ pub extern "C" fn get_static_function(context: &mut Context, class_symbol: u64, 
     method_ptr as usize as u64
 }
 
-pub extern "C" fn get_static_member8(_context: &mut Context, class_symbol: u64, member_index: u64) -> u8 {
+pub extern "C" fn get_static_member8(_context: &mut Runtime, class_symbol: u64, member_index: u64) -> u8 {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };
@@ -1040,7 +1040,7 @@ pub extern "C" fn get_static_member8(_context: &mut Context, class_symbol: u64, 
     }
 }
 
-pub extern "C" fn get_static_member16(_context: &mut Context, class_symbol: u64, member_index: u64) -> u16 {
+pub extern "C" fn get_static_member16(_context: &mut Runtime, class_symbol: u64, member_index: u64) -> u16 {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };
@@ -1058,7 +1058,7 @@ pub extern "C" fn get_static_member16(_context: &mut Context, class_symbol: u64,
     }
 }
 
-pub extern "C" fn get_static_member32(_context: &mut Context, class_symbol: u64, member_index: u64) -> u32 {
+pub extern "C" fn get_static_member32(_context: &mut Runtime, class_symbol: u64, member_index: u64) -> u32 {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };
@@ -1076,7 +1076,7 @@ pub extern "C" fn get_static_member32(_context: &mut Context, class_symbol: u64,
     }
 }
 
-pub extern "C" fn get_static_member64(_context: &mut Context, class_symbol: u64, member_index: u64) -> u64 {
+pub extern "C" fn get_static_member64(_context: &mut Runtime, class_symbol: u64, member_index: u64) -> u64 {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };
@@ -1094,7 +1094,7 @@ pub extern "C" fn get_static_member64(_context: &mut Context, class_symbol: u64,
     }
 }
 
-pub extern "C" fn get_static_memberf32(_context: &mut Context, class_symbol: u64, member_index: u64) -> f32 {
+pub extern "C" fn get_static_memberf32(_context: &mut Runtime, class_symbol: u64, member_index: u64) -> f32 {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };
@@ -1112,7 +1112,7 @@ pub extern "C" fn get_static_memberf32(_context: &mut Context, class_symbol: u64
     }
 }
 
-pub extern "C" fn get_static_memberf64(_context: &mut Context, class_symbol: u64, member_index: u64) -> f64 {
+pub extern "C" fn get_static_memberf64(_context: &mut Runtime, class_symbol: u64, member_index: u64) -> f64 {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };
@@ -1130,7 +1130,7 @@ pub extern "C" fn get_static_memberf64(_context: &mut Context, class_symbol: u64
     }
 }
 
-pub extern "C" fn get_static_memberobject(_context: &mut Context, class_symbol: u64, member_index: u64) -> u64 {
+pub extern "C" fn get_static_memberobject(_context: &mut Runtime, class_symbol: u64, member_index: u64) -> u64 {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };
@@ -1148,7 +1148,7 @@ pub extern "C" fn get_static_memberobject(_context: &mut Context, class_symbol: 
     }
 }
 
-pub extern "C" fn set_static_member8(_context: &mut Context, class_symbol: u64, member_index: u64, value: u8) {
+pub extern "C" fn set_static_member8(_context: &mut Runtime, class_symbol: u64, member_index: u64, value: u8) {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };
@@ -1166,7 +1166,7 @@ pub extern "C" fn set_static_member8(_context: &mut Context, class_symbol: u64, 
     }
 }
 
-pub extern "C" fn set_static_member16(_context: &mut Context, class_symbol: u64, member_index: u64, value: u16) {
+pub extern "C" fn set_static_member16(_context: &mut Runtime, class_symbol: u64, member_index: u64, value: u16) {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };
@@ -1184,7 +1184,7 @@ pub extern "C" fn set_static_member16(_context: &mut Context, class_symbol: u64,
     }
 }
 
-pub extern "C" fn set_static_member32(_context: &mut Context, class_symbol: u64, member_index: u64, value: u32) {
+pub extern "C" fn set_static_member32(_context: &mut Runtime, class_symbol: u64, member_index: u64, value: u32) {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };
@@ -1202,7 +1202,7 @@ pub extern "C" fn set_static_member32(_context: &mut Context, class_symbol: u64,
     }
 }
 
-pub extern "C" fn set_static_member64(_context: &mut Context, class_symbol: u64, member_index: u64, value: u64) {
+pub extern "C" fn set_static_member64(_context: &mut Runtime, class_symbol: u64, member_index: u64, value: u64) {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };
@@ -1220,7 +1220,7 @@ pub extern "C" fn set_static_member64(_context: &mut Context, class_symbol: u64,
     }
 }
 
-pub extern "C" fn set_static_memberf32(_context: &mut Context, class_symbol: u64, member_index: u64, value: f32) {
+pub extern "C" fn set_static_memberf32(_context: &mut Runtime, class_symbol: u64, member_index: u64, value: f32) {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };
@@ -1238,7 +1238,7 @@ pub extern "C" fn set_static_memberf32(_context: &mut Context, class_symbol: u64
     }
 }
 
-pub extern "C" fn set_static_memberf64(_context: &mut Context, class_symbol: u64, member_index: u64, value: f64) {
+pub extern "C" fn set_static_memberf64(_context: &mut Runtime, class_symbol: u64, member_index: u64, value: f64) {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };
@@ -1256,7 +1256,7 @@ pub extern "C" fn set_static_memberf64(_context: &mut Context, class_symbol: u64
     }
 }
 
-pub extern "C" fn set_static_memberobject(_context: &mut Context, class_symbol: u64, member_index: u64, value: u64) {
+pub extern "C" fn set_static_memberobject(_context: &mut Runtime, class_symbol: u64, member_index: u64, value: u64) {
     let Ok(symbol_table) = SYMBOL_TABLE.read() else {
         panic!("Lock poisoned");
     };

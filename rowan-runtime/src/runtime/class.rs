@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::runtime::object::Object;
-use super::{Context, Reference, Symbol, VTableIndex};
+use super::{Runtime, Reference, Symbol, VTableIndex};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum TypeTag {
@@ -66,7 +66,7 @@ pub struct Class {
     pub members: Vec<MemberInfo>,
     pub static_methods: VTableIndex,
     pub class_members: Vec<ClassMember>,
-    pub init_function: fn(&mut Context),
+    pub init_function: fn(&mut Runtime),
     pub drop_function: Option<extern "C" fn(&mut Object)>,
 }
 
@@ -78,7 +78,7 @@ impl Class {
         members: Vec<MemberInfo>,
         static_methods: VTableIndex,
         class_members: Vec<ClassMember>,
-        init_function: fn(&mut Context),
+        init_function: fn(&mut Runtime),
         drop_function: Option<extern "C" fn(&mut Object)>,
 
     ) -> Self {

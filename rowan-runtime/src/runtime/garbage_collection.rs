@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread::yield_now;
 use crate::fake_lock::FakeLock;
-use crate::runtime::{Context, Reference, WrappedReference, DO_GARBAGE_COLLECTION, THREAD_COUNT};
+use crate::runtime::{Runtime, Reference, WrappedReference, DO_GARBAGE_COLLECTION, THREAD_COUNT};
 
 pub static GC_SENDER: LazyLock<FakeLock<Option<Sender<HashSet<WrappedReference>>>>> = LazyLock::new(|| {
     FakeLock::new(None)
@@ -48,7 +48,7 @@ impl GarbageCollection {
                         Ok(live_objects) => {
                             //println!("Received live objects: {live_objects:?}");
                             for live_object in live_objects.iter() {
-                                Context::gc_explore_object(live_object.0, &mut self.live_objects);
+                                Runtime::gc_explore_object(live_object.0, &mut self.live_objects);
                                 self.live_objects.insert(live_object.0);
                             }
                             thread_count -= 1;
@@ -62,7 +62,7 @@ impl GarbageCollection {
                     }
                 }
 
-                Context::gc_collect_garbage(&self.live_objects);
+                Runtime::gc_collect_garbage(&self.live_objects);
                 self.live_objects.clear();
 
                 start = std::time::Instant::now();

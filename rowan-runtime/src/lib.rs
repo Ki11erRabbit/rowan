@@ -1,7 +1,7 @@
 use std::{collections::HashMap, io::Read};
 use std::path::PathBuf;
 use rowan_shared::classfile::ClassFile;
-use runtime::{core, Context};
+use runtime::{core, Runtime};
 use crate::runtime::Reference;
 use crate::runtime::core::exception_print_stack_trace;
 use crate::runtime::garbage_collection::{GarbageCollection, GC_SENDER};
@@ -60,14 +60,14 @@ pub extern "C" fn rowan_main() {
     let mut pre_class_table = Vec::new();
     let mut vtables_map = HashMap::new();
 
-    Context::link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map);
+    Runtime::link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map);
 
 
-    let (main_symbol, main_method_symbol) = Context::link_classes(classes, paths, &mut pre_class_table, &mut vtables_map);
+    let (main_symbol, main_method_symbol) = Runtime::link_classes(classes, paths, &mut pre_class_table, &mut vtables_map);
 
     //println!("String Map: {string_map:#?}");
 
-    Context::finish_linking_classes(pre_class_table);
+    Runtime::finish_linking_classes(pre_class_table);
     //println!("String Map: {string_map:#?}");
     let mut gc = GarbageCollection::new();
     std::thread::Builder::new().name("Garbage Collection".to_owned())
@@ -76,13 +76,13 @@ pub extern "C" fn rowan_main() {
         }).expect("Thread 'new' panicked at 'Garbage Collection'");
 
     let sender = unsafe { GC_SENDER.read().clone().unwrap() };
-    let mut context = Context::new(sender);
+    let mut context = Runtime::new(sender);
 
     //println!("main_symbol: {}, main_method_symbol: {}", main_symbol, main_method_symbol);
 
     let method = context.get_static_method(main_symbol, main_method_symbol);
 
-    let method = unsafe { std::mem::transmute::<_, fn(&mut Context, u64)>(method) };
+    let method = unsafe { std::mem::transmute::<_, fn(&mut Runtime, u64)>(method) };
 
     method(&mut context, 0);
     if !context.current_exception.borrow().is_null() {

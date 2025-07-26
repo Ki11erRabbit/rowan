@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use crate::runtime::core::Array;
-use super::{Context, Reference, Symbol};
+use super::{Runtime, Reference, Symbol};
 
 
 
@@ -105,7 +105,7 @@ impl Object {
     }
     
     pub fn get_safe<T: Sized>(&self, mut offset: usize) -> Option<T> {
-        let class = Context::get_class(self.class);
+        let class = Runtime::get_class(self.class);
         let class = unsafe { class.as_ref()? };
         let mut pointer_offset = 0;
         for field in class.members.iter() {
@@ -129,7 +129,7 @@ impl Object {
     }
 
     pub fn set_safe<T: Sized>(&mut self, mut offset: usize, value: T) -> Option<()> {
-        let class = Context::get_class(self.class);
+        let class = Runtime::get_class(self.class);
         let class = unsafe { class.as_ref().unwrap() };
         let mut pointer_offset = 0;
         for field in class.members.iter() {
@@ -160,7 +160,7 @@ impl Object {
         self.custom_drop = Some(func);
     }
     
-    pub fn get_internal<T: Sized + Default>(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> T {
+    pub fn get_internal<T: Sized + Default>(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> T {
         let object = this;
         let object = unsafe { object.as_ref().unwrap() };
 
@@ -186,7 +186,7 @@ impl Object {
 
         todo!("Throw exception saying invalid offset")
     }
-    fn get_internal_helper<T: Sized + Default>(context: &mut Context, this: Reference, class_symbol: u64, offset: u64) -> Option<T> {
+    fn get_internal_helper<T: Sized + Default>(context: &mut Runtime, this: Reference, class_symbol: u64, offset: u64) -> Option<T> {
         let object = this;
         let object = unsafe { object.as_ref().unwrap() };
 
@@ -212,35 +212,35 @@ impl Object {
         None
     }
 
-    pub extern "C" fn get_8(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i8 {
+    pub extern "C" fn get_8(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i8 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub extern "C" fn get_16(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i16 {
+    pub extern "C" fn get_16(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i16 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub extern "C" fn get_32(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i32 {
+    pub extern "C" fn get_32(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i32 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub extern "C" fn get_64(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i64 {
+    pub extern "C" fn get_64(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i64 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub extern "C" fn get_object(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i64 {
+    pub extern "C" fn get_object(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> i64 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub extern "C" fn get_f32(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> f32 {
+    pub extern "C" fn get_f32(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> f32 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub extern "C" fn get_f64(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> f64 {
+    pub extern "C" fn get_f64(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> f64 {
         Self::get_internal(context, this, class_symbol, parent_symbol, offset)
     }
 
-    pub fn set_internal<T: Sized + Default + Copy>(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: T) {
+    pub fn set_internal<T: Sized + Default + Copy>(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: T) {
         let object = this;
         let object = unsafe { object.as_mut().unwrap() };
 
@@ -267,7 +267,7 @@ impl Object {
 
         todo!("Throw exception saying invalid offset")
     }
-    fn set_internal_helper<T: Sized + Default + Copy>(context: &mut Context, this: Reference, class_symbol: u64, offset: u64, value: T) -> Option<()> {
+    fn set_internal_helper<T: Sized + Default + Copy>(context: &mut Runtime, this: Reference, class_symbol: u64, offset: u64, value: T) -> Option<()> {
         let object = this;
         let object = unsafe { object.as_mut().unwrap() };
 
@@ -292,31 +292,31 @@ impl Object {
         None
     }
 
-    pub extern "C" fn set_8(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i8) {
+    pub extern "C" fn set_8(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i8) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 
-    pub extern "C" fn set_16(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i16) {
+    pub extern "C" fn set_16(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i16) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 
-    pub extern "C" fn set_32(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i32) {
+    pub extern "C" fn set_32(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i32) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 
-    pub extern "C" fn set_64(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i64) {
+    pub extern "C" fn set_64(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i64) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 
-    pub extern "C" fn set_object(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i64) {
+    pub extern "C" fn set_object(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: i64) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 
-    pub extern "C" fn set_f32(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: f32) {
+    pub extern "C" fn set_f32(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: f32) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 
-    pub extern "C" fn set_f64(context: &mut Context, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: f64) {
+    pub extern "C" fn set_f64(context: &mut Runtime, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: f64) {
         Self::set_internal(context, this, class_symbol, parent_symbol, offset, value);
     }
 
@@ -328,7 +328,7 @@ impl Object {
             live_objects.insert(*parent);
             Self::garbage_collect(*parent, live_objects);
         }
-        let class = Context::get_class(object.class);
+        let class = Runtime::get_class(object.class);
         let class = unsafe { class.as_ref().unwrap() };
         let live_objects_indices = class.get_object_member_indices();
         for index in live_objects_indices {
@@ -336,7 +336,7 @@ impl Object {
             Self::garbage_collect(result, live_objects);
         }
 
-        let array_object = Context::get_class_symbol("core::Arrayobject");
+        let array_object = Runtime::get_class_symbol("core::Arrayobject");
         if array_object == object.class {
             let object_ptr = object_ptr as *mut Array;
             let object = unsafe { object_ptr.as_ref().unwrap() };

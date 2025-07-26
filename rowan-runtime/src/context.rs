@@ -1,2 +1,3 @@
 mod interpreter;
-mod runtime_context;
+
+pub use interpreter::BytecodeContext;
