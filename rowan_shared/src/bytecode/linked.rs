@@ -154,12 +154,12 @@ pub enum Bytecode {
     /// Check if an object is of a specified class
     IsA(Symbol),
     /// Invoke a virtual method on an object of the specified class
-    /// The StringIndices are class names. The two class names allow for calling super methods as well
+    /// The Symbols are class names. The two class names allow for calling super methods as well
     /// as overridden super methods
     /// The third Symbol is the method name
     InvokeVirt(Symbol, Option<Symbol>, Symbol),
     /// Invoke a virtual method on an object of the specified class
-    /// The StringIndices are class names. The two class names allow for calling super methods as well
+    /// The Symbols are class names. The two class names allow for calling super methods as well
     /// as overridden super methods
     /// The third Symbol is the method name
     /// This is for tail recursion

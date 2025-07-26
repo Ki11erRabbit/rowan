@@ -30,6 +30,7 @@ pub mod garbage_collection;
 use crate::runtime::core::{exception_fill_in_stack_trace, exception_print_stack_trace};
 use crate::runtime::garbage_collection::GC_SENDER;
 use crate::runtime::tables::native_object_table::NativeObjectTable;
+use crate::runtime::tables::vtable::FunctionDetails;
 
 pub type Symbol = usize;
 
@@ -446,6 +447,63 @@ impl Runtime {
                 std::process::exit(1);
             }
         }
+    }
+
+    pub fn get_virtual_method_details(
+        object_class_symbol: Symbol,
+        class_symbol: Symbol,
+        source_class: Option<Symbol>,
+        method_name: Symbol,
+    ) -> FunctionDetails {
+
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let SymbolEntry::ClassRef(object_class_index) = symbol_table[object_class_symbol] else {
+            panic!("class wasn't a class");
+        };
+        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
+            panic!("method wasn't a string");
+        };
+
+        let Ok(string_table) = STRING_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let name = &string_table[method_name_index];
+
+        let class = &class_table[object_class_index];
+        let vtable_index = if source_class.is_some() {
+            let key = (class_symbol, None);
+            if let Some(index) = class.get_vtable(&key) {
+                index
+            } else if let Some(index) = class.get_vtable(&(class_symbol, source_class)) {
+                index
+            } else {
+                panic!("unable to find vtable");
+            }
+        } else {
+            if let Some(index) = class.get_vtable(&(class_symbol, source_class)) {
+                index
+            } else {
+                panic!("unable to find vtable");
+            }
+        };
+
+        let Ok(vtables_table) = VTABLES.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let vtable = &vtables_table[vtable_index];
+        let function = vtable.get_function(method_name).expect("unable to find function");
+
+        function.create_details()
     }
 
     pub fn get_method(

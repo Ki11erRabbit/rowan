@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use paste::paste;
 use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
-use crate::runtime;
+use crate::{call_function_pointer, runtime};
 use crate::runtime::{Reference, Runtime};
 use crate::runtime::object::Object;
 
@@ -184,7 +184,7 @@ pub struct StackFrame {
 }
 
 impl StackFrame {
-    pub fn new(args: &[StackValue], bytecode: &[Bytecode]) -> Self {
+    pub fn new(args: &[StackValue], bytecode: &[Bytecode], is_for_bytecode: bool) -> Self {
         let mut block_positions = HashMap::new();
         for (i, bytecode) in bytecode.iter().enumerate() {
             match bytecode {
@@ -205,7 +205,7 @@ impl StackFrame {
             block_positions,
             variables: [StackValue::Blank; 256],
             call_args: [StackValue::Blank; 256],
-            is_for_bytecode: bytecode.len() > 0,
+            is_for_bytecode,
         }
     }
 
@@ -269,11 +269,11 @@ impl BytecodeContext {
         }
     }
 
-    pub fn push(&mut self, bytecode: &'static [Bytecode]) {
+    pub fn push(&mut self, bytecode: &'static [Bytecode], is_for_bytecode: bool) {
         self.active_bytecodes.push(bytecode);
         let frame = self.current_frame();
         let args = frame.get_args();
-        self.active_frames.push(StackFrame::new(args, bytecode));
+        self.active_frames.push(StackFrame::new(args, bytecode, is_for_bytecode));
     }
 
     pub fn pop(&mut self) {
@@ -296,6 +296,80 @@ impl BytecodeContext {
     /// to a function call to either continue unwinding or catch the exception.
     pub fn handle_exception(&mut self) -> bool {
         true
+    }
+
+    /// The bool return dictates whether execution should continue or not.
+    /// `true` means that we can continue from a bytecode context.
+    /// `false` means that we can't continue from a bytecode context meaning that we have to unwind
+    pub fn invoke_virtual(
+        &mut self,
+        specified: runtime::Symbol,
+        origin: Option<runtime::Symbol>,
+        method_name: runtime::Symbol
+    ) -> bool {
+        let object = self.current_frame().call_args[0];
+        let object = match object {
+            StackValue::Reference(object) => object,
+            _ => todo!("report error that first call arg must be an object")
+        };
+        let object = unsafe {
+            object.as_ref().expect("report null pointer")
+        };
+
+        let details = Runtime::get_virtual_method_details(
+            object.class,
+            specified,
+            origin,
+            method_name,
+        );
+
+        for pair in self.current_frame().call_args.iter().zip(details.arguments.iter()) {
+            match pair {
+                (StackValue::Int8(_), runtime::class::TypeTag::U8) |
+                (StackValue::Int8(_), runtime::class::TypeTag::I8) => {}
+                (StackValue::Int16(_), runtime::class::TypeTag::U16) |
+                (StackValue::Int16(_), runtime::class::TypeTag::I16) => {}
+                (StackValue::Int32(_), runtime::class::TypeTag::U32) |
+                (StackValue::Int32(_), runtime::class::TypeTag::I32) => {}
+                (StackValue::Int64(_), runtime::class::TypeTag::U64) |
+                (StackValue::Int64(_), runtime::class::TypeTag::I64) => {}
+                (StackValue::Float32(_), runtime::class::TypeTag::F32) => {}
+                (StackValue::Float64(_), runtime::class::TypeTag::F64) => {}
+                (StackValue::Reference(_), runtime::class::TypeTag::Object) => {}
+                _ => {
+                    todo!("report type error in typing")
+                }
+            }
+        }
+
+        self.push(details.bytecode, details.fn_ptr.is_none());
+
+        match details.fn_ptr {
+            Some(fn_ptr) => {
+                let mut return_value = StackValue::Blank;
+                call_function_pointer!(
+                    self,
+                    &self.current_frame_mut().variables,
+                    fn_ptr,
+                    details.return_type,
+                    &mut return_value
+                );
+            }
+            _ => {}
+        }
+
+        self.handle_exception()
+    }
+
+    pub fn main_loop(&mut self) {
+        loop {
+            let bytecode = &self.active_bytecodes[self.active_bytecodes.len() - 1][self.current_frame().ip];
+            self.current_frame_mut().ip += 1;
+
+            if !self.interpret(bytecode) {
+                break;
+            }
+        }
     }
 
     /// The bool return dictates whether execution should continue or not.
@@ -1677,6 +1751,28 @@ impl BytecodeContext {
                     }
                     _ => unreachable!("Invalid Type Tag"),
                 }
+            }
+            Bytecode::IsA(sym) => {
+                let object = self.current_frame_mut().pop();
+                let object = match object {
+                    StackValue::Reference(object) => object,
+                    _ => todo!("report needing object")
+                };
+                let object = unsafe {
+                    object.as_ref().expect("check for null pointer")
+                };
+                let result = object.class as u64 == *sym;
+                self.current_frame_mut().push(StackValue::Int8(result as u8));
+            }
+            Bytecode::InvokeVirt(specified, origin, method_name) => {
+                return self.invoke_virtual(
+                    *specified as runtime::Symbol,
+                    origin.map(|s| s as runtime::Symbol),
+                    *method_name as runtime::Symbol,
+                )
+            }
+            Bytecode::InvokeVirtTail(..) => {
+                todo!("Tail Recursion Virtual")
             }
         }
         true
