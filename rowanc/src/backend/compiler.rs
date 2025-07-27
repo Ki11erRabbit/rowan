@@ -34,16 +34,20 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     let functions = vec![
         VTableEntry::default(),
         VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
     ];
     let names = vec![
         "core::Printer::println-int",
         "core::Printer::println-float",
         "core::Printer::println",
+        "core::Printer::println-ints",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::U64]),
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::F64]),
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object]),
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::U64, TypeTag::U64, TypeTag::U64, TypeTag::U64, TypeTag::U64, TypeTag::U64, TypeTag::U64]),
     ];
     let vtable = VTable::new(functions);
     

@@ -154,6 +154,11 @@ pub fn generate_printer_class() -> VMClass {
                 printer_println as *const (),
                 vec![TypeTag::Void, TypeTag::Object, TypeTag::Object]
                 ),
+            VMMethod::new(
+                "core::Printer::println-ints",
+                printer_println_ints as *const (),
+                vec![TypeTag::Void, TypeTag::Object, TypeTag::U64, TypeTag::U64, TypeTag::U64, TypeTag::U64, TypeTag::U64, TypeTag::U64, TypeTag::U64]
+            ),
         ]
     );
 
@@ -180,6 +185,14 @@ extern "C" fn printer_println(context: &mut BytecodeContext, _: Reference, strin
     let slice = unsafe { std::slice::from_raw_parts(pointer, length as usize) };
     let string = unsafe { std::str::from_utf8_unchecked(slice) };
     println!("{}", string);
+    //Runtime::normal_return(context);
+}
+
+extern "C" fn printer_println_ints(_: &mut BytecodeContext, _: Reference, int1: u64, int2: u64, int3: u64, int4: u64, int5: u64, int6: u64, int7: u64) {
+    let ints = [int1, int2, int3, int4, int5, int6, int7];
+    for int in ints {
+        println!("{}", int);
+    }
     //Runtime::normal_return(context);
 }
 

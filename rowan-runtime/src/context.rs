@@ -1,5 +1,6 @@
 mod interpreter;
 
+use cranelift_codegen::gimli::write::Writer;
 pub use interpreter::BytecodeContext;
 use crate::context::interpreter::StackValue;
 use crate::runtime::class::TypeTag;
@@ -218,27 +219,32 @@ pub extern "C" fn call_function_pointer(
     context: *mut BytecodeContext,
     call_args: *const StackValue,
     call_args_len: usize,
-    mut fn_ptr: *const (),
-    mut return_type: u8,
+    fn_ptr: *const (),
+    return_type: u8,
 ) -> StackValue {
-    let stack_byte_size = get_stack_byte_size(unsafe {
+    //println!("values: {context:p}, {call_args:p}, {call_args_len}, {fn_ptr:p}, {return_type}");
+    let mut context = context;
+    let mut call_args = call_args;
+    let mut call_args_len = call_args_len;
+    let mut fn_ptr = fn_ptr;
+    let mut return_type = return_type;
+
+    let stack_byte_size = get_stack_byte_padding_size(unsafe {
         std::slice::from_raw_parts(call_args, call_args_len)
     });
     let mut integer_index = 1; // context takes the first slot
     let mut float_index = 0;
+    let mut saved_rsp: *const () = std::ptr::null();
     unsafe {
         std::arch::asm!(
-            "mov r15, rsp",
-            out("r15") _,
-            in("rdi") context,
-            inout("r14") fn_ptr,
-            inout("r13b") return_type,
-            options(nostack)
-        )
+            "mov {}, rsp",
+            "mov rdi, {}",
+            out(reg) saved_rsp,
+            out(reg) context,
+        );
     }
     let mut i = 0;
     loop {
-        //println!("function pointer: {:x}", fn_ptr as usize);
         let arg = unsafe {
             call_args.add(i).read()
         };
@@ -278,229 +284,54 @@ pub extern "C" fn call_function_pointer(
             break;
         }
     }
-
+    let mut int_return: u64 = 0;
+    let mut float_return: f64 = 0.0;
     unsafe {
         std::arch::asm!(
-            "call r14",
-            "mov rsp, r15",
-            out("r15") _,
-            options(nostack)
+            "call {ptr}",
+            "mov rsp, {saved_rsp}",
+            ptr = in(reg) saved_rsp,
+            saved_rsp = out(reg) saved_rsp,
+            // Capture return values in explicit registers
+            out("rax") int_return,
+            out("xmm0") float_return,
+
+            // Clobber other caller-saved registers
+            out("rcx") _,
+            out("rdx") _,
+            out("rsi") _,
+            out("rdi") _,
+            out("r8") _,
+            out("r9") _,
+            out("r10") _,
+            out("r11") _,
+            out("xmm1") _,
+            out("xmm2") _,
+            out("xmm3") _,
+            out("xmm4") _,
+            out("xmm5") _,
+            out("xmm6") _,
+            out("xmm7") _,
         );
     }
+
     let return_type = TypeTag::from_tag(return_type);
     match return_type {
-        TypeTag::U8 | TypeTag::I8 => {
-            let mut output: u8 = 0;
-            unsafe {
-                std::arch::asm!(
-                    "nop",
-                    out("al") output,
-                );
-            }
-            StackValue::Int8(output)
-        }
-        TypeTag::U16 | TypeTag::I16 => {
-            let mut output: u16 = 0;
-            unsafe {
-                std::arch::asm!(
-                    "nop",
-                    out("ax") output,
-                );
-            }
-            StackValue::Int16(output)
-        }
-        TypeTag::U32 | TypeTag::I32 => {
-            let mut output: u32 = 0;
-            unsafe {
-                std::arch::asm!(
-                    "nop",
-                    out("eax") output,
-                );
-            }
-            StackValue::Int32(output)
-        }
-        TypeTag::U64 | TypeTag::I64 => {
-            let mut output: u64 = 0;
-            unsafe {
-                std::arch::asm!(
-                    "nop",
-                    out("rax") output,
-                );
-            }
-            StackValue::Int64(output)
-        }
-        TypeTag::F32 => {
-            let mut output: f32 = 0.0;
-            unsafe {
-                std::arch::asm!(
-                    "movss [{out}], xmm0",
-                    out = out(reg) output,
-                );
-            }
-            StackValue::Float32(output)
-        }
-        TypeTag::F64 => {
-            let mut output: f64 = 0.0;
-            unsafe {
-                std::arch::asm!(
-                    "movsd [{out}], xmm0",
-                    out = out(reg) output,
-                );
-            }
-            StackValue::Float64(output)
-        }
-        TypeTag::Void => {
-            StackValue::Blank
-        }
+        TypeTag::U8 | TypeTag::I8 => StackValue::Int8(int_return as u8),
+        TypeTag::U16 | TypeTag::I16 => StackValue::Int16(int_return as u16),
+        TypeTag::U32 | TypeTag::I32 => StackValue::Int32(int_return as u32),
+        TypeTag::U64 | TypeTag::I64 => StackValue::Int64(int_return),
+        TypeTag::F32 => StackValue::Float32(float_return as f32),
+        TypeTag::F64 => StackValue::Float64(float_return),
+        TypeTag::Void => StackValue::Blank,
         _ => unreachable!("invalid return type"),
     }
 }
-/*
-#[macro_export]
-macro_rules! call_function_pointer {
-    ($context:ident, $call_args:expr, $fn_ptr:expr, $return_type:expr, $return_value:expr) => {
-        let mut integer_index = 1; // context takes the first slot
-        let mut float_index = 0;
-        let stack_byte_size = super::get_stack_byte_size($call_args);
-
-        println!("function pointer: {:x}", $fn_ptr as usize);
-        unsafe {
-            std::arch::asm!(
-                "mov r15, rsp",
-                "add rsp, {offset}",
-                "mov rdi, {ctx}",
-                "mov r14, {ptr}",
-                ctx = in(reg) $context,
-                offset = in(reg) stack_byte_size,
-                ptr = in(reg) $fn_ptr,
-                out("r15") _,
-                options(nostack)
-            );
-        }
-        for arg in $call_args {
-            //println!("function pointer: {:x}", $fn_ptr as usize);
-            match arg {
-                StackValue::Blank => break,
-                StackValue::Int8(value) => {
-                    place_value_in_int_reg!(value, integer_index, u8);
-                    integer_index += 1;
-                }
-                StackValue::Int16(value) => {
-                    place_value_in_int_reg!(value, integer_index);
-                    integer_index += 1;
-                }
-                StackValue::Int32(value) => {
-                    place_value_in_int_reg!(value, integer_index);
-                    integer_index += 1;
-                }
-                StackValue::Int64(value) => {
-                    place_value_in_int_reg!(value, integer_index);
-                    integer_index += 1;
-                }
-                StackValue::Reference(value) => {
-                    place_value_in_int_reg!(value, integer_index);
-                    integer_index += 1;
-                }
-                StackValue::Float32(value) => {
-                    place_value_in_float_reg!(value, float_index, f32);
-                    float_index += 1;
-                }
-                StackValue::Float64(value) => {
-                    place_value_in_float_reg!(value, float_index, f64);
-                    float_index += 1;
-                }
-            }
-        }
-        unsafe {
-            std::arch::asm!(
-                "mov {}, rdx",
-                out(reg) rdx_value,
-            )
-        }
-        println!("rdx: {:x}", rdx_value);
-
-        unsafe {
-            std::arch::asm!(
-                "call r14",
-                "mov rsp, r15",
-                out("r15") _,
-                options(nostack)
-            );
-        }
-        match $return_type {
-            runtime::class::TypeTag::U8 | runtime::class::TypeTag::I8 => {
-                let mut output: u8 = 0;
-                unsafe {
-                    std::arch::asm!(
-                        "nop",
-                        out("al") output,
-                    );
-                }
-                $return_value = StackValue::Int8(output);
-            }
-            runtime::class::TypeTag::U16 | runtime::class::TypeTag::I16 => {
-                let mut output: u16 = 0;
-                unsafe {
-                    std::arch::asm!(
-                        "nop",
-                        out("ax") output,
-                    );
-                }
-                $return_value = StackValue::Int16(output);
-            }
-            runtime::class::TypeTag::U32 | runtime::class::TypeTag::I32 => {
-                let mut output: u32 = 0;
-                unsafe {
-                    std::arch::asm!(
-                        "nop",
-                        out("eax") output,
-                    );
-                }
-                $return_value = StackValue::Int32(output);
-            }
-            runtime::class::TypeTag::U64 | runtime::class::TypeTag::I64 => {
-                let mut output: u64 = 0;
-                unsafe {
-                    std::arch::asm!(
-                        "nop",
-                        out("rax") output,
-                    );
-                }
-                $return_value = StackValue::Int64(output);
-            }
-            runtime::class::TypeTag::F32=> {
-                let mut output: f32 = 0.0;
-                unsafe {
-                    std::arch::asm!(
-                        "movss [{out}], xmm0",
-                        out = out(reg) output,
-                    );
-                }
-                $return_value = StackValue::Float32(output);
-            }
-            runtime::class::TypeTag::F64 => {
-                let mut output: f64 = 0.0;
-                unsafe {
-                    std::arch::asm!(
-                        "movsd [{out}], xmm0",
-                        out = out(reg) output,
-                    );
-                }
-                $return_value = StackValue::Float64(output);
-            }
-            _ => unreachable!("invalid return type"),
-        }
-    };
-}
-*/
-
-
-
 
 #[cfg(unix)]
 #[cfg(target_arch = "x86_64")]
-fn get_stack_byte_size(call_args: &[StackValue]) -> usize {
-    const INT_REGISTER_COUNT: usize = 4; // 4 because context is always the first parameter so we lose a register
+fn get_stack_byte_padding_size(call_args: &[StackValue]) -> usize {
+    const INT_REGISTER_COUNT: usize = 5; // 5 because context is always the first parameter so we lose a register
     let mut int_arg_index = 0;
     const FLOAT_REGISTER_COUNT: usize = 8;
     let mut float_arg_index = 0;
@@ -525,5 +356,11 @@ fn get_stack_byte_size(call_args: &[StackValue]) -> usize {
             }
         }
     }
-    stack_size
+    let mut output = 0;
+    while stack_size % 16 != 0 {
+        stack_size += std::mem::size_of::<usize>();
+        output += std::mem::size_of::<usize>();
+    }
+    println!("padding: {output}");
+    output
 }
