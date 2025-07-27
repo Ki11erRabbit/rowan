@@ -7,9 +7,9 @@ class Main {
     static thing: u64 = 66666666666;
 
     fn main(args: [String]) {
-        let string: String = "Hello, World!";
-
-        Console::println(string);
+        let x: u64 = 10;
+        let printer: Printer = new Printer();
+        printer.println-int(x);
 
     }
 

@@ -431,7 +431,7 @@ impl Runtime {
             }
         }
         drop(class_table);
-        for function in init_functions {
+        /*for function in init_functions {
             //let (sender, _) = std::sync::mpsc::channel();
             let mut context = BytecodeContext::new();
             function(&mut context);
@@ -448,7 +448,7 @@ impl Runtime {
                 exception_print_stack_trace(&mut context, base_exception_ref);
                 std::process::exit(1);
             }*/
-        }
+        }*/
     }
 
     pub fn get_virtual_method_details(

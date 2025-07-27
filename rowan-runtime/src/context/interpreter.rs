@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use paste::paste;
 use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
-use crate::{call_function_pointer, place_value_in_float_reg, place_value_in_int_reg, runtime};
+use crate::runtime;
+use crate::context::call_function_pointer;
 use crate::runtime::{Reference, Runtime};
 use crate::runtime::object::Object;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum StackValue {
     Int8(u8),
     Int16(u16),
@@ -105,6 +106,13 @@ impl StackValue {
     into_type!(i64);
     into_type!(f32);
     into_type!(f64);
+
+    pub fn is_blank(self) -> bool {
+        match self {
+            StackValue::Blank => true,
+            _ => false,
+        }
+    }
 }
 
 impl From<u8> for StackValue {
@@ -196,6 +204,9 @@ impl StackFrame {
         }
         let mut variables = [StackValue::Blank; 256];
         for (arg, variable) in args.iter().zip(variables.iter_mut()) {
+            if arg.is_blank() {
+                break;
+            }
             *variable = *arg;
         }
         Self {
@@ -210,6 +221,7 @@ impl StackFrame {
     }
 
     pub fn push(&mut self, stack_value: StackValue) {
+        assert_ne!(stack_value.is_blank(), true, "Added a blank to the stack");
         self.operand_stack.push(stack_value);
     }
     pub fn pop(&mut self) -> StackValue {
@@ -246,6 +258,9 @@ impl StackFrame {
     pub fn get_args(&self) -> &[StackValue] {
         &self.call_args
     }
+    pub fn get_args_mut(&mut self) -> &mut [StackValue] {
+        &mut self.call_args
+    }
 
     pub fn is_for_bytecode(&self) -> bool {
         self.is_for_bytecode
@@ -280,6 +295,13 @@ impl BytecodeContext {
         let frame = self.current_frame();
         let args = frame.get_args();
         self.active_frames.push(StackFrame::new(args, bytecode, is_for_bytecode));
+        let frame_len = self.active_frames.len();
+        for arg in self.active_frames[frame_len - 2].get_args_mut() {
+            if arg.is_blank() {
+                break
+            }
+            *arg = StackValue::Blank;
+        }
     }
 
     pub fn pop(&mut self) {
@@ -288,11 +310,13 @@ impl BytecodeContext {
     }
 
     pub fn current_frame(&self) -> &StackFrame {
-        &self.active_frames[self.active_bytecodes.len() - 1]
+        let len = self.active_frames.len();
+        &self.active_frames[len - 1]
     }
 
     pub fn current_frame_mut(&mut self) -> &mut StackFrame {
-        &mut self.active_frames[self.active_bytecodes.len() - 1]
+        let len = self.active_frames.len();
+        &mut self.active_frames[len - 1]
     }
 
     /// This function will unwind the stack if needed when an exception is thrown.
@@ -316,7 +340,7 @@ impl BytecodeContext {
         let object = self.current_frame().call_args[0];
         let object = match object {
             StackValue::Reference(object) => object,
-            _ => todo!("report error that first call arg must be an object")
+            x => todo!("report error that first call arg must be an object. instead found: {x:?}")
         };
         let object = unsafe {
             object.as_ref().expect("report null pointer")
@@ -352,15 +376,22 @@ impl BytecodeContext {
 
         match details.fn_ptr {
             Some(fn_ptr) => {
-                let mut return_value = StackValue::Blank;
-                call_function_pointer!(
+                let var_pointer = self.current_frame().variables.as_ptr();
+                let var_len = self.current_frame().variables.len();
+                let variables = unsafe {
+                    std::slice::from_raw_parts(var_pointer, var_len)
+                };
+                let mut return_value = call_function_pointer(
                     self,
-                    &self.current_frame_mut().variables,
-                    fn_ptr,
-                    details.return_type,
-                    return_value
+                    variables.as_ptr(),
+                    variables.len(),
+                    fn_ptr.as_ptr(),
+                    details.return_type.tag(),
                 );
                 self.pop();
+                if !return_value.is_blank() {
+                    self.current_frame_mut().push(return_value);
+                }
             }
             _ => {}
         }
@@ -404,15 +435,22 @@ impl BytecodeContext {
 
         match details.fn_ptr {
             Some(fn_ptr) => {
-                let mut return_value = StackValue::Blank;
-                call_function_pointer!(
+                let var_pointer = self.current_frame().variables.as_ptr();
+                let var_len = self.current_frame().variables.len();
+                let variables = unsafe {
+                    std::slice::from_raw_parts(var_pointer, var_len)
+                };
+                let mut return_value = call_function_pointer(
                     self,
-                    &self.current_frame_mut().variables,
-                    fn_ptr,
-                    details.return_type,
-                    return_value
+                    variables.as_ptr(),
+                    variables.len(),
+                    fn_ptr.as_ptr(),
+                    details.return_type.tag(),
                 );
                 self.pop();
+                if !return_value.is_blank() {
+                    self.current_frame_mut().push(return_value);
+                }
             }
             _ => {}
         }
@@ -426,9 +464,10 @@ impl BytecodeContext {
             class,
             method,
         );
-        self.push(details.bytecode, details.fn_ptr.is_none());
-        self.current_frame_mut().call_args[0] = StackValue::Reference(std::ptr::null_mut());
-
+        self.active_bytecodes.push(details.bytecode);
+        // TODO: add passing of cmdline args
+        self.active_frames.push(StackFrame::new(&[], details.bytecode, details.fn_ptr.is_none()));
+        self.current_frame_mut().variables[0] = StackValue::Reference(std::ptr::null_mut());
         self.main_loop();
     }
 
@@ -438,6 +477,9 @@ impl BytecodeContext {
             self.current_frame_mut().ip += 1;
 
             if !self.interpret(bytecode) {
+                break;
+            }
+            if self.active_frames.is_empty() {
                 break;
             }
         }
@@ -491,7 +533,7 @@ impl BytecodeContext {
                 self.current_frame_mut().swap();
             }
             Bytecode::StoreLocal(index) => {
-                self.current_frame_mut().load_local(*index);
+                self.current_frame_mut().store_local(*index);
             }
             Bytecode::LoadLocal(index) => {
                 self.current_frame_mut().load_local(*index);
@@ -1872,6 +1914,9 @@ impl BytecodeContext {
                 self.current_frame_mut().push(value);
             }
             Bytecode::ReturnVoid => {
+                if self.active_frames.len() == 1 {
+                    return false;
+                }
                 self.pop();
             }
             Bytecode::RegisterException(..) => {

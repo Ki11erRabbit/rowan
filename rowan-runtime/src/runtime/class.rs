@@ -41,6 +41,45 @@ impl TypeTag {
             Sized(x) => x,
         }
     }
+
+    pub fn tag(self) -> u8 {
+        use TypeTag::*;
+        match self {
+            U8 => 0,
+            U16 => 1,
+            U32 => 2,
+            U64 => 3,
+            I8 => 4,
+            I16 => 5,
+            I32 => 6,
+            I64 => 7,
+            F32 => 8,
+            F64 => 9,
+            Object => 10,
+            Str => 11,
+            Void => 12,
+            _ => panic!("native types are not ffi safe"),
+        }
+    }
+
+    pub fn from_tag(tag: u8) -> TypeTag {
+        match tag {
+            0 => TypeTag::U8,
+            1 => TypeTag::U16,
+            2 => TypeTag::U32,
+            3 => TypeTag::U64,
+            4 => TypeTag::I8,
+            5 => TypeTag::I16,
+            6 => TypeTag::I32,
+            7 => TypeTag::I64,
+            8 => TypeTag::F32,
+            9 => TypeTag::F64,
+            10 => TypeTag::Object,
+            11 => TypeTag::Str,
+            12 => TypeTag::Void,
+            _ => panic!("invalid tag"),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]

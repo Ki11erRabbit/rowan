@@ -162,7 +162,7 @@ pub fn generate_printer_class() -> VMClass {
 
 
 extern "C" fn printer_println_int(context: &mut BytecodeContext, _: Reference, int: u64) {
-    //println!("{}", int);
+    println!("{}", int);
     //Runtime::normal_return(context);
 }
 
@@ -791,16 +791,17 @@ pub fn generate_string_class() -> VMClass {
     VMClass::new("core::String", vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
-extern "C" fn string_len(context: &mut Runtime, this: Reference) -> u64 {
+extern "C" fn string_len(context: &mut BytecodeContext, this: Reference) -> u64 {
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
-    Runtime::normal_return(context);
+    //Runtime::normal_return(context);
     object.length
 }
 
-extern "C" fn string_load_str(context: &mut Runtime, this: Reference, string_ref: Reference) {
+extern "C" fn string_load_str(context: &mut BytecodeContext, this: Reference, string_ref: Reference) {
     use std::alloc::*;
+    println!("got: {this:p} {string_ref:p}");
     let string = Runtime::get_string(string_ref as Symbol);
     let bytes = string.as_bytes();
     let object = this;
@@ -817,10 +818,10 @@ extern "C" fn string_load_str(context: &mut Runtime, this: Reference, string_ref
     object.custom_drop = Some(unsafe {
         std::mem::transmute::<_, fn(&mut Object)>(string_drop as *const ())
     });
-    Runtime::normal_return(context);
+    //Runtime::normal_return(context);
 }
 
-extern "C" fn string_init(_: &mut Runtime, this: Reference) {
+extern "C" fn string_init(_: &mut BytecodeContext, this: Reference) {
     string_initialize(this);
 }
 
@@ -864,7 +865,7 @@ pub fn string_drop(object: &mut StringObject) {
     }
 }
 
-extern "C" fn string_is_char_boundary(context: &mut Runtime, this: Reference, index: u64) -> u8 {
+extern "C" fn string_is_char_boundary(context: &mut BytecodeContext, this: Reference, index: u64) -> u8 {
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
@@ -875,7 +876,7 @@ extern "C" fn string_is_char_boundary(context: &mut Runtime, this: Reference, in
         return 0;
     }
 
-    Runtime::normal_return(context);
+    //Runtime::normal_return(context);
     unsafe {
         if *pointer.add(index as usize) ^ 0b10000000 == 0b10000000 {
             1
@@ -915,11 +916,11 @@ extern "C" fn string_as_bytes(context: &mut BytecodeContext, this: Reference) ->
     byte_array
 }
 
-extern "C" fn string_push(context: &mut Runtime, this: Reference, character: u32) {
+extern "C" fn string_push(context: &mut BytecodeContext, this: Reference, character: u32) {
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
-    Runtime::normal_return(context);
+    //Runtime::normal_return(context);
     object.push_char(unsafe {
         char::from_u32_unchecked(character)
     })
