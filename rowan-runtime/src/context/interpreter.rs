@@ -45,37 +45,37 @@ macro_rules! into_type {
                 match self {
                     StackValue::Int8(v) => {
                         for (buf, v) in buffer.iter_mut().zip(v.to_le_bytes().iter()) {
-                            *buf == *v;
+                            *buf = *v;
                         }
                         $typ::from_le_bytes(buffer)
                     }
                     StackValue::Int16(v) => {
                         for (buf, v) in buffer.iter_mut().zip(v.to_le_bytes().iter()) {
-                            *buf == *v;
+                            *buf = *v;
                         }
                         $typ::from_le_bytes(buffer)
                     }
                     StackValue::Int32(v) => {
                         for (buf, v) in buffer.iter_mut().zip(v.to_le_bytes().iter()) {
-                            *buf == *v;
+                            *buf = *v;
                         }
                         $typ::from_le_bytes(buffer)
                     }
                     StackValue::Int64(v) => {
                         for (buf, v) in buffer.iter_mut().zip(v.to_le_bytes().iter()) {
-                            *buf == *v;
+                            *buf = *v;
                         }
                         $typ::from_le_bytes(buffer)
                     }
                     StackValue::Float32(v) => {
                         for (buf, v) in buffer.iter_mut().zip(v.to_le_bytes().iter()) {
-                            *buf == *v;
+                            *buf = *v;
                         }
                         $typ::from_le_bytes(buffer)
                     }
                     StackValue::Float64(v) => {
                         for (buf, v) in buffer.iter_mut().zip(v.to_le_bytes().iter()) {
-                            *buf == *v;
+                            *buf = *v;
                         }
                         $typ::from_le_bytes(buffer)
                     }
@@ -388,10 +388,13 @@ impl BytecodeContext {
         match details.fn_ptr {
             Some(fn_ptr) => {
                 let var_pointer = self.current_frame().variables.as_ptr();
-                let var_len = self.current_frame().vars_len();
+                let var_len = self.current_frame().variables.len();
                 let variables = unsafe {
                     std::slice::from_raw_parts(var_pointer, var_len)
                 };
+                let variables = variables.iter().map(|v| {
+                    Value::from_stack_value(*v)
+                }).collect::<Vec<_>>();
                 let mut return_value = call_function_pointer(
                     self,
                     variables.as_ptr(),

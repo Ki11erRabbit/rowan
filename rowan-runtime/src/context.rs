@@ -417,6 +417,7 @@ pub extern "C" fn call_function_pointer(
     let mut return_type: u8 = 0;
     unsafe {
         std::arch::asm!(
+            "",
             // Capture return values in explicit registers
             out("rax") int_return,
             out("xmm0") float_return,
