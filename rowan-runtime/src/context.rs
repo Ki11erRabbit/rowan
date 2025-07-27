@@ -230,16 +230,14 @@ pub extern "C" fn call_function_pointer(
         std::arch::asm!(
             "mov r15, rsp",
             out("r15") _,
-            in("r14") context,
-            inout("r13") fn_ptr,
-            inout("r12b") return_type,
-            inout("r11") integer_index,
-            inout("r10") float_index,
+            in("rdi") context,
+            inout("r14") fn_ptr,
+            inout("r13b") return_type,
             options(nostack)
         )
     }
-
-    for i in 0..call_args_len {
+    let mut i = 0;
+    loop {
         //println!("function pointer: {:x}", fn_ptr as usize);
         let arg = unsafe {
             call_args.add(i).read()
@@ -275,12 +273,15 @@ pub extern "C" fn call_function_pointer(
                 float_index += 1;
             }
         }
+        i += 1;
+        if i >= call_args_len {
+            break;
+        }
     }
 
     unsafe {
         std::arch::asm!(
-            "mov rdi, r14",
-            "call r13",
+            "call r14",
             "mov rsp, r15",
             out("r15") _,
             options(nostack)

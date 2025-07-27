@@ -161,7 +161,7 @@ pub fn generate_printer_class() -> VMClass {
 }
 
 
-extern "C" fn printer_println_int(context: &mut BytecodeContext, _: Reference, int: u64) {
+extern "C" fn printer_println_int(_: &mut BytecodeContext, _: Reference, int: u64) {
     println!("{}", int);
     //Runtime::normal_return(context);
 }

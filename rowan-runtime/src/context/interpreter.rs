@@ -214,7 +214,7 @@ impl StackFrame {
             ip: 0,
             current_block: 0,
             block_positions,
-            variables: [StackValue::Blank; 256],
+            variables,
             call_args: [StackValue::Blank; 256],
             is_for_bytecode,
         }
@@ -270,6 +270,15 @@ impl StackFrame {
         let next_block = self.current_block + block_offset;
         let pc = self.block_positions[&next_block];
         self.ip = pc;
+    }
+
+    pub fn vars_len(&self) -> usize {
+        for (i, var) in self.variables.iter().enumerate() {
+            if var.is_blank() {
+                return i;
+            }
+        }
+        self.variables.len()
     }
 }
 
@@ -377,7 +386,7 @@ impl BytecodeContext {
         match details.fn_ptr {
             Some(fn_ptr) => {
                 let var_pointer = self.current_frame().variables.as_ptr();
-                let var_len = self.current_frame().variables.len();
+                let var_len = self.current_frame().vars_len();
                 let variables = unsafe {
                     std::slice::from_raw_parts(var_pointer, var_len)
                 };
