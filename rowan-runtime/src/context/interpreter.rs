@@ -266,10 +266,12 @@ impl StackFrame {
         self.is_for_bytecode
     }
 
-    pub fn goto(&mut self, block_offset: usize) {
-        let next_block = self.current_block + block_offset;
+    pub fn goto(&mut self, block_offset: isize) {
+        let next_block = self.current_block as isize + block_offset;
+        let next_block = next_block as usize;
         let pc = self.block_positions[&next_block];
         self.ip = pc;
+        self.current_block = next_block;
     }
 
     pub fn vars_len(&self) -> usize {
@@ -1944,7 +1946,7 @@ impl BytecodeContext {
             }
             Bytecode::StartBlock(_) => {}
             Bytecode::Goto(offset) => {
-                self.current_frame_mut().goto(*offset as usize);
+                self.current_frame_mut().goto(*offset as isize);
             }
             Bytecode::If(then_offset, else_offset) => {
                 let value = self.current_frame_mut().pop();
@@ -1954,9 +1956,9 @@ impl BytecodeContext {
                 };
 
                 if boolean != 0 {
-                    self.current_frame_mut().goto(*then_offset as usize);
+                    self.current_frame_mut().goto(*then_offset as isize);
                 } else {
-                    self.current_frame_mut().goto(*else_offset as usize);
+                    self.current_frame_mut().goto(*else_offset as isize);
                 }
             }
             Bytecode::Switch(..) => {
