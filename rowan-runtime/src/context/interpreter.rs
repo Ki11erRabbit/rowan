@@ -3,7 +3,7 @@ use paste::paste;
 use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
 use crate::runtime;
-use crate::context::call_function_pointer;
+use crate::context::{call_function_pointer, Value};
 use crate::runtime::{Reference, Runtime};
 use crate::runtime::object::Object;
 
@@ -451,6 +451,9 @@ impl BytecodeContext {
                 let variables = unsafe {
                     std::slice::from_raw_parts(var_pointer, var_len)
                 };
+                let variables = variables.iter().map(|v| {
+                    Value::from_stack_value(*v)
+                }).collect::<Vec<_>>();
                 let mut return_value = call_function_pointer(
                     self,
                     variables.as_ptr(),

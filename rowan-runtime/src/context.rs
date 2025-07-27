@@ -4,7 +4,7 @@ use cranelift_codegen::gimli::write::Writer;
 pub use interpreter::BytecodeContext;
 use crate::context::interpreter::StackValue;
 use crate::runtime::class::TypeTag;
-
+use crate::runtime::Reference;
 
 #[cfg(target_arch = "x86_64")]
 macro_rules! place_value_in_int_reg {
@@ -212,26 +212,135 @@ macro_rules! place_value_in_float_reg {
     };
 }
 
+pub struct Value {
+    tag: u64,
+    value: ValueUnion,
+}
+
+impl Value {
+    pub fn new(tag: u64, value: ValueUnion) -> Self {
+        Self { tag, value }
+    }
+
+    pub fn from_stack_value(value: StackValue) -> Self {
+        match value {
+            StackValue::Int8(v) => {
+                Value::new(0, ValueUnion { c: v })
+            }
+            StackValue::Int16(v) => {
+                Value::new(1, ValueUnion { s: v })
+            }
+            StackValue::Int32(v) => {
+                Value::new(2, ValueUnion { i: v })
+            }
+            StackValue::Int64(v) => {
+                Value::new(3, ValueUnion { l: v })
+            }
+            StackValue::Float32(v) => {
+                Value::new(4, ValueUnion{ f: v })
+            }
+            StackValue::Float64(v) => {
+                Value::new(5, ValueUnion { d: v })
+            }
+            StackValue::Reference(v) => {
+                Value::new(6, ValueUnion { r: v })
+            }
+            StackValue::Blank => {
+                Value::new(7, ValueUnion { s: 0 })
+            }
+        }
+    }
+}
+
+pub union ValueUnion {
+    c: u8,
+    s: u16,
+    i: u32,
+    l: u64,
+    f: f32,
+    d: f64,
+    r: Reference,
+}
 
 #[cfg(unix)]
 #[cfg(target_arch = "x86_64")]
 pub extern "C" fn call_function_pointer(
     context: *mut BytecodeContext,
-    call_args: *const StackValue,
+    call_args: *const Value,
     call_args_len: usize,
     fn_ptr: *const (),
     return_type: u8,
 ) -> StackValue {
     //println!("values: {context:p}, {call_args:p}, {call_args_len}, {fn_ptr:p}, {return_type}");
-    let mut context = context;
-    let mut call_args = call_args;
-    let mut call_args_len = call_args_len;
-    let mut fn_ptr = fn_ptr;
-    let mut return_type = return_type;
+    unsafe {
+        std::arch::asm!(
+            "",
+            in("r11") context,
+            in("r15") call_args,
+            in("r14") call_args_len,
+            in("r13") fn_ptr,
+            in("r12b") return_type,
+        )
+    }
 
     let stack_byte_size = get_stack_byte_padding_size(unsafe {
         std::slice::from_raw_parts(call_args, call_args_len)
     });
+
+    unsafe {
+        std::arch::asm!(
+                "jmp dispatch",
+            "handlers:",
+                ".quad u8",
+                ".quad u16",
+                ".quad u32",
+                ".quad u64",
+                ".quad f32",
+                ".quad f64",
+                ".quad ref",
+            "load_int_handler:",
+                ".quad first_int",
+                ".quad second_int",
+                ".quad third_int",
+                ".quad fourth_int",
+                ".quad fifth_int",
+            "dispatch:",
+                "push rsp", // backing up rsp
+                "push r13", // storing fn_ptr
+                "push r12", // storing return_type
+                "test rax, rax",
+                "jne body_label",
+                "sub rsp, 8", // Extending the stack if we have an odd number of arguments on the stack
+            "body_label:",
+                "mov rdi, r11", // putting context into first call register
+                "xor r11, r11", // Clear out r11 to be used as byte offset
+                "xor r12, r12", // Clear out r12 to be used as float index
+                "xor r13, r13", // Clear out r13 to be used for int index
+            "start_of_for_loop:",
+                "cmp r11, r14",
+                "je call_label",
+                "mov r10, [r15+r11]", // load value tag into r10
+                "jmp qword ptr [handlers+r10*8]", // use jump table to handle each arg type
+            "body_of_for_loop:",
+                "u8:",
+                    "mov r10, [r15+r11+8]", // fetch data and put it in r10
+                    "cmp r13, 5", // Checking if int index is less than 5 (we have already used rdi)
+                    "jl u8_reg",
+                    "push r10",
+                    "inc r14",
+                    "jmp start_of_for_loop",
+                "u8_reg:",
+                    ""
+
+            "end_of_for_loop:",
+                "add rsp, 16",
+                "jmp start_of_for_loop",
+            "load_int_registers:",
+                ""
+            "call_label:",
+        )
+    }
+
     let mut integer_index = 1; // context takes the first slot
     let mut float_index = 0;
     let mut saved_rsp: *const () = std::ptr::null();
@@ -249,7 +358,7 @@ pub extern "C" fn call_function_pointer(
             call_args.add(i).read()
         };
         match arg {
-            StackValue::Blank => break,
+            Value { tag: 7, ..} => break,
             StackValue::Int8(value) => {
                 place_value_in_int_reg!(value, integer_index, u8);
                 integer_index += 1;
@@ -330,7 +439,7 @@ pub extern "C" fn call_function_pointer(
 
 #[cfg(unix)]
 #[cfg(target_arch = "x86_64")]
-fn get_stack_byte_padding_size(call_args: &[StackValue]) -> usize {
+fn get_stack_byte_padding_size(call_args: &[Value]) -> usize {
     const INT_REGISTER_COUNT: usize = 5; // 5 because context is always the first parameter so we lose a register
     let mut int_arg_index = 0;
     const FLOAT_REGISTER_COUNT: usize = 8;
@@ -339,21 +448,22 @@ fn get_stack_byte_padding_size(call_args: &[StackValue]) -> usize {
 
     for arg in call_args {
         match arg {
-            StackValue::Blank => break,
-            StackValue::Int8(_) | StackValue::Int16(_) |
-            StackValue::Int32(_) | StackValue::Int64(_) |
-            StackValue::Reference(_) => {
+            Value { tag: 7, ..}  => break,
+            Value { tag: 0, ..} | Value { tag: 1, ..} |
+            Value { tag: 2, ..} | Value { tag: 3, ..} |
+            Value { tag: 6, ..} => {
                 if int_arg_index > INT_REGISTER_COUNT {
                     stack_size += std::mem::size_of::<usize>();
                 }
                 int_arg_index += 1;
             }
-            StackValue::Float32(_) | StackValue::Float64(_) => {
+            Value { tag: 4, ..} | Value { tag: 5, ..} => {
                 if float_arg_index > FLOAT_REGISTER_COUNT {
                     stack_size += std::mem::size_of::<usize>();
                 }
                 float_arg_index += 1;
             }
+            _ => unreachable!("invalid arg type"),
         }
     }
     let mut output = 0;
