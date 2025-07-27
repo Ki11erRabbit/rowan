@@ -287,6 +287,8 @@ pub extern "C" fn call_function_pointer(
         std::slice::from_raw_parts(call_args, call_args_len)
     });
 
+    /*
+    Here is what the assembly looked like before it was converted to use numeric labels
     unsafe {
         std::arch::asm!(
                 "jmp dispatch",
@@ -404,6 +406,144 @@ pub extern "C" fn call_function_pointer(
                     "movq xmm7, r10",
                     "jmp end_of_for_loop",
             "call_label:",
+                "mov r12, [rax]", // getting return type
+                "mov r13, [rax+8]", // getting fn_ptr
+                "mov r15, rax",   // putting older  stack pointer in r15 for quick reloading
+                "call r13", // calling function pointer
+                "mov rsp, [r15+16]", // restoring original stack pointer and handing control back to rust.
+            options(nostack)
+        );
+    }
+
+
+     */
+
+    unsafe {
+        std::arch::asm!(
+                "jmp 2f",
+            "40:",
+                ".quad 41f",
+                ".quad 42f",
+            "50:",
+                ".quad 51f",
+                ".quad 52f",
+                ".quad 53f",
+                ".quad 54f",
+                ".quad 55f",
+            "60:",
+                ".quad 61f",
+                ".quad 62f",
+                ".quad 63f",
+                ".quad 64f",
+                ".quad 65f",
+                ".quad 66f",
+                ".quad 67f",
+                ".quad 68f",
+            "2:",
+                "push rsp", // backing up rsp
+                "push r13", // storing fn_ptr
+                "push r12", // storing return_type
+                "test rax, rax",
+                "mov rax, rsp", // putting rsp into rax so that we can access it later
+                "jne 3f",
+                "sub rsp, 8", // Extending the stack if we have an odd number of arguments on the stack
+            "3:",
+                "mov rdi, r11", // putting context into first call register
+                "xor r11, r11", // Clear out r11 to be used as index offset
+                "xor r12, r12", // Clear out r12 to be used as float index
+                "xor r13, r13", // Clear out r13 to be used for int index
+            "4:",
+                "cmp r11, r14", // checking if index is less than the length
+                "je 6f",
+                "mov r10, [r15+r11*8*2]", // load value tag into r10
+                "cmp r10, 4",
+                "jbe 41f", // jump if we are less than or equal to the reference tag
+                "jmp 42f",   // otherwise jump to the float handler
+            //"body_of_for_loop:",
+                "41:",
+                    "mov r10, [r15+r11*8*2+8]", // fetch data and put it in r10
+                    "cmp r13, 5", // Checking if int index is less than 5 (we have already used rdi)
+                    "jl 31f",
+                    "push r10", // putting arguments on the stack, although, right now they are in the wrong order
+                    "jmp 5f",
+                "31:",
+                    "push rax",
+                    "lea rax, [rip+50b]",
+                    "jmp qword ptr [rax+r13*8]",
+                "42:",
+                    "mov r10, [r15+r11*8*2+8]", // fetch data and put it in r10
+                    "cmp r12, 8", // Checking if float index is less than 8
+                    "jl 32f",
+                    "inc r12",
+                    "push r10", // putting arguments on the stack, although, right now they are in the wrong order
+                    "jmp 5f",
+                "32:",
+                    "push rax",
+                    "lea rax, [rip+50b]",
+                    "jmp qword ptr [rax+r13*8]",
+            "5:",
+                "inc r14",
+                "jmp 4b",
+            //"load_int_registers:",
+                "51:",
+                    "pop rax",
+                    "inc r13",
+                    "mov rsi, r10",
+                    "jmp 5b",
+                "52:",
+                    "pop rax",
+                    "inc r13",
+                    "mov rdx, r10",
+                    "jmp 5b",
+                "53:",
+                    "pop rax",
+                    "inc r13",
+                    "mov rcx, r10",
+                    "jmp 5b",
+                "54:",
+                    "pop rax",
+                    "inc r13",
+                    "mov r8, r10",
+                    "jmp 5b",
+                "55:",
+                    "pop rax",
+                    "inc r13",
+                    "mov r9, r10",
+                    "jmp 5b",
+            //"load_float_registers:",
+                "61:",
+                    "inc r12",
+                    "movq xmm0, r10",
+                    "jmp 5b",
+                "62:",
+                    "inc r12",
+                    "movq xmm1, r10",
+                    "jmp 5b",
+                "63:",
+                    "inc r12",
+                    "movq xmm2, r10",
+                    "jmp 5b",
+                "64:",
+                    "inc r12",
+                    "movq xmm3, r10",
+                    "jmp 5b",
+                "65:",
+                    "inc r12",
+                    "movq xmm4, r10",
+                    "jmp 5b",
+                "66:",
+                    "inc r12",
+                    "movq xmm5, r10",
+                    "jmp 5b",
+                "67:",
+                    "inc r12",
+                    "movq xmm6, r10",
+                    "jmp 5b",
+                "68:",
+                    "inc r12",
+                    "movq xmm7, r10",
+                    "jmp 5b",
+            "6:",
                 "mov r12, [rax]", // getting return type
                 "mov r13, [rax+8]", // getting fn_ptr
                 "mov r15, rax",   // putting older  stack pointer in r15 for quick reloading
