@@ -236,14 +236,14 @@ impl Value {
             StackValue::Int64(v) => {
                 Value::new(3, ValueUnion { l: v })
             }
+            StackValue::Reference(v) => {
+                Value::new(4, ValueUnion { r: v })
+            }
             StackValue::Float32(v) => {
-                Value::new(4, ValueUnion{ f: v })
+                Value::new(5, ValueUnion{ f: v })
             }
             StackValue::Float64(v) => {
-                Value::new(5, ValueUnion { d: v })
-            }
-            StackValue::Reference(v) => {
-                Value::new(6, ValueUnion { r: v })
+                Value::new(6, ValueUnion { d: v })
             }
             StackValue::Blank => {
                 Value::new(7, ValueUnion { s: 0 })
@@ -257,9 +257,9 @@ pub union ValueUnion {
     s: u16,
     i: u32,
     l: u64,
+    r: Reference,
     f: f32,
     d: f64,
-    r: Reference,
 }
 
 #[cfg(unix)]
@@ -291,136 +291,136 @@ pub extern "C" fn call_function_pointer(
         std::arch::asm!(
                 "jmp dispatch",
             "handlers:",
-                ".quad u8",
-                ".quad u16",
-                ".quad u32",
-                ".quad u64",
-                ".quad f32",
-                ".quad f64",
-                ".quad ref",
-            "load_int_handler:",
+                ".quad integer",
+                ".quad float",
+            "load_int_handlers:",
                 ".quad first_int",
                 ".quad second_int",
                 ".quad third_int",
                 ".quad fourth_int",
                 ".quad fifth_int",
+            "load_float_handlers:",
+                ".quad first_float",
+                ".quad second_float",
+                ".quad third_float",
+                ".quad fourth_float",
+                ".quad fifth_float",
+                ".quad sixth_float",
+                ".quad seventh_float",
+                ".quad eighth_float",
             "dispatch:",
                 "push rsp", // backing up rsp
                 "push r13", // storing fn_ptr
                 "push r12", // storing return_type
                 "test rax, rax",
+                "mov rax, rsp", // putting rsp into rax so that we can access it later
                 "jne body_label",
                 "sub rsp, 8", // Extending the stack if we have an odd number of arguments on the stack
             "body_label:",
                 "mov rdi, r11", // putting context into first call register
-                "xor r11, r11", // Clear out r11 to be used as byte offset
+                "xor r11, r11", // Clear out r11 to be used as index offset
                 "xor r12, r12", // Clear out r12 to be used as float index
                 "xor r13, r13", // Clear out r13 to be used for int index
             "start_of_for_loop:",
-                "cmp r11, r14",
+                "cmp r11, r14", // checking if index is less than the length
                 "je call_label",
-                "mov r10, [r15+r11]", // load value tag into r10
-                "jmp qword ptr [handlers+r10*8]", // use jump table to handle each arg type
+                "mov r10, [r15+r11*16]", // load value tag into r10
+                "cmp r10, 4",
+                "jbe integer", // jump if we are less than or equal to the reference tag
+                "jmp float",   // otherwise jump to the float handler
             "body_of_for_loop:",
-                "u8:",
-                    "mov r10, [r15+r11+8]", // fetch data and put it in r10
+                "integer:",
+                    "mov r10, [r15+r11*16+8]", // fetch data and put it in r10
                     "cmp r13, 5", // Checking if int index is less than 5 (we have already used rdi)
-                    "jl u8_reg",
-                    "push r10",
-                    "inc r14",
-                    "jmp start_of_for_loop",
-                "u8_reg:",
-                    ""
-
+                    "jl int_reg",
+                    "push r10", // putting arguments on the stack, although, right now they are in the wrong order
+                    "jmp end_of_for_loop",
+                "int_reg:",
+                    "jmp qword ptr [load_int_handlers+r13*8]",
+                "float:",
+                    "mov r10, [r15+r11*16+8]", // fetch data and put it in r10
+                    "cmp r12, 8", // Checking if float index is less than 8
+                    "jl float_reg",
+                    "inc r12",
+                    "push r10", // putting arguments on the stack, although, right now they are in the wrong order
+                    "jmp end_of_for_loop",
+                "float_reg:",
+                    "jmp qword ptr [load_float_handlers+r13*8]",
             "end_of_for_loop:",
-                "add rsp, 16",
+                "inc r14",
                 "jmp start_of_for_loop",
             "load_int_registers:",
-                ""
+                "first_int:",
+                    "inc r13",
+                    "mov rsi, r10",
+                    "jmp end_of_for_loop",
+                "second_int:",
+                    "inc r13",
+                    "mov rdx, r10",
+                    "jmp end_of_for_loop",
+                "third_int:",
+                    "inc r13",
+                    "mov rcx, r10",
+                    "jmp end_of_for_loop",
+                "fourth_int:",
+                    "inc r13",
+                    "mov r8, r10",
+                    "jmp end_of_for_loop",
+                "fifth_int:",
+                    "inc r13",
+                    "mov r9, r10",
+                    "jmp end_of_for_loop",
+            "load_float_registers:",
+                "first_float:",
+                    "inc r12",
+                    "movq xmm0, r10",
+                    "jmp end_of_for_loop",
+                "second_float:",
+                    "inc r12",
+                    "movq xmm1, r10",
+                    "jmp end_of_for_loop",
+                "third_float:",
+                    "inc r12",
+                    "movq xmm2, r10",
+                    "jmp end_of_for_loop",
+                "fourth_float:",
+                    "inc r12",
+                    "movq xmm3, r10",
+                    "jmp end_of_for_loop",
+                "fifth_float:",
+                    "inc r12",
+                    "movq xmm4, r10",
+                    "jmp end_of_for_loop",
+                "sixth_float:",
+                    "inc r12",
+                    "movq xmm5, r10",
+                    "jmp end_of_for_loop",
+                "seventh_float:",
+                    "inc r12",
+                    "movq xmm6, r10",
+                    "jmp end_of_for_loop",
+                "eighth_float:",
+                    "inc r12",
+                    "movq xmm7, r10",
+                    "jmp end_of_for_loop",
             "call_label:",
-        )
-    }
-
-    let mut integer_index = 1; // context takes the first slot
-    let mut float_index = 0;
-    let mut saved_rsp: *const () = std::ptr::null();
-    unsafe {
-        std::arch::asm!(
-            "mov {}, rsp",
-            "mov rdi, {}",
-            out(reg) saved_rsp,
-            out(reg) context,
+                "mov r12, [rax]", // getting return type
+                "mov r13, [rax+8]", // getting fn_ptr
+                "mov r15, rax",   // putting older  stack pointer in r15 for quick reloading
+                "call r13", // calling function pointer
+                "mov rsp, [r15+16]", // restoring original stack pointer and handing control back to rust.
+            options(nostack)
         );
-    }
-    let mut i = 0;
-    loop {
-        let arg = unsafe {
-            call_args.add(i).read()
-        };
-        match arg {
-            Value { tag: 7, ..} => break,
-            StackValue::Int8(value) => {
-                place_value_in_int_reg!(value, integer_index, u8);
-                integer_index += 1;
-            }
-            StackValue::Int16(value) => {
-                place_value_in_int_reg!(value, integer_index);
-                integer_index += 1;
-            }
-            StackValue::Int32(value) => {
-                place_value_in_int_reg!(value, integer_index);
-                integer_index += 1;
-            }
-            StackValue::Int64(value) => {
-                place_value_in_int_reg!(value, integer_index);
-                integer_index += 1;
-            }
-            StackValue::Reference(value) => {
-                place_value_in_int_reg!(value, integer_index);
-                integer_index += 1;
-            }
-            StackValue::Float32(value) => {
-                place_value_in_float_reg!(value, float_index, f32);
-                float_index += 1;
-            }
-            StackValue::Float64(value) => {
-                place_value_in_float_reg!(value, float_index, f64);
-                float_index += 1;
-            }
-        }
-        i += 1;
-        if i >= call_args_len {
-            break;
-        }
     }
     let mut int_return: u64 = 0;
     let mut float_return: f64 = 0.0;
+    let mut return_type: u8 = 0;
     unsafe {
         std::arch::asm!(
-            "call {ptr}",
-            "mov rsp, {saved_rsp}",
-            ptr = in(reg) saved_rsp,
-            saved_rsp = out(reg) saved_rsp,
             // Capture return values in explicit registers
             out("rax") int_return,
             out("xmm0") float_return,
-
-            // Clobber other caller-saved registers
-            out("rcx") _,
-            out("rdx") _,
-            out("rsi") _,
-            out("rdi") _,
-            out("r8") _,
-            out("r9") _,
-            out("r10") _,
-            out("r11") _,
-            out("xmm1") _,
-            out("xmm2") _,
-            out("xmm3") _,
-            out("xmm4") _,
-            out("xmm5") _,
-            out("xmm6") _,
-            out("xmm7") _,
+            out("r12b") return_type,
         );
     }
 
@@ -451,13 +451,13 @@ fn get_stack_byte_padding_size(call_args: &[Value]) -> usize {
             Value { tag: 7, ..}  => break,
             Value { tag: 0, ..} | Value { tag: 1, ..} |
             Value { tag: 2, ..} | Value { tag: 3, ..} |
-            Value { tag: 6, ..} => {
+            Value { tag: 4, ..} => {
                 if int_arg_index > INT_REGISTER_COUNT {
                     stack_size += std::mem::size_of::<usize>();
                 }
                 int_arg_index += 1;
             }
-            Value { tag: 4, ..} | Value { tag: 5, ..} => {
+            Value { tag: 5, ..} | Value { tag: 6, ..} => {
                 if float_arg_index > FLOAT_REGISTER_COUNT {
                     stack_size += std::mem::size_of::<usize>();
                 }
