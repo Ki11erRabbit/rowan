@@ -188,11 +188,20 @@ extern "C" fn printer_println(context: &mut BytecodeContext, _: Reference, strin
     //Runtime::normal_return(context);
 }
 
-extern "C" fn printer_println_ints(_: &mut BytecodeContext, _: Reference, int1: u64, int2: u64, int3: u64, int4: u64, int5: u64, int6: u64, int7: u64) {
-    let ints = [int1, int2, int3, int4, int5, int6, int7];
-    for int in ints {
-        println!("{}", int);
-    }
+extern "C" fn printer_println_ints(ctx: &mut BytecodeContext, this: Reference, int1: u64, int2: u64, int3: u64, int4: u64, int5: u64, int6: u64, int7: u64) {
+    //let ints = [int1, int2, int3, int4, int5, int6, int7];
+    println!("ctx: {ctx:p}");
+    println!("this: {this:p}");
+    println!("{}", int1);
+    println!("{}", int2);
+    println!("{}", int3);
+    println!("{}", int4);
+    println!("{}", int5);
+    println!("{}", int6);
+    println!("{}", int7);
+    /*for (i, int) in ints.iter().enumerate() {
+        println!("{i}: {}", int);
+    }*/
     //Runtime::normal_return(context);
 }
 

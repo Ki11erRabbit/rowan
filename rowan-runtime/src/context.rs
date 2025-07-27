@@ -264,12 +264,13 @@ pub union ValueUnion {
 
 #[cfg(unix)]
 #[cfg(target_arch = "x86_64")]
-pub extern "C" fn call_function_pointer(
+pub fn call_function_pointer(
     context: *mut BytecodeContext,
     call_args: *const Value,
     call_args_len: usize,
     fn_ptr: *const (),
     return_type: u8,
+    padding_byte: u8,
 ) -> StackValue {
     //println!("values: {context:p}, {call_args:p}, {call_args_len}, {fn_ptr:p}, {return_type}");
     unsafe {
@@ -280,12 +281,13 @@ pub extern "C" fn call_function_pointer(
             in("r14") call_args_len,
             in("r13") fn_ptr,
             in("r12b") return_type,
-        )
+            in("al") padding_byte,
+        );
     }
 
-    let stack_byte_size = get_stack_byte_padding_size(unsafe {
+    /*let stack_byte_size = get_stack_byte_padding_size(unsafe {
         std::slice::from_raw_parts(call_args, call_args_len)
-    });
+    });*/
 
     /*
     Here is what the assembly looked like before it was converted to use numeric labels
@@ -455,13 +457,25 @@ pub extern "C" fn call_function_pointer(
             "4:",
                 "cmp r11, r14", // checking if index is less than the length
                 "je 6f",
-                "mov r10, [r15+r11*8*2]", // load value tag into r10
+                "push rax", // Backing up rax
+                "mov rax, 16",
+                "push rdx", // Backing up rdx since mul will overwrite it
+                "mul r11",
+                "pop rdx", // Restoring rdx after mul
+                "mov r10, [r15+rax]", // load value tag into r10
+                "pop rax",
                 "cmp r10, 4",
                 "jbe 41f", // jump if we are less than or equal to the reference tag
                 "jmp 42f",   // otherwise jump to the float handler
             //"body_of_for_loop:",
                 "41:",
-                    "mov r10, [r15+r11*8*2+8]", // fetch data and put it in r10
+                    "push rax", // Back up rax
+                    "mov rax, 16",
+                    "push rdx", // Backing up rdx since mul will overwrite it
+                    "mul r11",
+                    "pop rdx", // Restoring rdx after mul
+                    "mov r10, [r15+rax+8]", // fetch data and put it in r10
+                    "pop rax",
                     "cmp r13, 5", // Checking if int index is less than 5 (we have already used rdi)
                     "jl 31f",
                     "push r10", // putting arguments on the stack, although, right now they are in the wrong order
@@ -471,8 +485,14 @@ pub extern "C" fn call_function_pointer(
                     "lea rax, [rip+50b]",
                     "jmp qword ptr [rax+r13*8]",
                 "42:",
-                    "mov r10, [r15+r11*8*2+8]", // fetch data and put it in r10
-                    "cmp r12, 8", // Checking if float index is less than 8
+                    "push rax", // Back up rax
+                    "mov rax, 16",
+                    "push rdx", // Backing up rdx since mul will overwrite it
+                    "mul r11",
+                    "pop rdx", // Restoring rdx after mul
+                    "mov r10, [r15+rax+8]", // fetch data and put it in r10
+                    "pop rax",
+                    "cmp r12, 8", // Checking if float index is greater than 8
                     "jl 32f",
                     "inc r12",
                     "push r10", // putting arguments on the stack, although, right now they are in the wrong order
@@ -572,7 +592,6 @@ pub extern "C" fn call_function_pointer(
             out("r12b") return_type,
         );
     }
-    println!("returning");
 
     let return_type = TypeTag::from_tag(return_type);
     match return_type {
@@ -589,7 +608,7 @@ pub extern "C" fn call_function_pointer(
 
 #[cfg(unix)]
 #[cfg(target_arch = "x86_64")]
-fn get_stack_byte_padding_size(call_args: &[Value]) -> usize {
+pub fn need_padding(call_args: &[Value]) -> bool {
     const INT_REGISTER_COUNT: usize = 5; // 5 because context is always the first parameter so we lose a register
     let mut int_arg_index = 0;
     const FLOAT_REGISTER_COUNT: usize = 8;
@@ -621,6 +640,6 @@ fn get_stack_byte_padding_size(call_args: &[Value]) -> usize {
         stack_size += std::mem::size_of::<usize>();
         output += std::mem::size_of::<usize>();
     }
-    println!("padding: {output}");
-    output
+    //println!("padding: {output}");
+    output != 0
 }

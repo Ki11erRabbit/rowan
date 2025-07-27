@@ -388,19 +388,21 @@ impl BytecodeContext {
         match details.fn_ptr {
             Some(fn_ptr) => {
                 let var_pointer = self.current_frame().variables.as_ptr();
-                let var_len = self.current_frame().variables.len();
+                let var_len = self.current_frame().vars_len();
                 let variables = unsafe {
                     std::slice::from_raw_parts(var_pointer, var_len)
                 };
                 let variables = variables.iter().map(|v| {
                     Value::from_stack_value(*v)
                 }).collect::<Vec<_>>();
+                let need_padding = super::need_padding(&variables);
                 let mut return_value = call_function_pointer(
                     self,
                     variables.as_ptr(),
                     variables.len(),
                     fn_ptr.as_ptr(),
                     details.return_type.tag(),
+                    need_padding as u8
                 );
                 self.pop();
                 if !return_value.is_blank() {
@@ -450,19 +452,21 @@ impl BytecodeContext {
         match details.fn_ptr {
             Some(fn_ptr) => {
                 let var_pointer = self.current_frame().variables.as_ptr();
-                let var_len = self.current_frame().variables.len();
+                let var_len = self.current_frame().vars_len();
                 let variables = unsafe {
                     std::slice::from_raw_parts(var_pointer, var_len)
                 };
                 let variables = variables.iter().map(|v| {
                     Value::from_stack_value(*v)
                 }).collect::<Vec<_>>();
+                let need_padding = super::need_padding(&variables);
                 let mut return_value = call_function_pointer(
                     self,
                     variables.as_ptr(),
                     variables.len(),
                     fn_ptr.as_ptr(),
                     details.return_type.tag(),
+                    need_padding as u8
                 );
                 self.pop();
                 if !return_value.is_blank() {
