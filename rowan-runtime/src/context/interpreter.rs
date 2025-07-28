@@ -236,10 +236,11 @@ impl BytecodeContext {
         match details.fn_ptr {
             Some(fn_ptr) => {
                 let var_len = self.current_frame().vars_len();
-                let variables = self.current_frame()
+                let mut variables = self.current_frame()
                     .variables[..var_len]
                     .to_vec();
                 let need_padding = super::need_padding(&variables);
+                super::sort_call_args(&mut variables);
                 let mut return_value = call_function_pointer(
                     self,
                     variables.as_ptr(),

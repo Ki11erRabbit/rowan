@@ -380,3 +380,38 @@ pub fn need_padding(call_args: &[Value]) -> bool {
     //println!("padding: {output}");
     output != 0
 }
+
+pub fn sort_call_args(call_args: &mut [Value]) {
+    const INT_REGISTER_COUNT: usize = 5; // 5 because context is always the first parameter so we lose a register
+    let mut int_arg_index = 0;
+    const FLOAT_REGISTER_COUNT: usize = 8;
+    let mut float_arg_index = 0;
+
+    let mut front = 0;
+    let mut back = call_args.len() - 1;
+
+    while front < back {
+        match call_args[front] {
+            Value { tag: 7, ..}  => break,
+            Value { tag: 0, ..} | Value { tag: 1, ..} |
+            Value { tag: 2, ..} | Value { tag: 3, ..} |
+            Value { tag: 4, ..} => {
+                if int_arg_index > INT_REGISTER_COUNT {
+                    println!("moving to back: {front} {back}");
+                    call_args.swap(front - 1, back);
+                    back -= 1;
+                }
+                int_arg_index += 1;
+            }
+            Value { tag: 5, ..} | Value { tag: 6, ..} => {
+                if float_arg_index > FLOAT_REGISTER_COUNT {
+                    call_args.swap(front - 1, back);
+                    back -= 1;
+                }
+                float_arg_index += 1;
+            }
+            _ => unreachable!("invalid arg type"),
+        }
+        front += 1;
+    }
+}
