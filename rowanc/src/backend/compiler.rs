@@ -1831,7 +1831,8 @@ impl Compiler {
                 _ => unreachable!("all calls should be via member access by this point")
             };
 
-            for (i, arg) in args.iter().enumerate() {
+            // Rev is used because otherwise arguments are not loaded from left to right
+            for (i, arg) in args.iter().enumerate().rev() {
                 self.compile_expression(class_name, partial_class, arg, output, lhs)?;
                 self.bind_variable(format!("arg{i}"));
             }
