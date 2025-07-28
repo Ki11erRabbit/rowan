@@ -28,11 +28,11 @@ pub mod core;
 pub mod linker;
 pub mod jit;
 pub mod garbage_collection;
+pub use tables::FunctionDetails;
 
 use crate::runtime::core::{exception_fill_in_stack_trace, exception_print_stack_trace};
 use crate::runtime::garbage_collection::GC_SENDER;
 use crate::runtime::tables::native_object_table::NativeObjectTable;
-use crate::runtime::tables::vtable::FunctionDetails;
 
 pub type Symbol = usize;
 

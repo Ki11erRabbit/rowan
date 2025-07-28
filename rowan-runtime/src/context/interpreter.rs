@@ -3,7 +3,7 @@ use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
 use crate::runtime;
 use crate::context::{call_function_pointer, Value};
-use crate::runtime::{Reference, Runtime};
+use crate::runtime::{FunctionDetails, Reference, Runtime};
 use crate::runtime::object::Object;
 
 
@@ -192,52 +192,7 @@ impl BytecodeContext {
             method_name,
         );
 
-        for pair in self.current_frame().call_args.iter().zip(details.arguments.iter()) {
-            match pair {
-                (Value { tag: 0, .. }, runtime::class::TypeTag::U8) |
-                (Value { tag: 0, .. }, runtime::class::TypeTag::I8) => {}
-                (Value { tag: 1, .. }, runtime::class::TypeTag::U16) |
-                (Value { tag: 1, .. }, runtime::class::TypeTag::I16) => {}
-                (Value { tag: 2, .. }, runtime::class::TypeTag::U32) |
-                (Value { tag: 2, .. }, runtime::class::TypeTag::I32) => {}
-                (Value { tag: 3, .. }, runtime::class::TypeTag::U64) |
-                (Value { tag: 3, .. }, runtime::class::TypeTag::I64) => {}
-                (Value { tag: 5, .. }, runtime::class::TypeTag::F32) => {}
-                (Value { tag: 6, .. }, runtime::class::TypeTag::F64) => {}
-                (Value { tag: 4, .. }, runtime::class::TypeTag::Object) => {}
-                _ => {
-                    todo!("report type error in typing")
-                }
-            }
-        }
-
-        self.push(details.bytecode, details.fn_ptr.is_none());
-
-        match details.fn_ptr {
-            Some(fn_ptr) => {
-                let var_pointer = self.current_frame().variables.as_ptr();
-                let var_len = self.current_frame().vars_len();
-                let variables = unsafe {
-                    std::slice::from_raw_parts(var_pointer, var_len)
-                };
-                let need_padding = super::need_padding(&variables);
-                let mut return_value = call_function_pointer(
-                    self,
-                    variables.as_ptr(),
-                    variables.len(),
-                    fn_ptr.as_ptr(),
-                    details.return_type.tag(),
-                    need_padding as u8
-                );
-                self.pop();
-                if !return_value.is_blank() {
-                    self.current_frame_mut().push(return_value);
-                }
-            }
-            _ => {}
-        }
-
-        self.handle_exception()
+        self.call_function(details)
     }
 
     /// The bool return dictates whether execution should continue or not.
@@ -253,6 +208,10 @@ impl BytecodeContext {
             method_name,
         );
 
+        self.call_function(details)
+    }
+
+    pub fn call_function(&mut self, details: FunctionDetails) -> bool {
         for pair in self.current_frame().call_args.iter().zip(details.arguments.iter()) {
             match pair {
                 (Value { tag: 0, .. }, runtime::class::TypeTag::U8) |
@@ -276,16 +235,15 @@ impl BytecodeContext {
 
         match details.fn_ptr {
             Some(fn_ptr) => {
-                let var_pointer = self.current_frame().variables.as_ptr();
                 let var_len = self.current_frame().vars_len();
-                let variables = unsafe {
-                    std::slice::from_raw_parts(var_pointer, var_len)
-                };
+                let variables = self.current_frame()
+                    .variables[..var_len]
+                    .to_vec();
                 let need_padding = super::need_padding(&variables);
                 let mut return_value = call_function_pointer(
                     self,
                     variables.as_ptr(),
-                    variables.len(),
+                    var_len,
                     fn_ptr.as_ptr(),
                     details.return_type.tag(),
                     need_padding as u8
