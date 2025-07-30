@@ -27,7 +27,7 @@ can be implemented.
   * [x] Garbage Collection doesn't collect too much 
   * [ ] Garbage Collection is cross-platform
     * [x] Garbage Collection works on Unix
-    * [x] Garbage Collection works on Windows
+    * [ ] Garbage Collection works on Windows
   * [ ] Garbage collection doesn't collect static class fields
   * [ ] There is a way to pass objects to FFI and mark that memory as uncollectable
   * [ ] Garbage collection operation skips over native methods if they call Rowan code
