@@ -238,13 +238,13 @@ impl Runtime {
         core::string_from_str(string_ref, name);
 
         string_ref
-    }
+    }*/
 
-    pub extern "C" fn should_unwind(context: &mut Self) -> u8 {
-        if context.current_exception.borrow().is_null() {
+    pub extern "C" fn should_unwind(context: &mut BytecodeContext) -> u8 {
+        if !context.is_current_exception_set() {
             return 0;
         }
-        let exception = *context.current_exception.borrow();
+        /*let exception = *context.current_exception.borrow();
         let exception = unsafe { exception.as_ref().unwrap() };
         let parent_exception = exception.parent_objects[0];
         exception_fill_in_stack_trace(context, parent_exception);
@@ -262,9 +262,9 @@ impl Runtime {
                     return 0;
                 }
             }
-        }
+        }*/
         1
-    }*/
+    }
 
     pub extern "C" fn normal_return(ctx: &mut Self) {
         //let _out = ctx.pop_backtrace();

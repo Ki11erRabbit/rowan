@@ -184,6 +184,10 @@ impl BytecodeContext {
         }
     }
 
+    pub fn is_current_exception_set(&self) -> bool {
+        !self.current_exception.is_null()
+    }
+
     pub fn push(&mut self, bytecode: &'static [Bytecode], is_for_bytecode: bool, method_name: MethodName) {
         self.active_bytecodes.push(bytecode);
         let frame = self.current_frame();

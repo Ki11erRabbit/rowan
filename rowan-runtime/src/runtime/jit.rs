@@ -56,7 +56,7 @@ impl Default for JITController {
         builder.symbol("arrayf64_init", super::core::arrayf64_init as *const u8);
         builder.symbol("arrayf64_set", super::core::arrayf64_set as *const u8);
         builder.symbol("arrayf64_get", super::core::arrayf64_get as *const u8);
-        //builder.symbol("context_should_unwind", Runtime::should_unwind as *const u8);
+        builder.symbol("context_should_unwind", Runtime::should_unwind as *const u8);
         builder.symbol("context_normal_return", Runtime::normal_return as *const u8);
         builder.symbol("member8_get", super::object::Object::get_8 as *const u8);
         builder.symbol("member16_get", super::object::Object::get_16 as *const u8);
