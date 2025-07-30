@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32};
 use std::sync::mpsc::Sender;
 use rowan_shared::bytecode::linked::Bytecode;
-use crate::context::BytecodeContext;
+use crate::context::{BytecodeContext, MethodName, WrappedReference};
 use crate::fake_lock::FakeLock;
 use crate::runtime::class::{ClassMember, ClassMemberData};
 
@@ -38,11 +38,8 @@ pub type Symbol = usize;
 
 pub type Reference = *mut Object;
 
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct WrappedReference(Reference);
 
-unsafe impl Send for WrappedReference {}
-unsafe impl Sync for WrappedReference {}
+
 
 pub type Index = usize;
 
@@ -197,36 +194,9 @@ impl MakeObject<&str> for RuntimeHelper {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub enum MethodName {
-    StaticMethod {
-        class_symbol: Symbol,
-        method_name: Symbol,
-    },
-    VirtualMethod {
-        object_class_symbol: Symbol,
-        class_symbol: Symbol,
-        source_class: Option<Symbol>,
-        method_name: Symbol,
-    }
-}
 
-impl MethodName {
-    pub fn get_method_name(&self) -> Symbol {
-        match self {
-            MethodName::StaticMethod { method_name, .. } => *method_name,
-            MethodName::VirtualMethod { method_name, .. } => *method_name,
-        }
-    }
-}
 
 pub struct Runtime {
-    /// The reference to the current exception
-    /// If the reference is non-zero then we should unwind until we hit a registered exception
-    pub current_exception: RefCell<Reference>,
-    /// The backtrace of function names.
-    /// This gets appended as functions get called, popped as functions return
-    function_backtrace: Vec<MethodName>,
     /// A map between function_backtraces and all currently registered exceptions
     registered_exceptions: HashMap<Symbol, Vec<Symbol>>,
     static_memo: HashMap<(Symbol, Symbol), *const ()>,
@@ -237,8 +207,6 @@ pub struct Runtime {
 impl Runtime {
     pub fn new(sender: Sender<HashSet<WrappedReference>>) -> Self {
         Runtime {
-            current_exception: RefCell::new(std::ptr::null_mut()),
-            function_backtrace: Vec::new(),
             registered_exceptions: HashMap::new(),
             static_memo: HashMap::new(),
             virtual_memo: HashMap::new(),
@@ -246,23 +214,9 @@ impl Runtime {
         }
     }
     
-    pub fn set_exception(&self, exception: Reference) {
-        *self.current_exception.borrow_mut() = exception;
-    }
 
-    pub fn get_exception(&self) -> Reference {
-        *self.current_exception.borrow()
-    }
 
-    pub fn push_backtrace(&mut self, method_name: MethodName) {
-        self.function_backtrace.push(method_name);
-    }
-
-    pub fn pop_backtrace(&mut self) -> Option<MethodName> {
-        self.function_backtrace.pop()
-    }
-
-    pub fn get_current_method(&mut self) -> Reference {
+    /*pub fn get_current_method(&mut self) -> Reference {
         let string_ref = Self::new_object("String");
 
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
@@ -310,10 +264,10 @@ impl Runtime {
             }
         }
         1
-    }
+    }*/
 
     pub extern "C" fn normal_return(ctx: &mut Self) {
-        let _out = ctx.pop_backtrace();
+        //let _out = ctx.pop_backtrace();
         //println!("Normal Return: {out:?}");
     }
 
@@ -836,61 +790,14 @@ impl Runtime {
     }
 
 
-    pub fn check_and_do_garbage_collection(&mut self) {
-        match DO_GARBAGE_COLLECTION.try_read() {
-            Ok(_) => return,
-            Err(TryLockError::WouldBlock) => {
 
-            }
-            Err(TryLockError::Poisoned(_)) => {
-                panic!("Lock poisoned");
-            }
-        }
-        //println!("Garbage collection");
-        
-        let mut info = Vec::new();
 
-        //println!("backtrace len {}", self.function_backtrace.len());
-        let mut backtrace_iter = self.function_backtrace.iter().rev();
+    pub fn dereference_stack_pointer(
+        backtrace_stack_pointer_instruction_pointer: &[(MethodName, usize, usize)],
+        references: &mut HashSet<WrappedReference>
+    ) {
 
-        rowan_unwind::backtrace(|frame| {
-            if frame.is_jitted() {
-                let sp = frame.sp();
-                let ip = frame.ip();
-                //println!("RSP: {:x}, RIP: {:x}", sp, ip);
-                let Some(backtrace) = backtrace_iter.next() else {
-                    return false;
-                };
-
-                info.push((*backtrace, sp as usize, ip as usize));
-            }
-
-            true
-        });
-
-        let live_objects = self.dereference_stack_pointer(&info);
-        self.sender.send(live_objects).unwrap();
-        loop {
-            match DO_GARBAGE_COLLECTION.try_read() {
-                Ok(_) => return,
-                Err(TryLockError::WouldBlock) => {
-
-                }
-                Err(TryLockError::Poisoned(_)) => {
-                    panic!("Lock poisoned");
-                }
-            }
-        }
-        //println!("live_objects: {:x?}", live_objects);
-    }
-
-    fn dereference_stack_pointer(
-        &self,
-        backtrace_stack_pointer_instruction_pointer: &[(MethodName, usize, usize)]
-    ) -> HashSet<WrappedReference> {
-        let mut live_objects = HashSet::new();
-
-        /*let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             unreachable!("Lock poisoned");
         };
 
@@ -900,9 +807,6 @@ impl Runtime {
 
         let Ok(vtables_table) = VTABLES.read() else {
             unreachable!("Lock poisoned");
-        };
-        let Ok(string_table) = STRING_TABLE.read() else {
-            panic!("Lock poisoned");
         };
 
 
@@ -930,7 +834,7 @@ impl Runtime {
                             let pointer = (*sp + *offset as usize) as *mut Reference;
                             //println!("dereferencing: {:x?}", pointer);
                             unsafe {
-                                live_objects.insert(*pointer);
+                                references.insert(WrappedReference(*pointer));
                             }
                         }
                     }
@@ -970,8 +874,8 @@ impl Runtime {
                     let vtable = &vtables_table[vtable_index];
                     let function = vtable.get_function(*method_name).expect("unable to find function");
 
-                    let value = function.value.read().unwrap();
-                    let FunctionValue::Compiled(_, map) = &*value else {
+                    let value = &function.value;
+                    let FunctionValue::Compiled(_, map) = value else {
                         let Ok(string_table) = STRING_TABLE.read() else {
                             unreachable!("we are trying to access the stack of a non-compiled function");
                         };
@@ -985,15 +889,13 @@ impl Runtime {
                         for offset in offsets {
                             let pointer = (*sp + *offset as usize) as *mut Reference;
                             unsafe {
-                                live_objects.insert(*pointer);
+                                references.insert(WrappedReference(*pointer));
                             }
                         }
                     }
                 }
             }
-        }*/
-
-        live_objects.into_iter().map(WrappedReference).collect::<HashSet<_>>()
+        }
     }
 
 
@@ -1027,9 +929,7 @@ impl Runtime {
         }
     }
 
-    /*pub fn get_virtual_method(&mut self, object: Reference, class: &str, source_class: Option<&str>, method_name: &str) -> *const () {
-        self.check_and_do_garbage_collection();
-
+    pub fn get_virtual_method_name<S: AsRef<str>>(class: &str, source_class: Option<S>, method_name: &str) -> Option<(Symbol, Option<Symbol>, Symbol)> {
         let Ok(mut class_map) = CLASS_MAPPER.write() else {
             panic!("Lock poisoned");
         };
@@ -1037,23 +937,18 @@ impl Runtime {
             panic!("Lock poisoned");
         };
 
-        let class_symbol = *class_map.get(class).expect("unable to find class symbol");
-        let source_class = source_class.map(|c| *class_map.get(c).expect("unable to find class symbol"));
-        let method_name = *string_map.get(method_name).expect("unable to find method name");
-        drop(class_map);
-        drop(string_map);
-
-        let object_class = unsafe {
-            let object = object.as_ref().unwrap();
-            object.class
+        let class_symbol = *class_map.get(class)?;
+        let source_class = if let Some(source_class) = source_class {
+            class_map.get(source_class.as_ref()).map(|x| *x)
+        } else {
+            None
         };
+        let method_name = *string_map.get(method_name)?;
 
-        self.get_method(object_class, class_symbol, source_class, method_name)
+        Some((class_symbol, source_class, method_name))
     }
 
-    pub fn get_static_function(&mut self, class: &str, method_name: &str) -> *const () {
-        self.check_and_do_garbage_collection();
-
+    pub fn get_static_method_name(class: &str, method_name: &str) -> Option<(Symbol, Symbol)> {
         let Ok(mut class_map) = CLASS_MAPPER.write() else {
             panic!("Lock poisoned");
         };
@@ -1061,22 +956,15 @@ impl Runtime {
             panic!("Lock poisoned");
         };
 
-        let class_symbol = *class_map.get(class).expect("unable to find class symbol");
-        let method_name = *string_map.get(method_name).expect("unable to find method name");
-        drop(class_map);
-        drop(string_map);
+        let class_symbol = *class_map.get(class)?;
+        let method_name = *string_map.get(method_name)?;
 
-        self.get_static_method(class_symbol, method_name)
-    }*/
+        Some((class_symbol, method_name))
+    }
 }
 
 
-pub extern "C" fn get_virtual_function(context: &mut Runtime, object: Reference, class_symbol: u64, source_class: i64, method_name: u64) -> u64 {
-    context.check_and_do_garbage_collection();
-
-    let object = unsafe {object.as_mut().unwrap()};
-
-    let object_class_symbol = object.class;
+pub extern "C" fn call_virtual_function(context: &mut BytecodeContext, class_symbol: u64, source_class: i64, method_name: u64) {
     let class_symbol = class_symbol as Symbol;
     let source_class = if source_class < 0 {
         None
@@ -1084,10 +972,8 @@ pub extern "C" fn get_virtual_function(context: &mut Runtime, object: Reference,
         Some(source_class as Symbol)
     };
     let method_name = method_name as Symbol;
-    /*let method_ptr = context.get_method(object_class_symbol, class_symbol, source_class, method_name);
-
-    method_ptr as usize as u64*/
-    0
+    context.invoke_virtual_extern(class_symbol, source_class, method_name, None);
+    todo!("split into multiple functions for each possible return size")
 }
 
 pub extern "C" fn new_object(class_symbol: u64) -> u64 {
@@ -1096,15 +982,11 @@ pub extern "C" fn new_object(class_symbol: u64) -> u64 {
     object as usize as u64
 }
 
-pub extern "C" fn get_static_function(context: &mut Runtime, class_symbol: u64, method_name: u64) -> u64 {
-    context.check_and_do_garbage_collection();
-
+pub extern "C" fn call_static_function(context: &mut BytecodeContext, class_symbol: u64, method_name: u64) {
     let class_symbol = class_symbol as Symbol;
     let method_name = method_name as Symbol;
-    /*let method_ptr = context.get_static_method(class_symbol, method_name);
-
-    method_ptr as usize as u64*/
-    0
+    context.invoke_static_extern(class_symbol, method_name, None);
+    todo!("split into multiple functions for each possible return size")
 }
 
 pub extern "C" fn get_static_member8(_context: &mut Runtime, class_symbol: u64, member_index: u64) -> u8 {

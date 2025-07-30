@@ -76,8 +76,8 @@ pub extern "C" fn rowan_main() {
             gc.main_loop()
         }).expect("Thread 'new' panicked at 'Garbage Collection'");
 
-    let _sender = GC_SENDER.read().clone().unwrap();
-    let mut context = BytecodeContext::new();
+    let sender = GC_SENDER.read().clone().unwrap();
+    let mut context = BytecodeContext::new(sender);
 
     //println!("main_symbol: {}, main_method_symbol: {}", main_symbol, main_method_symbol);
     context.call_main(main_symbol, main_method_symbol);

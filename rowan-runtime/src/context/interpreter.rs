@@ -1,12 +1,24 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::mpsc::Sender;
+use std::sync::TryLockError;
 use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
 use crate::runtime;
-use crate::context::{call_function_pointer, Value};
-use crate::runtime::{FunctionDetails, Reference, Runtime};
+use crate::context::{call_function_pointer, MethodName, Value, WrappedReference};
+use crate::runtime::{FunctionDetails, Reference, Runtime, DO_GARBAGE_COLLECTION};
 use crate::runtime::object::Object;
 
-
+#[derive(Debug, Copy, Clone)]
+pub enum CallContinueState {
+    /// This means to continue what was being done
+    Success,
+    /// This means that we successfully called a JITted, Native, or Builtin function and it succeeded
+    Return,
+    /// This means that we just set up a bytecode method to be called
+    ExecuteFunction,
+    /// An exception was thrown and therefore unwind.
+    Error,
+}
 
 
 pub struct StackFrame {
@@ -16,11 +28,12 @@ pub struct StackFrame {
     block_positions: HashMap<usize, usize>,
     variables: [Value; 256],
     call_args: [Value; 256],
+    method_name: MethodName,
     is_for_bytecode: bool,
 }
 
 impl StackFrame {
-    pub fn new(args: &[Value], bytecode: &[Bytecode], is_for_bytecode: bool) -> Self {
+    pub fn new(args: &[Value], bytecode: &[Bytecode], is_for_bytecode: bool, method_name: MethodName) -> Self {
         let mut block_positions = HashMap::new();
         for (i, bytecode) in bytecode.iter().enumerate() {
             match bytecode {
@@ -45,6 +58,7 @@ impl StackFrame {
             variables,
             call_args: [Value::blank(); 256],
             is_for_bytecode,
+            method_name,
         }
     }
 
@@ -110,6 +124,45 @@ impl StackFrame {
         }
         self.variables.len()
     }
+
+    pub fn collect(&self, references: &mut HashSet<WrappedReference>) {
+        for variable in self.variables.iter() {
+            match variable {
+                Value { tag: 4, value } => unsafe {
+                    let value = value.r;
+                    references.insert(WrappedReference(value));
+                }
+                Value { tag: 7, .. } => {
+                    break;
+                }
+                _ => {}
+            }
+        }
+        for call_arg in self.call_args.iter() {
+            match call_arg {
+                Value { tag: 4, value } => unsafe {
+                    let value = value.r;
+                    references.insert(WrappedReference(value));
+                }
+                Value { tag: 7, .. } => {
+                    break;
+                }
+                _ => {}
+            }
+        }
+        for operand in self.operand_stack.iter() {
+            match operand {
+                Value { tag: 4, value } => unsafe {
+                    let value = value.r;
+                    references.insert(WrappedReference(value));
+                }
+                Value { tag: 7, .. } => {
+                    break;
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 
@@ -117,23 +170,25 @@ pub struct BytecodeContext {
     active_bytecodes: Vec<&'static [Bytecode]>,
     active_frames: Vec<StackFrame>,
     current_exception: Reference,
+    sender: Sender<HashSet<WrappedReference>>,
 }
 
 
 impl BytecodeContext {
-    pub fn new() -> Self {
+    pub fn new(sender: Sender<HashSet<WrappedReference>>) -> Self {
         BytecodeContext {
             active_bytecodes: Vec::new(),
             active_frames: Vec::new(),
             current_exception: std::ptr::null_mut(),
+            sender,
         }
     }
 
-    pub fn push(&mut self, bytecode: &'static [Bytecode], is_for_bytecode: bool) {
+    pub fn push(&mut self, bytecode: &'static [Bytecode], is_for_bytecode: bool, method_name: MethodName) {
         self.active_bytecodes.push(bytecode);
         let frame = self.current_frame();
         let args = frame.get_args();
-        self.active_frames.push(StackFrame::new(args, bytecode, is_for_bytecode));
+        self.active_frames.push(StackFrame::new(args, bytecode, is_for_bytecode, method_name));
         let frame_len = self.active_frames.len();
         for arg in self.active_frames[frame_len - 2].get_args_mut() {
             if arg.is_blank() {
@@ -159,23 +214,18 @@ impl BytecodeContext {
     }
 
     /// This function will unwind the stack if needed when an exception is thrown.
-    /// The bool return dictates whether execution should continue or not.
-    /// `true` means that we can continue from a bytecode context.
-    /// `false` means that we can't continue from a bytecode context meaning that we have to unwind
-    /// to a function call to either continue unwinding or catch the exception.
-    pub fn handle_exception(&mut self) -> bool {
-        true
+    pub fn handle_exception(&mut self) -> CallContinueState {
+        CallContinueState::Success
     }
 
-    /// The bool return dictates whether execution should continue or not.
-    /// `true` means that we can continue from a bytecode context.
-    /// `false` means that we can't continue from a bytecode context meaning that we have to unwind
+
     pub fn invoke_virtual(
         &mut self,
         specified: runtime::Symbol,
         origin: Option<runtime::Symbol>,
-        method_name: runtime::Symbol
-    ) -> bool {
+        method_name: runtime::Symbol,
+        return_slot: Option<&mut Value>,
+    ) -> CallContinueState {
         let object = self.current_frame().call_args[0];
         let object = match object {
             Value { tag: 4, value: object} => unsafe { object.r },
@@ -192,26 +242,42 @@ impl BytecodeContext {
             method_name,
         );
 
-        self.call_function(details)
+        let method_name = MethodName::VirtualMethod {
+            object_class_symbol: object.class,
+            class_symbol: specified,
+            source_class: origin,
+            method_name,
+        };
+
+        self.call_function(details, method_name, return_slot)
     }
 
-    /// The bool return dictates whether execution should continue or not.
-    /// `true` means that we can continue from a bytecode context.
-    /// `false` means that we can't continue from a bytecode context meaning that we have to unwind
+
     pub fn invoke_static(
         &mut self,
         class_name: runtime::Symbol,
-        method_name: runtime::Symbol
-    ) -> bool {
+        method_name: runtime::Symbol,
+        return_slot: Option<&mut Value>,
+    ) -> CallContinueState {
         let details = Runtime::get_static_method_details(
             class_name,
             method_name,
         );
 
-        self.call_function(details)
+        let method_name = MethodName::StaticMethod {
+            class_symbol: class_name,
+            method_name
+        };
+
+        self.call_function(details, method_name, return_slot)
     }
 
-    pub fn call_function(&mut self, details: FunctionDetails) -> bool {
+    pub fn call_function(
+        &mut self,
+        details: FunctionDetails,
+        method_name: MethodName,
+        return_slot: Option<&mut Value>
+    ) -> CallContinueState {
         for pair in self.current_frame().call_args.iter().zip(details.arguments.iter()) {
             match pair {
                 (Value { tag: 0, .. }, runtime::class::TypeTag::U8) |
@@ -231,7 +297,7 @@ impl BytecodeContext {
             }
         }
 
-        self.push(details.bytecode, details.fn_ptr.is_none());
+        self.push(details.bytecode, details.fn_ptr.is_none(), method_name);
 
         match details.fn_ptr {
             Some(fn_ptr) => {
@@ -250,14 +316,18 @@ impl BytecodeContext {
                     need_padding as u8
                 );
                 self.pop();
+                if let Some(return_slot) = return_slot {
+                    *return_slot = return_value;
+                }
                 if !return_value.is_blank() {
                     self.current_frame_mut().push(return_value);
                 }
+                //self.handle_exception()
+                CallContinueState::Return
             }
-            _ => {}
+            _ => CallContinueState::ExecuteFunction
         }
 
-        self.handle_exception()
     }
 
     /// TODO: add way to pass in cmdline args
@@ -266,15 +336,64 @@ impl BytecodeContext {
             class,
             method,
         );
+        let method_name = MethodName::StaticMethod {
+            class_symbol: class,
+            method_name: method,
+        };
         self.active_bytecodes.push(details.bytecode);
         // TODO: add passing of cmdline args
-        self.active_frames.push(StackFrame::new(&[], details.bytecode, details.fn_ptr.is_none()));
+        self.active_frames.push(StackFrame::new(&[], details.bytecode, details.fn_ptr.is_none(), method_name));
         self.current_frame_mut().variables[0] = Value::from(std::ptr::null_mut());
         self.main_loop();
     }
 
+    /// returns true if call finished without any errors
+    /// returns false if an exception was thrown
+    pub fn invoke_virtual_extern(
+        &mut self,
+        specified: runtime::Symbol,
+        origin: Option<runtime::Symbol>,
+        method_name: runtime::Symbol,
+        return_slot: Option<&mut Value>,
+    ) -> bool {
+        let result = self.invoke_virtual(specified, origin, method_name, return_slot);
+        match result {
+            CallContinueState::Success => false,
+            CallContinueState::Return => true,
+            CallContinueState::ExecuteFunction => {
+                self.main_loop();
+                true
+            }
+            CallContinueState::Error => false,
+        }
+    }
+
+
+    pub fn invoke_static_extern(
+        &mut self,
+        class_name: runtime::Symbol,
+        method_name: runtime::Symbol,
+        return_slot: Option<&mut Value>,
+    ) -> bool {
+        let result = self.invoke_static(class_name, method_name, return_slot);
+        match result {
+            CallContinueState::Success => false,
+            CallContinueState::Return => true,
+            CallContinueState::ExecuteFunction => {
+                self.main_loop();
+                true
+            }
+            CallContinueState::Error => false,
+        }
+    }
+
     pub fn main_loop(&mut self) {
+        if !self.current_frame().is_for_bytecode {
+            self.check_and_do_garbage_collection();
+            return;
+        }
         loop {
+            self.check_and_do_garbage_collection();
             let bytecode = &self.active_bytecodes[self.active_bytecodes.len() - 1][self.current_frame().ip];
             self.current_frame_mut().ip += 1;
 
@@ -285,6 +404,78 @@ impl BytecodeContext {
                 break;
             }
         }
+    }
+
+    fn check_for_garbage_collection(&mut self) -> bool {
+        match DO_GARBAGE_COLLECTION.try_read() {
+            Ok(_) => true,
+            Err(TryLockError::WouldBlock) => {
+                false
+            }
+            Err(TryLockError::Poisoned(_)) => {
+                panic!("Lock poisoned");
+            }
+        }
+    }
+    pub fn check_and_do_garbage_collection(&mut self) {
+        if self.check_for_garbage_collection() {
+            return
+        }
+
+        self.collect_garbage()
+
+    }
+
+    pub fn collect_garbage(&mut self) {
+        let mut references = HashSet::new();
+
+        self.collect_interpreter_references(&mut references);
+        self.collect_jit_references(&mut references);
+
+
+        self.sender.send(references).unwrap();
+        loop {
+            if self.check_for_garbage_collection() {
+                return
+            }
+            std::thread::yield_now();
+        }
+    }
+
+    fn collect_interpreter_references(&mut self, references: &mut HashSet<WrappedReference>) {
+        for frame in self.active_frames.iter() {
+            frame.collect(references);
+        }
+    }
+
+    fn collect_jit_references(&mut self, references: &mut HashSet<WrappedReference>) {
+        let mut info = Vec::new();
+
+        let mut frame_iter = self.active_frames.iter().rev();
+
+        rowan_unwind::backtrace(|frame| {
+            if frame.is_jitted() {
+                let sp = frame.sp();
+                let ip = frame.ip();
+                //println!("RSP: {:x}, RIP: {:x}", sp, ip);
+                let Some(frame) = frame_iter.next() else {
+                    return false;
+                };
+
+                info.push((frame.method_name, sp, ip));
+            }
+            true
+        });
+
+        self.dereference_stack_pointer(&info, references);
+    }
+
+    fn dereference_stack_pointer(
+        &mut self,
+        info: &[(MethodName, usize, usize)],
+        references: &mut HashSet<WrappedReference>
+    ) {
+        Runtime::dereference_stack_pointer(info, references);
     }
 
     /// The bool return dictates whether execution should continue or not.
@@ -1696,50 +1887,57 @@ impl BytecodeContext {
                 match tag {
                     TypeTag::U8 | TypeTag::I8 => {
                         let value = runtime::core::array8_get(self, array, index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         self.current_frame_mut().push(Value::from(value));
                     }
                     TypeTag::U16 | TypeTag::I16 => {
                         let value = runtime::core::array16_get(self, array, index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         self.current_frame_mut().push(Value::from(value));
                     }
                     TypeTag::U32 | TypeTag::I32 => {
                         let value = runtime::core::array32_get(self, array, index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         self.current_frame_mut().push(Value::from(value));
                     }
                     TypeTag::U64 | TypeTag::I64 => {
                         let value = runtime::core::array64_get(self, array, index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         self.current_frame_mut().push(Value::from(value));
                     }
                     TypeTag::F32 => {
                         let value = runtime::core::arrayf32_get(self, array, index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         self.current_frame_mut().push(Value::from(value));
                     }
                     TypeTag::F64 => {
                         let value = runtime::core::arrayf64_get(self, array, index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         self.current_frame_mut().push(Value::from(value));
                     }
                     TypeTag::Object => {
                         let value = runtime::core::arrayobject_get(self, array, index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         let value = value as usize as Reference;
                         self.current_frame_mut().push(Value::from(value));
@@ -1763,51 +1961,58 @@ impl BytecodeContext {
                     (TypeTag::U8, Value { tag: 0, value }) | (TypeTag::I8, Value { tag: 0, value }) => {
                         let value = unsafe { value.c };
                         runtime::core::array8_set(self, array, index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     (TypeTag::U16, Value { tag: 1, value }) | (TypeTag::I16, Value { tag: 1, value }) => {
                         let value = unsafe { value.s };
                         runtime::core::array16_set(self, array, index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     (TypeTag::U32, Value { tag: 2, value }) | (TypeTag::I32, Value { tag: 2, value }) => {
                         let value = unsafe { value.i };
                         runtime::core::array32_set(self, array, index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     (TypeTag::U64, Value { tag: 3, value }) | (TypeTag::I64, Value { tag: 32, value }) => {
                         let value = unsafe { value.l };
                         runtime::core::array64_set(self, array, index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     (TypeTag::F32, Value { tag: 5, value }) => {
                         let value = unsafe { value.f };
                         runtime::core::arrayf32_set(self, array, index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     (TypeTag::F64, Value { tag: 5, value }) => {
                         let value = unsafe { value.d };
                         runtime::core::arrayf64_set(self, array, index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     (TypeTag::Object, Value { tag: 4, value }) => {
                         let value = unsafe { value.r };
                         let value = value as usize as u64;
                         runtime::core::arrayobject_set(self, array, index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     _ => unreachable!("Invalid Type Tag"),
@@ -1827,50 +2032,57 @@ impl BytecodeContext {
                 match tag {
                     TypeTag::U8 | TypeTag::I8 => {
                         let value = Object::get_8(self, object, *access, *parent_name, *index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         self.current_frame_mut().push(Value::from(value));
                     }
                     TypeTag::U16 | TypeTag::I16 => {
                         let value = Object::get_16(self, object, *access, *parent_name, *index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         self.current_frame_mut().push(Value::from(value));
                     }
                     TypeTag::U32 | TypeTag::I32 => {
                         let value = Object::get_32(self, object, *access, *parent_name, *index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         self.current_frame_mut().push(Value::from(value));
                     }
                     TypeTag::U64 | TypeTag::I64 => {
                         let value = Object::get_64(self, object, *access, *parent_name, *index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         self.current_frame_mut().push(Value::from(value));
                     }
                     TypeTag::F32 => {
                         let value = Object::get_f32(self, object, *access, *parent_name, *index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         self.current_frame_mut().push(Value::from(value));
                     }
                     TypeTag::F64 => {
                         let value = Object::get_f64(self, object, *access, *parent_name, *index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         self.current_frame_mut().push(Value::from(value));
                     }
                     TypeTag::Object => {
                         let value = Object::get_object(self, object, *access, *parent_name, *index);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                         let value = value as usize as Reference;
                         self.current_frame_mut().push(Value::from(value));
@@ -1889,51 +2101,58 @@ impl BytecodeContext {
                     (TypeTag::U8, Value { tag: 0, value }) | (TypeTag::I8, Value { tag: 0, value }) => {
                         let value = unsafe { value.c };
                         Object::set_8(self, object, *access, *parent_name, *index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     (TypeTag::U16, Value { tag: 1, value }) | (TypeTag::I16, Value { tag: 1, value }) => {
                         let value = unsafe { value.s };
                         Object::set_16(self, object, *access, *parent_name, *index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     (TypeTag::U32, Value { tag: 2, value }) | (TypeTag::I32, Value { tag: 2, value }) => {
                         let value = unsafe { value.i };
                         Object::set_32(self, object, *access, *parent_name, *index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     (TypeTag::U64, Value { tag: 3, value }) | (TypeTag::I64, Value { tag: 3, value }) => {
                         let value = unsafe { value.l };
                         Object::set_64(self, object, *access, *parent_name, *index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     (TypeTag::F32, Value { tag: 5, value }) => {
                         let value = unsafe { value.f };
                         Object::set_f32(self, object, *access, *parent_name, *index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     (TypeTag::F32, Value { tag: 6, value }) => {
                         let value = unsafe { value.d };
                         Object::set_f64(self, object, *access, *parent_name, *index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     (TypeTag::Object, Value { tag: 4, value }) => {
                         let value = unsafe { value.r };
                         let value = value as usize as u64;
                         Object::set_object(self, object, *access, *parent_name, *index, value);
-                        if !self.handle_exception() {
-                            return false;
+                        match self.handle_exception() {
+                            CallContinueState::Error => return false,
+                            _ => {}
                         }
                     }
                     _ => unreachable!("Invalid Type Tag"),
@@ -1952,20 +2171,30 @@ impl BytecodeContext {
                 self.current_frame_mut().push(Value::from(result as u8));
             }
             Bytecode::InvokeVirt(specified, origin, method_name) => {
-                return self.invoke_virtual(
+                match self.invoke_virtual(
                     *specified as runtime::Symbol,
                     origin.map(|s| s as runtime::Symbol),
                     *method_name as runtime::Symbol,
-                )
+                    None
+                ) {
+                    CallContinueState::Error => return false,
+                    CallContinueState::Return => return false,
+                    _ => return true,
+                }
             }
             Bytecode::InvokeVirtTail(..) => {
                 todo!("Tail Recursion Virtual")
             }
             Bytecode::InvokeStatic(class_name, method_name) => {
-                return self.invoke_static(
+                match self.invoke_static(
                     *class_name as runtime::Symbol,
                     *method_name as runtime::Symbol,
-                )
+                    None,
+                ) {
+                    CallContinueState::Error => return false,
+                    CallContinueState::Return => return false,
+                    _ => return true,
+                }
             }
             Bytecode::InvokeStaticTail(..) => {
                 todo!("Tail Recursion Static")

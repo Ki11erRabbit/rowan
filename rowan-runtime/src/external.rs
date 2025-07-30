@@ -1,4 +1,5 @@
 use std::ffi::{c_char, CStr};
+use crate::context::{BytecodeContext, Value};
 use crate::runtime::{Runtime, Reference};
 use crate::runtime::core::{string_from_str, string_initialize};
 
@@ -40,13 +41,13 @@ pub extern "C" fn rowan_create_empty_string() -> Reference {
 /// method_name: the name of the method to return
 /// Returns a pointer to a function. It is up to the caller to cast it correctly
 #[unsafe(no_mangle)]
-pub extern "C" fn rowan_get_virtual_function(
-    context: &mut Runtime,
-    object: Reference,
+pub extern "C" fn rowan_call_virtual_function(
+    context: &mut BytecodeContext,
     class: *const c_char,
     source_class: *const c_char,
     method_name: *const c_char,
-) -> *const () {
+    return_slot: Option<&mut Value>,
+) -> i32 {
     let class = unsafe { CStr::from_ptr(class) };
     let class = class.to_string_lossy();
     let source = if source_class.is_null() {
@@ -59,36 +60,55 @@ pub extern "C" fn rowan_get_virtual_function(
     let method_name = unsafe { CStr::from_ptr(method_name) };
     let method_name = method_name.to_string_lossy();
 
-    /*if let Some(source) = source {
-        context.get_virtual_method(object, class.as_ref(), Some(source.as_ref()), method_name.as_ref())
+    let Some((class, source_class, method_name)) = Runtime::get_virtual_method_name(&class, source, &method_name) else {
+        return 2;
+    };
+
+    let result = context.invoke_virtual_extern(class, source_class, method_name, return_slot);
+
+    if result {
+        0
     } else {
-        context.get_virtual_method(object, class.as_ref(), None, method_name.as_ref())
-    }*/
-    std::ptr::null()
+        1
+    }
 }
 
 /// This function retrieves the function pointer for a static function for a given class.
 /// class: the class with the particular method
-/// method_name: the name of the method to return
-/// Returns a pointer to a function. It is up to the caller to cast it correctly
+/// method_name: the name of the method
+/// return_slot: an optional return parameter
+/// returns an i32 indicating success and failure
+/// `0` success
+/// `1` unwinding failure
+/// `2` unwinding failure from unknown method
 #[unsafe(no_mangle)]
-pub extern "C" fn rowan_get_static_function(
-    context: &mut Runtime,
+pub extern "C" fn rowan_call_static_function(
+    context: &mut BytecodeContext,
     class: *const c_char,
     method_name: *const c_char,
-) -> *const () {
+    return_slot: Option<&mut Value>,
+) -> i32 {
     let class = unsafe { CStr::from_ptr(class) };
     let class = class.to_string_lossy();
     let method_name = unsafe { CStr::from_ptr(method_name) };
     let method_name = method_name.to_string_lossy();
 
-    //context.get_static_function(class.as_ref(), method_name.as_ref())
-    std::ptr::null()
+    let Some((class_name, method_name)) = Runtime::get_static_method_name(&class, &method_name) else {
+        return 2;
+    };
+
+    let result = context.invoke_static_extern(class_name, method_name, return_slot);
+
+    if result {
+        0
+    } else {
+        1
+    }
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn rowan_set_exception(context: &mut Runtime, exception: Reference) {
-    context.set_exception(exception);
+    //context.set_exception(exception);
 }
 
 #[unsafe(no_mangle)]

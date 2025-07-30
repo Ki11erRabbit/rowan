@@ -6,7 +6,7 @@ mod amd64;
 pub(crate) use amd64::unix::*;
 
 pub use interpreter::BytecodeContext;
-use crate::runtime::Reference;
+use crate::runtime::{Reference, Symbol};
 use paste::paste;
 
 macro_rules! as_type {
@@ -94,6 +94,34 @@ macro_rules! into_type {
     };
 }
 
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct WrappedReference(pub Reference);
+
+unsafe impl Send for WrappedReference {}
+unsafe impl Sync for WrappedReference {}
+
+#[derive(Copy, Clone, Debug)]
+pub enum MethodName {
+    StaticMethod {
+        class_symbol: Symbol,
+        method_name: Symbol,
+    },
+    VirtualMethod {
+        object_class_symbol: Symbol,
+        class_symbol: Symbol,
+        source_class: Option<Symbol>,
+        method_name: Symbol,
+    }
+}
+
+impl MethodName {
+    pub fn get_method_name(&self) -> Symbol {
+        match self {
+            MethodName::StaticMethod { method_name, .. } => *method_name,
+            MethodName::VirtualMethod { method_name, .. } => *method_name,
+        }
+    }
+}
 
 #[derive(Copy, Clone)]
 pub union ValueUnion {

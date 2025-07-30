@@ -10,8 +10,6 @@ use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
 use super::{tables::vtable::{Function, FunctionValue}, Runtime, Symbol};
 use cranelift::codegen::ir::BlockArg;
-use cranelift_codegen::gimli::{Encoding, Format, LittleEndian, Register, RunTimeEndian};
-use cranelift_codegen::gimli::write::{Address, CommonInformationEntry, Dwarf, EhFrame, EndianVec, FrameTable, Range, RangeList, Sections, Writer};
 use cranelift_codegen::isa::unwind::UnwindInfo;
 use log::trace;
 use crate::runtime;
@@ -35,8 +33,8 @@ impl Default for JITController {
             .finish(settings::Flags::new(flag_builder))
             .unwrap();
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
-        builder.symbol("get_virtual_function", super::get_virtual_function as *const u8);
-        builder.symbol("get_static_function", super::get_static_function as *const u8);
+        builder.symbol("call_virtual_function", super::call_virtual_function as *const u8);
+        builder.symbol("call_static_function", super::call_static_function as *const u8);
         builder.symbol("new_object", super::new_object as *const u8);
         builder.symbol("array8_init", super::core::array8_init as *const u8);
         builder.symbol("array8_set", super::core::array8_set as *const u8);
@@ -58,7 +56,7 @@ impl Default for JITController {
         builder.symbol("arrayf64_init", super::core::arrayf64_init as *const u8);
         builder.symbol("arrayf64_set", super::core::arrayf64_set as *const u8);
         builder.symbol("arrayf64_get", super::core::arrayf64_get as *const u8);
-        builder.symbol("context_should_unwind", Runtime::should_unwind as *const u8);
+        //builder.symbol("context_should_unwind", Runtime::should_unwind as *const u8);
         builder.symbol("context_normal_return", Runtime::normal_return as *const u8);
         builder.symbol("member8_get", super::object::Object::get_8 as *const u8);
         builder.symbol("member16_get", super::object::Object::get_16 as *const u8);
@@ -1289,20 +1287,15 @@ impl FunctionTranslator<'_> {
                 }
                 Bytecode::InvokeVirt(class_name, source_class, method_name) => {
 
-                    let mut get_virt_func = module.make_signature();
-                    get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-                    get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-                    get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-                    get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-                    get_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-                    get_virt_func.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    let mut call_virt_func = module.make_signature();
+                    call_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    call_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    call_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    call_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
 
-                    let fn_id = module.declare_function("get_virtual_function", Linkage::Import, &get_virt_func).unwrap();
+                    let fn_id = module.declare_function("call_virtual_function", Linkage::Import, &call_virt_func).unwrap();
 
-                    let get_virt_func_func = module.declare_func_in_func(fn_id, self.builder.func);
-
-                    //println!("[translate] class_name from invoke virt: {}", class_name);
-                    let (sig, is_object) = Runtime::get_method_signature(*class_name as Symbol, *method_name as Symbol);
+                    let call_virt_func_func = module.declare_func_in_func(fn_id, self.builder.func);
                     
                     let class_name_value = self.builder
                         .ins()
@@ -1327,47 +1320,25 @@ impl FunctionTranslator<'_> {
                     self.builder.declare_value_needs_stack_map(method_args[1]);
                     let method_instructions = self.builder
                         .ins()
-                        .call(get_virt_func_func, &[
+                        .call(call_virt_func_func, &[
                             method_args[0],
                             method_args[1],
                             class_name_value,
                             source_class_value,
                             method_name_value,
                         ]);
-                    let method_value = self.builder.inst_results(method_instructions)[0];
-                    self.create_bail_block(module, Some(types::I64), &[BlockArg::Value(method_value)]);
-
-                    let return_type = sig.returns.first().cloned();
-                    let sig = self.builder.import_signature(sig);
-
-                    let result = self.builder.ins().call_indirect(sig, method_value, &method_args);
-
-                    let return_value = self.builder.inst_results(result);
-                    let return_value = return_value.to_vec();
-                    if is_object {
-                        return_value.iter()
-                            .for_each(|x| self.builder.declare_value_needs_stack_map(*x));
-                    }
-                    if return_value.len() != 0 {
-                        self.push(return_value[0], return_type.unwrap().value_type, is_object)
-                    }
-                    let return_value = return_value.into_iter()
-                        .map(|x| x)
-                        .map(BlockArg::Value)
-                        .collect::<Vec<_>>();
-
-                    self.create_bail_block(module, return_type.map(|x| x.value_type), &return_value);
+                    //let method_value = self.builder.inst_results(method_instructions)[0];
+                    //self.create_bail_block(module, Some(types::I64), &[BlockArg::Value(method_value)]);
                 }
                 Bytecode::InvokeStatic(class_name, method_name) => {
-                    let mut get_static_func = module.make_signature();
-                    get_static_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-                    get_static_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-                    get_static_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-                    get_static_func.returns.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    let mut call_static_func = module.make_signature();
+                    call_static_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    call_static_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                    call_static_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
 
-                    let fn_id = module.declare_function("get_static_function", Linkage::Import, &get_static_func).unwrap();
+                    let fn_id = module.declare_function("call_static_function", Linkage::Import, &call_static_func).unwrap();
 
-                    let get_static_func_func = module.declare_func_in_func(fn_id, self.builder.func);
+                    let call_static_func_func = module.declare_func_in_func(fn_id, self.builder.func);
 
                     let (sig, is_object) = Runtime::get_static_method_signature(*class_name as Symbol, *method_name as Symbol);
 
@@ -1382,33 +1353,13 @@ impl FunctionTranslator<'_> {
                     let method_args = self.get_call_arguments_as_vec();
                     let method_instructions = self.builder
                         .ins()
-                        .call(get_static_func_func, &[
+                        .call(call_static_func_func, &[
                             method_args[0],
                             class_name_value,
                             method_name_value,
                         ]);
-                    let method_value = self.builder.inst_results(method_instructions)[0];
-                    self.create_bail_block(module, Some(types::I64), &[BlockArg::Value(method_value)]);
-
-                    let return_type = sig.returns.first().cloned();
-                    let sig = self.builder.import_signature(sig);
-
-                    let result = self.builder.ins().call_indirect(sig, method_value, &method_args);
-
-                    let return_value = self.builder.inst_results(result);
-                    let return_value = return_value.to_vec();
-                    if is_object {
-                        return_value.iter()
-                            .for_each(|x| self.builder.declare_value_needs_stack_map(*x));
-                    }
-                    if return_value.len() != 0 {
-                        self.push(return_value[0], return_type.unwrap().value_type, is_object)
-                    }
-                    let return_value = return_value.into_iter()
-                        .map(BlockArg::Value)
-                        .collect::<Vec<_>>();
-
-                    self.create_bail_block(module, return_type.map(|x| x.value_type), &return_value);
+                    //let method_value = self.builder.inst_results(method_instructions)[0];
+                    //self.create_bail_block(module, Some(types::I64), &[BlockArg::Value(method_value)]);
                 }
                 Bytecode::GetStaticMember(class_name, index, type_tag) => {
                     let mut is_object = false;

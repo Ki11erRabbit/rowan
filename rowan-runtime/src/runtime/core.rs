@@ -555,9 +555,9 @@ pub extern "C" fn exception_fill_in_stack_trace(context: &mut Runtime, this: Ref
 
     let backtrace = Runtime::new_object("Backtrace");
 
-    let method_name = context.get_current_method();
+    /*let method_name = context.get_current_method();
 
-    backtrace_init(context, backtrace, method_name,0, 0);
+    backtrace_init(context, backtrace, method_name,0, 0);*/
 
     unsafe {
         pointer.add(length as usize).write(backtrace);
