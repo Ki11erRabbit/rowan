@@ -309,8 +309,8 @@ impl BytecodeContext {
                 let mut variables = self.current_frame()
                     .variables[..var_len]
                     .to_vec();
-                let need_padding = super::need_padding(&variables);
                 super::sort_call_args(&mut variables);
+                let need_padding = super::need_padding(&variables);
                 let mut return_value = call_function_pointer(
                     self,
                     variables.as_ptr(),
