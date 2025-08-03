@@ -4,9 +4,10 @@ use std::sync::TryLockError;
 use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
 use crate::runtime;
-use crate::context::{call_function_pointer, MethodName, Value, WrappedReference};
+use crate::context::{call_function_pointer, MethodName, WrappedReference};
 use crate::runtime::{FunctionDetails, Reference, Runtime, DO_GARBAGE_COLLECTION};
 use crate::runtime::object::Object;
+use paste::paste;
 
 #[derive(Debug, Copy, Clone)]
 pub enum CallContinueState {
@@ -20,20 +21,193 @@ pub enum CallContinueState {
     Error,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum StackValue {
+    Int8(u8),
+    Int16(u16),
+    Int32(u32),
+    Int64(u64),
+    Float32(f32),
+    Float64(f64),
+    Reference(Reference),
+    Blank,
+}
+
+macro_rules! as_type {
+    ($typ:ty) => {
+        paste! {
+            pub fn [<as_ $typ>](self) -> $typ {
+                match self {
+                    StackValue::Int8(v) => v as $typ,
+                    StackValue::Int16(v) => v as $typ,
+                    StackValue::Int32(v) => v as $typ,
+                    StackValue::Int64(v) => v as $typ,
+                    StackValue::Float32(v) => v as $typ,
+                    StackValue::Float64(v) => v as $typ,
+                    _ => todo!("Throw error for mismatched type")
+                }
+            }
+        }
+    };
+}
+
+macro_rules! into_type {
+    ($typ:ty) => {
+        paste! {
+            pub fn [<into_ $typ>](self) -> $typ {
+                let mut buffer = [0u8; std::mem::size_of::<$typ>()];
+                match self {
+                    StackValue::Int8(v) => {
+                        for (buf, v) in buffer.iter_mut().zip(v.to_le_bytes().iter()) {
+                            *buf = *v;
+                        }
+                        $typ::from_le_bytes(buffer)
+                    }
+                    StackValue::Int16(v) => {
+                        for (buf, v) in buffer.iter_mut().zip(v.to_le_bytes().iter()) {
+                            *buf = *v;
+                        }
+                        $typ::from_le_bytes(buffer)
+                    }
+                    StackValue::Int32(v) => {
+                        for (buf, v) in buffer.iter_mut().zip(v.to_le_bytes().iter()) {
+                            *buf = *v;
+                        }
+                        $typ::from_le_bytes(buffer)
+                    }
+                    StackValue::Int64(v) => {
+                        for (buf, v) in buffer.iter_mut().zip(v.to_le_bytes().iter()) {
+                            *buf = *v;
+                        }
+                        $typ::from_le_bytes(buffer)
+                    }
+                    StackValue::Float32(v) => {
+                        for (buf, v) in buffer.iter_mut().zip(v.to_le_bytes().iter()) {
+                            *buf = *v;
+                        }
+                        $typ::from_le_bytes(buffer)
+                    }
+                    StackValue::Float64(v) => {
+                        for (buf, v) in buffer.iter_mut().zip(v.to_le_bytes().iter()) {
+                            *buf = *v;
+                        }
+                        $typ::from_le_bytes(buffer)
+                    }
+                    _ => todo!("Throw error for mismatched type")
+                }
+            }
+        }
+    };
+}
+impl StackValue {
+    as_type!(u8);
+    as_type!(u16);
+    as_type!(u32);
+    as_type!(u64);
+    as_type!(i8);
+    as_type!(i16);
+    as_type!(i32);
+    as_type!(i64);
+    as_type!(f32);
+    as_type!(f64);
+    into_type!(u8);
+    into_type!(u16);
+    into_type!(u32);
+    into_type!(u64);
+    into_type!(i8);
+    into_type!(i16);
+    into_type!(i32);
+    into_type!(i64);
+    into_type!(f32);
+    into_type!(f64);
+
+    pub fn is_blank(self) -> bool {
+        match self {
+            StackValue::Blank => true,
+            _ => false,
+        }
+    }
+}
+
+impl From<u8> for StackValue {
+    fn from(v: u8) -> Self {
+        StackValue::Int8(v)
+    }
+}
+
+impl From<u16> for StackValue {
+    fn from(v: u16) -> Self {
+        StackValue::Int16(v)
+    }
+}
+
+impl From<u32> for StackValue {
+    fn from(v: u32) -> Self {
+        StackValue::Int32(v)
+    }
+}
+
+impl From<u64> for StackValue {
+    fn from(v: u64) -> Self {
+        StackValue::Int64(v)
+    }
+}
+impl From<i8> for StackValue {
+    fn from(v: i8) -> Self {
+        StackValue::Int8(u8::from_ne_bytes(v.to_ne_bytes()))
+    }
+}
+
+impl From<i16> for StackValue {
+    fn from(v: i16) -> Self {
+        StackValue::Int16(u16::from_ne_bytes(v.to_ne_bytes()))
+    }
+}
+
+impl From<i32> for StackValue {
+    fn from(v: i32) -> Self {
+        StackValue::Int32(u32::from_ne_bytes(v.to_ne_bytes()))
+    }
+}
+
+impl From<i64> for StackValue {
+    fn from(v: i64) -> Self {
+        StackValue::Int64(u64::from_ne_bytes(v.to_ne_bytes()))
+    }
+}
+
+impl From<f32> for StackValue {
+    fn from(v: f32) -> Self {
+        StackValue::Float32(v)
+    }
+}
+
+impl From<f64> for StackValue {
+    fn from(v: f64) -> Self {
+        StackValue::Float64(v)
+    }
+}
+
+impl From<Reference> for StackValue {
+    fn from(v: Reference) -> Self {
+        StackValue::Reference(v)
+    }
+}
+
 
 pub struct StackFrame {
-    operand_stack: Vec<Value>,
+    operand_stack: Vec<StackValue>,
     ip: usize,
     current_block: usize,
     block_positions: HashMap<usize, usize>,
-    variables: [Value; 256],
-    call_args: [Value; 256],
+    variables: [StackValue; 256],
+    call_args: [StackValue; 256],
     method_name: MethodName,
     is_for_bytecode: bool,
 }
 
 impl StackFrame {
-    pub fn new(args: &[Value], bytecode: &[Bytecode], is_for_bytecode: bool, method_name: MethodName) -> Self {
+    pub fn new(args: &[StackValue], bytecode: &[Bytecode], is_for_bytecode: bool, method_name: MethodName) -> Self {
         let mut block_positions = HashMap::new();
         for (i, bytecode) in bytecode.iter().enumerate() {
             match bytecode {
@@ -43,7 +217,7 @@ impl StackFrame {
                 _ => {}
             }
         }
-        let mut variables = [Value::blank(); 256];
+        let mut variables = [StackValue::Blank; 256];
         for (arg, variable) in args.iter().zip(variables.iter_mut()) {
             if arg.is_blank() {
                 break;
@@ -56,17 +230,17 @@ impl StackFrame {
             current_block: 0,
             block_positions,
             variables,
-            call_args: [Value::blank(); 256],
+            call_args: [StackValue::Blank; 256],
             is_for_bytecode,
             method_name,
         }
     }
 
-    pub fn push(&mut self, stack_value: Value) {
+    pub fn push(&mut self, stack_value: StackValue) {
         assert_ne!(stack_value.is_blank(), true, "Added a blank to the stack");
         self.operand_stack.push(stack_value);
     }
-    pub fn pop(&mut self) -> Value {
+    pub fn pop(&mut self) -> StackValue {
         self.operand_stack.pop().unwrap()
     }
 
@@ -97,10 +271,10 @@ impl StackFrame {
         self.call_args[index as usize] = value;
     }
 
-    pub fn get_args(&self) -> &[Value] {
+    pub fn get_args(&self) -> &[StackValue] {
         &self.call_args
     }
-    pub fn get_args_mut(&mut self) -> &mut [Value] {
+    pub fn get_args_mut(&mut self) -> &mut [StackValue] {
         &mut self.call_args
     }
 
@@ -128,11 +302,10 @@ impl StackFrame {
     pub fn collect(&self, references: &mut HashSet<WrappedReference>) {
         for variable in self.variables.iter() {
             match variable {
-                Value { tag: 4, value } => unsafe {
-                    let value = value.r;
-                    references.insert(WrappedReference(value));
+                StackValue::Reference(value) =>  {
+                    references.insert(WrappedReference(*value));
                 }
-                Value { tag: 7, .. } => {
+                StackValue::Blank => {
                     break;
                 }
                 _ => {}
@@ -140,11 +313,10 @@ impl StackFrame {
         }
         for call_arg in self.call_args.iter() {
             match call_arg {
-                Value { tag: 4, value } => unsafe {
-                    let value = value.r;
-                    references.insert(WrappedReference(value));
+                StackValue::Reference(value) =>  {
+                    references.insert(WrappedReference(*value));
                 }
-                Value { tag: 7, .. } => {
+                StackValue::Blank => {
                     break;
                 }
                 _ => {}
@@ -152,11 +324,10 @@ impl StackFrame {
         }
         for operand in self.operand_stack.iter() {
             match operand {
-                Value { tag: 4, value } => unsafe {
-                    let value = value.r;
-                    references.insert(WrappedReference(value));
+                StackValue::Reference(value) =>  {
+                    references.insert(WrappedReference(*value));
                 }
-                Value { tag: 7, .. } => {
+                StackValue::Blank => {
                     break;
                 }
                 _ => {}
@@ -198,7 +369,7 @@ impl BytecodeContext {
             if arg.is_blank() {
                 break
             }
-            *arg = Value::blank();
+            *arg = StackValue::Blank;
         }
     }
 
@@ -228,11 +399,11 @@ impl BytecodeContext {
         specified: runtime::Symbol,
         origin: Option<runtime::Symbol>,
         method_name: runtime::Symbol,
-        return_slot: Option<&mut Value>,
+        return_slot: Option<&mut StackValue>,
     ) -> CallContinueState {
         let object = self.current_frame().call_args[0];
         let object = match object {
-            Value { tag: 4, value: object} => unsafe { object.r },
+            StackValue::Reference(object) => object,
             _ => todo!("report error that first call arg must be an object.")
         };
         let object = unsafe {
@@ -261,7 +432,7 @@ impl BytecodeContext {
         &mut self,
         class_name: runtime::Symbol,
         method_name: runtime::Symbol,
-        return_slot: Option<&mut Value>,
+        return_slot: Option<&mut StackValue>,
     ) -> CallContinueState {
         let details = Runtime::get_static_method_details(
             class_name,
@@ -280,23 +451,23 @@ impl BytecodeContext {
         &mut self,
         details: FunctionDetails,
         method_name: MethodName,
-        return_slot: Option<&mut Value>
+        return_slot: Option<&mut StackValue>
     ) -> CallContinueState {
         for pair in self.current_frame().call_args.iter().zip(details.arguments.iter()) {
             match pair {
-                (Value { tag: 0, .. }, runtime::class::TypeTag::U8) |
-                (Value { tag: 0, .. }, runtime::class::TypeTag::I8) => {}
-                (Value { tag: 1, .. }, runtime::class::TypeTag::U16) |
-                (Value { tag: 1, .. }, runtime::class::TypeTag::I16) => {}
-                (Value { tag: 2, .. }, runtime::class::TypeTag::U32) |
-                (Value { tag: 2, .. }, runtime::class::TypeTag::I32) => {}
-                (Value { tag: 3, .. }, runtime::class::TypeTag::U64) |
-                (Value { tag: 3, .. }, runtime::class::TypeTag::I64) => {}
-                (Value { tag: 5, .. }, runtime::class::TypeTag::F32) => {}
-                (Value { tag: 6, .. }, runtime::class::TypeTag::F64) => {}
-                (Value { tag: 4, .. }, runtime::class::TypeTag::Object) => {}
-                (Value { tag, .. }, type_tag) => {
-                    todo!("report type error in typing for tag: {} and type_tag: {:?}", tag, type_tag);
+                (StackValue::Int8(_), runtime::class::TypeTag::U8) |
+                (StackValue::Int8(_), runtime::class::TypeTag::I8) => {}
+                (StackValue::Int16(_), runtime::class::TypeTag::U16) |
+                (StackValue::Int16(_), runtime::class::TypeTag::I16) => {}
+                (StackValue::Int32(_), runtime::class::TypeTag::U32) |
+                (StackValue::Int32(_), runtime::class::TypeTag::I32) => {}
+                (StackValue::Int64(_), runtime::class::TypeTag::U64) |
+                (StackValue::Int64(_), runtime::class::TypeTag::I64) => {}
+                (StackValue::Float32(_), runtime::class::TypeTag::F32) => {}
+                (StackValue::Float64(_), runtime::class::TypeTag::F64) => {}
+                (StackValue::Reference(_), runtime::class::TypeTag::Object) => {}
+                (value, type_tag) => {
+                    todo!("report type error in typing for tag: {:?} and type_tag: {:?}", value, type_tag);
                 }
             }
         }
@@ -345,7 +516,7 @@ impl BytecodeContext {
         self.active_bytecodes.push(details.bytecode);
         // TODO: add passing of cmdline args
         self.active_frames.push(StackFrame::new(&[], details.bytecode, details.fn_ptr.is_none(), method_name));
-        self.current_frame_mut().variables[0] = Value::from(std::ptr::null_mut());
+        self.current_frame_mut().variables[0] = StackValue::Reference(std::ptr::null_mut());
         self.main_loop();
     }
 
@@ -356,7 +527,7 @@ impl BytecodeContext {
         specified: runtime::Symbol,
         origin: Option<runtime::Symbol>,
         method_name: runtime::Symbol,
-        return_slot: Option<&mut Value>,
+        return_slot: Option<&mut StackValue>,
     ) -> bool {
         let result = self.invoke_virtual(specified, origin, method_name, return_slot);
         match result {
@@ -375,7 +546,7 @@ impl BytecodeContext {
         &mut self,
         class_name: runtime::Symbol,
         method_name: runtime::Symbol,
-        return_slot: Option<&mut Value>,
+        return_slot: Option<&mut StackValue>,
     ) -> bool {
         let result = self.invoke_static(class_name, method_name, return_slot);
         match result {
@@ -489,34 +660,34 @@ impl BytecodeContext {
             Bytecode::Nop => {}
             Bytecode::Breakpoint => {}
             Bytecode::LoadU8(value) => {
-                self.current_frame_mut().push(Value::from(*value));
+                self.current_frame_mut().push(StackValue::from(*value));
             }
             Bytecode::LoadU16(value) => {
-                self.current_frame_mut().push(Value::from(*value));
+                self.current_frame_mut().push(StackValue::from(*value));
             }
             Bytecode::LoadU32(value) => {
-                self.current_frame_mut().push(Value::from(*value));
+                self.current_frame_mut().push(StackValue::from(*value));
             }
             Bytecode::LoadU64(value) => {
-                self.current_frame_mut().push(Value::from(*value));
+                self.current_frame_mut().push(StackValue::from(*value));
             }
             Bytecode::LoadI8(value) => {
-                self.current_frame_mut().push(Value::from(*value));
+                self.current_frame_mut().push(StackValue::from(*value));
             }
             Bytecode::LoadI16(value) => {
-                self.current_frame_mut().push(Value::from(*value));
+                self.current_frame_mut().push(StackValue::from(*value));
             }
             Bytecode::LoadI32(value) => {
-                self.current_frame_mut().push(Value::from(*value));
+                self.current_frame_mut().push(StackValue::from(*value));
             }
             Bytecode::LoadI64(value) => {
-                self.current_frame_mut().push(Value::from(*value));
+                self.current_frame_mut().push(StackValue::from(*value));
             }
             Bytecode::LoadF32(value) => {
-                self.current_frame_mut().push(Value::from(*value));
+                self.current_frame_mut().push(StackValue::from(*value));
             }
             Bytecode::LoadF64(value) => {
-                self.current_frame_mut().push(Value::from(*value));
+                self.current_frame_mut().push(StackValue::from(*value));
             }
             Bytecode::LoadSymbol(_sym) => {
                 todo!("LoadSymbol")
@@ -544,25 +715,25 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
 
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_add(rhs)));
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_add(rhs)));
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_add(rhs)));
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_add(rhs)));
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_add(rhs)));
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_add(rhs)));
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_add(rhs)));
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_add(rhs)));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -574,25 +745,25 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
 
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_sub(rhs)));
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_sub(rhs)));
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_sub(rhs)));
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_sub(rhs)));
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_sub(rhs)));
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_sub(rhs)));
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_sub(rhs)));
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_sub(rhs)));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -604,25 +775,25 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
 
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_mul(rhs)));
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_mul(rhs)));
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_mul(rhs)));
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_mul(rhs)));
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_mul(rhs)));
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_mul(rhs)));
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_mul(rhs)));
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_mul(rhs)));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -633,37 +804,37 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_div(rhs);
-                        self.current_frame_mut().push(Value::from(result));
+                        self.current_frame_mut().push(StackValue::from(result));
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_div(rhs);
-                        self.current_frame_mut().push(Value::from(result));
+                        self.current_frame_mut().push(StackValue::from(result));
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_div(rhs);
-                        self.current_frame_mut().push(Value::from(result));
+                        self.current_frame_mut().push(StackValue::from(result));
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_div(rhs);
-                        self.current_frame_mut().push(Value::from(result));
+                        self.current_frame_mut().push(StackValue::from(result));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -674,25 +845,25 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_div(rhs)));
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_div(rhs)));
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_div(rhs)));
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_div(rhs)));
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_div(rhs)));
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_div(rhs)));
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_div(rhs)));
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_div(rhs)));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -703,37 +874,37 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_rem(rhs);
-                        self.current_frame_mut().push(Value::from(result));
+                        self.current_frame_mut().push(StackValue::from(result));
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_rem(rhs);
-                        self.current_frame_mut().push(Value::from(result));
+                        self.current_frame_mut().push(StackValue::from(result));
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_rem(rhs);
-                        self.current_frame_mut().push(Value::from(result));
+                        self.current_frame_mut().push(StackValue::from(result));
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_rem(rhs);
-                        self.current_frame_mut().push(Value::from(result));
+                        self.current_frame_mut().push(StackValue::from(result));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -744,25 +915,17 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_rem(rhs)));
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_rem(rhs)));
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_rem(rhs)));
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_rem(rhs)));
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_rem(rhs)));
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_rem(rhs)));
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
-                        self.current_frame_mut().push(Value::from(lhs.wrapping_rem(rhs)));
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_rem(rhs)));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -773,15 +936,11 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 5, value: lhs }, Value { tag: 5, value: rhs }) => {
-                        let lhs = unsafe { lhs.f };
-                        let rhs = unsafe { rhs.f };
-                        self.current_frame_mut().push(Value::from(lhs + rhs))
+                    (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs + rhs))
                     }
-                    (Value { tag: 6, value: lhs }, Value { tag: 6, value: rhs }) => {
-                        let lhs = unsafe { lhs.d };
-                        let rhs = unsafe { rhs.d };
-                        self.current_frame_mut().push(Value::from(lhs + rhs))
+                    (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs + rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -792,15 +951,11 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 5, value: lhs }, Value { tag: 5, value: rhs }) => {
-                        let lhs = unsafe { lhs.f };
-                        let rhs = unsafe { rhs.f };
-                        self.current_frame_mut().push(Value::from(lhs - rhs))
+                    (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs - rhs))
                     }
-                    (Value { tag: 6, value: lhs }, Value { tag: 6, value: rhs }) => {
-                        let lhs = unsafe { lhs.d };
-                        let rhs = unsafe { rhs.d };
-                        self.current_frame_mut().push(Value::from(lhs - rhs))
+                    (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs - rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -811,15 +966,11 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 5, value: lhs }, Value { tag: 5, value: rhs }) => {
-                        let lhs = unsafe { lhs.f };
-                        let rhs = unsafe { rhs.f };
-                        self.current_frame_mut().push(Value::from(lhs * rhs))
+                    (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs * rhs))
                     }
-                    (Value { tag: 6, value: lhs }, Value { tag: 6, value: rhs }) => {
-                        let lhs = unsafe { lhs.d };
-                        let rhs = unsafe { rhs.d };
-                        self.current_frame_mut().push(Value::from(lhs * rhs))
+                    (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs * rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -830,15 +981,11 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 5, value: lhs }, Value { tag: 5, value: rhs }) => {
-                        let lhs = unsafe { lhs.f };
-                        let rhs = unsafe { rhs.f };
-                        self.current_frame_mut().push(Value::from(lhs / rhs))
+                    (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs / rhs))
                     }
-                    (Value { tag: 6, value: lhs }, Value { tag: 6, value: rhs }) => {
-                        let lhs = unsafe { lhs.d };
-                        let rhs = unsafe { rhs.d };
-                        self.current_frame_mut().push(Value::from(lhs / rhs))
+                    (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs / rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -849,15 +996,11 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 5, value: lhs }, Value { tag: 5, value: rhs }) => {
-                        let lhs = unsafe { lhs.f };
-                        let rhs = unsafe { rhs.f };
-                        self.current_frame_mut().push(Value::from(lhs % rhs))
+                    (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs % rhs))
                     }
-                    (Value { tag: 6, value: lhs }, Value { tag: 6, value: rhs }) => {
-                        let lhs = unsafe { lhs.d };
-                        let rhs = unsafe { rhs.d };
-                        self.current_frame_mut().push(Value::from(lhs % rhs))
+                    (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs % rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -868,25 +1011,17 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
-                        self.current_frame_mut().push(Value::from(lhs.saturating_add(rhs)))
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs.saturating_add(rhs)))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
-                        self.current_frame_mut().push(Value::from(lhs.saturating_add(rhs)))
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs.saturating_add(rhs)))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
-                        self.current_frame_mut().push(Value::from(lhs.saturating_add(rhs)))
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs.saturating_add(rhs)))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
-                        self.current_frame_mut().push(Value::from(lhs.saturating_add(rhs)))
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs.saturating_add(rhs)))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -897,25 +1032,17 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
-                        self.current_frame_mut().push(Value::from(lhs.saturating_sub(rhs)))
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs.saturating_sub(rhs)))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
-                        self.current_frame_mut().push(Value::from(lhs.saturating_sub(rhs)))
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs.saturating_sub(rhs)))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
-                        self.current_frame_mut().push(Value::from(lhs.saturating_sub(rhs)))
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs.saturating_sub(rhs)))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
-                        self.current_frame_mut().push(Value::from(lhs.saturating_sub(rhs)))
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs.saturating_sub(rhs)))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -926,25 +1053,21 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
-                        self.current_frame_mut().push(Value::from(lhs & rhs))
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs & rhs))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
-                        self.current_frame_mut().push(Value::from(lhs & rhs))
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs & rhs))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
-                        self.current_frame_mut().push(Value::from(lhs & rhs))
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs & rhs))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
-                        self.current_frame_mut().push(Value::from(lhs & rhs))
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs & rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -955,25 +1078,25 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
-                        self.current_frame_mut().push(Value::from(lhs | rhs))
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs | rhs))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
-                        self.current_frame_mut().push(Value::from(lhs | rhs))
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs | rhs))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
-                        self.current_frame_mut().push(Value::from(lhs | rhs))
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs | rhs))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
-                        self.current_frame_mut().push(Value::from(lhs | rhs))
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs | rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -984,25 +1107,25 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
-                        self.current_frame_mut().push(Value::from(lhs ^ rhs))
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs ^ rhs))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
-                        self.current_frame_mut().push(Value::from(lhs ^ rhs))
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs ^ rhs))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
-                        self.current_frame_mut().push(Value::from(lhs ^ rhs))
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs ^ rhs))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
-                        self.current_frame_mut().push(Value::from(lhs ^ rhs))
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs ^ rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1012,21 +1135,17 @@ impl BytecodeContext {
             Bytecode::Not => {
                 let value = self.current_frame_mut().pop();
                 match value {
-                    Value { tag: 0, value } => {
-                        let value = unsafe { value.c };
-                        self.current_frame_mut().push(Value::from(!value))
+                    StackValue::Int8(value) => {
+                        self.current_frame_mut().push(StackValue::from(!value))
                     }
-                    Value { tag: 1, value } => {
-                        let value = unsafe { value.s };
-                        self.current_frame_mut().push(Value::from(!value))
+                    StackValue::Int16(value) => {
+                        self.current_frame_mut().push(StackValue::from(!value))
                     }
-                    Value { tag: 2, value } => {
-                        let value = unsafe { value.i };
-                        self.current_frame_mut().push(Value::from(!value))
+                    StackValue::Int32(value) => {
+                        self.current_frame_mut().push(StackValue::from(!value))
                     }
-                    Value { tag: 3, value } => {
-                        let value = unsafe { value.l };
-                        self.current_frame_mut().push(Value::from(!value))
+                    StackValue::Int64(value) => {
+                        self.current_frame_mut().push(StackValue::from(!value))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1037,25 +1156,25 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
-                        self.current_frame_mut().push(Value::from(lhs << rhs))
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs << rhs))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
-                        self.current_frame_mut().push(Value::from(lhs << rhs))
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs << rhs))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
-                        self.current_frame_mut().push(Value::from(lhs << rhs))
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs << rhs))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
-                        self.current_frame_mut().push(Value::from(lhs << rhs))
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
+                        self.current_frame_mut().push(StackValue::from(lhs << rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1066,37 +1185,37 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >> rhs;
-                        self.current_frame_mut().push(Value::from(value))
+                        self.current_frame_mut().push(StackValue::from(value))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >> rhs;
-                        self.current_frame_mut().push(Value::from(value))
+                        self.current_frame_mut().push(StackValue::from(value))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >> rhs;
-                        self.current_frame_mut().push(Value::from(value))
+                        self.current_frame_mut().push(StackValue::from(value))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >> rhs;
-                        self.current_frame_mut().push(Value::from(value))
+                        self.current_frame_mut().push(StackValue::from(value))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1107,25 +1226,17 @@ impl BytecodeContext {
                 let rhs = self.current_frame_mut().pop();
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
-                        self.current_frame_mut().push(Value::from(lhs >> rhs))
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs >> rhs))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
-                        self.current_frame_mut().push(Value::from(lhs >> rhs))
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs >> rhs))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
-                        self.current_frame_mut().push(Value::from(lhs >> rhs))
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        self.current_frame_mut().push(StackValue::from(lhs >> rhs))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
-                        self.current_frame_mut().push(Value::from(lhs >> rhs))
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {                        
+                        self.current_frame_mut().push(StackValue::from(lhs >> rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1135,41 +1246,35 @@ impl BytecodeContext {
             Bytecode::Neg => {
                 let value = self.current_frame_mut().pop();
                 match value {
-                    Value { tag: 0, value } => {
-                        let value = unsafe { value.c };
+                    StackValue::Int8(value) => {
                         let value = i8::from_ne_bytes(value.to_ne_bytes());
                         let value = -value;
-                        self.current_frame_mut().push(Value::from(value))
+                        self.current_frame_mut().push(StackValue::from(value))
                     }
-                    Value { tag: 1, value } => {
-                        let value = unsafe { value.s };
+                    StackValue::Int16(value) => {
                         let value = i16::from_ne_bytes(value.to_ne_bytes());
                         let value = -value;
-                        self.current_frame_mut().push(Value::from(value))
+                        self.current_frame_mut().push(StackValue::from(value))
                     }
-                    Value { tag: 2, value } => {
-                        let value = unsafe { value.i };
+                    StackValue::Int32(value) => {
                         let value = i32::from_ne_bytes(value.to_ne_bytes());
                         let value = -value;
-                        self.current_frame_mut().push(Value::from(value))
+                        self.current_frame_mut().push(StackValue::from(value))
                     }
-                    Value { tag: 3, value } => {
-                        let value = unsafe { value.l };
+                    StackValue::Int64(value) => {
                         let value = i64::from_ne_bytes(value.to_ne_bytes());
                         let value = -value;
-                        self.current_frame_mut().push(Value::from(value))
+                        self.current_frame_mut().push(StackValue::from(value))
                     }
-                    Value { tag: 5, value } => {
-                        let value = unsafe { value.f };
+                    StackValue::Float32(value) => {
                         let value = -value;
-                        self.current_frame_mut().push(Value::from(value))
+                        self.current_frame_mut().push(StackValue::from(value))
                     }
-                    Value { tag: 6, value } => {
-                        let value = unsafe { value.d };
+                    StackValue::Float64(value) => {
                         let value = -value;
-                        self.current_frame_mut().push(Value::from(value))
+                        self.current_frame_mut().push(StackValue::from(value))
                     }
-                    Value { tag: 4, .. } => {
+                    StackValue::Reference(_) => {
                         todo!("Throw error saying that you can't negate references")
                     }
                     _ => unreachable!("You can't negate a blank")
@@ -1179,37 +1284,37 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1220,37 +1325,37 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1261,29 +1366,29 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1294,29 +1399,29 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1327,37 +1432,37 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1368,37 +1473,37 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1409,29 +1514,29 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1442,29 +1547,29 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1475,37 +1580,37 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1516,37 +1621,37 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1557,29 +1662,29 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1590,29 +1695,29 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 0, value: lhs }, Value { tag: 0, value: rhs }) => {
-                        let lhs = unsafe { lhs.c };
-                        let rhs = unsafe { rhs.c };
+                    (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
+                        
+                        
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 1, value: lhs }, Value { tag: 1, value: rhs }) => {
-                        let lhs = unsafe { lhs.s };
-                        let rhs = unsafe { rhs.s };
+                    (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
+                        
+                        
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 2, value: lhs }, Value { tag: 2, value: rhs }) => {
-                        let lhs = unsafe { lhs.i };
-                        let rhs = unsafe { rhs.i };
+                    (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
+                        
+                        
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 3, value: lhs }, Value { tag: 3, value: rhs }) => {
-                        let lhs = unsafe { lhs.l };
-                        let rhs = unsafe { rhs.l };
+                    (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
+                        
+                        
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1623,17 +1728,13 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 5, value: lhs }, Value { tag: 5, value: rhs }) => {
-                        let lhs = unsafe { lhs.f };
-                        let rhs = unsafe { rhs.f };
+                    (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {                        
                         let value = lhs.eq(&rhs);
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 6, value: lhs }, Value { tag: 6, value: rhs }) => {
-                        let lhs = unsafe { lhs.d };
-                        let rhs = unsafe { rhs.d };
+                    (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
                         let value = lhs.eq(&rhs);
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1644,17 +1745,13 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 5, value: lhs }, Value { tag: 5, value: rhs }) => {
-                        let lhs = unsafe { lhs.f };
-                        let rhs = unsafe { rhs.f };
+                    (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.ne(&rhs);
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 6, value: lhs }, Value { tag: 6, value: rhs }) => {
-                        let lhs = unsafe { lhs.d };
-                        let rhs = unsafe { rhs.d };
+                    (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
                         let value = lhs.ne(&rhs);
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1665,17 +1762,13 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 5, value: lhs }, Value { tag: 5, value: rhs }) => {
-                        let lhs = unsafe { lhs.f };
-                        let rhs = unsafe { rhs.f };
+                    (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.gt(&rhs);
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 6, value: lhs }, Value { tag: 6, value: rhs }) => {
-                        let lhs = unsafe { lhs.d };
-                        let rhs = unsafe { rhs.d };
+                    (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
                         let value = lhs.gt(&rhs);
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1686,17 +1779,13 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 5, value: lhs }, Value { tag: 5, value: rhs }) => {
-                        let lhs = unsafe { lhs.f };
-                        let rhs = unsafe { rhs.f };
+                    (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.lt(&rhs);
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 6, value: lhs }, Value { tag: 6, value: rhs }) => {
-                        let lhs = unsafe { lhs.d };
-                        let rhs = unsafe { rhs.d };
+                    (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
                         let value = lhs.lt(&rhs);
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1707,17 +1796,13 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 5, value: lhs }, Value { tag: 5, value: rhs }) => {
-                        let lhs = unsafe { lhs.f };
-                        let rhs = unsafe { rhs.f };
+                    (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.ge(&rhs);
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 6, value: lhs }, Value { tag: 6, value: rhs }) => {
-                        let lhs = unsafe { lhs.d };
-                        let rhs = unsafe { rhs.d };
+                    (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
                         let value = lhs.ge(&rhs);
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1728,17 +1813,13 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
-                    (Value { tag: 5, value: lhs }, Value { tag: 5, value: rhs }) => {
-                        let lhs = unsafe { lhs.f };
-                        let rhs = unsafe { rhs.f };
+                    (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.le(&rhs);
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
-                    (Value { tag: 6, value: lhs }, Value { tag: 6, value: rhs }) => {
-                        let lhs = unsafe { lhs.d };
-                        let rhs = unsafe { rhs.d };
+                    (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
                         let value = lhs.le(&rhs);
-                        self.current_frame_mut().push(Value::from(value as u8))
+                        self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1750,43 +1831,43 @@ impl BytecodeContext {
                 match tag {
                     TypeTag::U8 => {
                         let value = value.as_u8();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::U16 => {
                         let value = value.as_u16();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::U32 => {
                         let value = value.as_u32();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::U64 => {
                         let value = value.as_u64();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::I8 => {
                         let value = value.as_i8();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::I16 => {
                         let value = value.as_i16();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::I32 => {
                         let value = value.as_i32();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::I64 => {
                         let value = value.as_i64();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::F32 => {
                         let value = value.as_f32();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::F64 => {
                         let value = value.as_f64();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::Object => {
                         todo!("report object conversion errors")
@@ -1799,43 +1880,43 @@ impl BytecodeContext {
                 match tag {
                     TypeTag::U8 => {
                         let value = value.into_u8();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::U16 => {
                         let value = value.into_u16();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::U32 => {
                         let value = value.into_u32();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::U64 => {
                         let value = value.into_u64();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::I8 => {
                         let value = value.into_i8();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::I16 => {
                         let value = value.into_i16();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::I32 => {
                         let value = value.into_i32();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::I64 => {
                         let value = value.into_i64();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::F32 => {
                         let value = value.into_f32();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::F64 => {
                         let value = value.into_f64();
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::Object => {
                         todo!("report object conversion errors")
@@ -1846,7 +1927,7 @@ impl BytecodeContext {
             Bytecode::CreateArray(tag) => {
                 let size = self.current_frame_mut().pop();
                 let size = match size {
-                    Value { tag: 3, value: size } => unsafe { size.l }
+                    StackValue::Int64(size) => size,
                     _ => todo!("report needing u64 for array alloc"),
                 };
                 let (class_name, init): (&str, fn(&mut BytecodeContext, Reference, u64)) = match tag {
@@ -1876,17 +1957,17 @@ impl BytecodeContext {
                 // TODO: add call to stack so that it can record the backtrace correctly
                 let object = Runtime::new_object(class_name);
                 init(self, object, size);
-                self.current_frame_mut().push(Value::from(object));
+                self.current_frame_mut().push(StackValue::from(object));
             }
             Bytecode::ArrayGet(tag) => {
                 let index = self.current_frame_mut().pop();
                 let index = match index {
-                    Value { tag: 3, value: index } => unsafe { index.l }
+                    StackValue::Int64(index) => index,
                     _ => todo!("report needing u64"),
                 };
                 let array = self.current_frame_mut().pop();
                 let array = match array {
-                    Value { tag: 4, value: object } => unsafe { object.r }
+                    StackValue::Reference(object) => object,
                     _ => todo!("report needing reference for index"),
                 };
                 match tag {
@@ -1896,7 +1977,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::U16 | TypeTag::I16 => {
                         let value = runtime::core::array16_get(self, array, index);
@@ -1904,7 +1985,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::U32 | TypeTag::I32 => {
                         let value = runtime::core::array32_get(self, array, index);
@@ -1912,7 +1993,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::U64 | TypeTag::I64 => {
                         let value = runtime::core::array64_get(self, array, index);
@@ -1920,7 +2001,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::F32 => {
                         let value = runtime::core::arrayf32_get(self, array, index);
@@ -1928,7 +2009,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::F64 => {
                         let value = runtime::core::arrayf64_get(self, array, index);
@@ -1936,7 +2017,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::Object => {
                         let value = runtime::core::arrayobject_get(self, array, index);
@@ -1945,7 +2026,7 @@ impl BytecodeContext {
                             _ => {}
                         }
                         let value = value as usize as Reference;
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     _ => unreachable!("Invalid Type Tag"),
                 }
@@ -1954,65 +2035,64 @@ impl BytecodeContext {
                 let value = self.current_frame_mut().pop();
                 let index = self.current_frame_mut().pop();
                 let index = match index {
-                    Value { tag: 3, value: index } => unsafe { index.l }
+                    StackValue::Int64(index) => index,
                     _ => todo!("report needing u64"),
                 };
                 let array = self.current_frame_mut().pop();
                 let array = match array {
-                    Value { tag: 4, value: object } => unsafe { object.r }
+                    StackValue::Reference(object) => object,
                     _ => todo!("report needing reference for index"),
                 };
                 match (tag, value) {
-                    (TypeTag::U8, Value { tag: 0, value }) | (TypeTag::I8, Value { tag: 0, value }) => {
-                        let value = unsafe { value.c };
+                    (TypeTag::U8, StackValue::Int8(value)) | (TypeTag::I8, StackValue::Int8(value)) => {
+
                         runtime::core::array8_set(self, array, index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
                     }
-                    (TypeTag::U16, Value { tag: 1, value }) | (TypeTag::I16, Value { tag: 1, value }) => {
-                        let value = unsafe { value.s };
+                    (TypeTag::U16, StackValue::Int16(value)) | (TypeTag::I16, StackValue::Int16(value)) => {
+
                         runtime::core::array16_set(self, array, index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
                     }
-                    (TypeTag::U32, Value { tag: 2, value }) | (TypeTag::I32, Value { tag: 2, value }) => {
-                        let value = unsafe { value.i };
+                    (TypeTag::U32, StackValue::Int32(value)) | (TypeTag::I32, StackValue::Int32(value)) => {
+
                         runtime::core::array32_set(self, array, index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
                     }
-                    (TypeTag::U64, Value { tag: 3, value }) | (TypeTag::I64, Value { tag: 32, value }) => {
-                        let value = unsafe { value.l };
+                    (TypeTag::U64, StackValue::Int64(value)) | (TypeTag::I64, StackValue::Int64(value)) => {
+
                         runtime::core::array64_set(self, array, index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
                     }
-                    (TypeTag::F32, Value { tag: 5, value }) => {
-                        let value = unsafe { value.f };
+                    (TypeTag::F32, StackValue::Float32(value)) => {
+
                         runtime::core::arrayf32_set(self, array, index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
                     }
-                    (TypeTag::F64, Value { tag: 5, value }) => {
-                        let value = unsafe { value.d };
+                    (TypeTag::F64, StackValue::Float64(value)) => {
+
                         runtime::core::arrayf64_set(self, array, index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
                     }
-                    (TypeTag::Object, Value { tag: 4, value }) => {
-                        let value = unsafe { value.r };
+                    (TypeTag::Object, StackValue::Reference(value)) => {
                         let value = value as usize as u64;
                         runtime::core::arrayobject_set(self, array, index, value);
                         match self.handle_exception() {
@@ -2025,12 +2105,12 @@ impl BytecodeContext {
             }
             Bytecode::NewObject(sym) => {
                 let object = Runtime::new_object(*sym as usize);
-                self.current_frame_mut().push(Value::from(object));
+                self.current_frame_mut().push(StackValue::from(object));
             }
             Bytecode::GetField(access, parent_name, index, tag) => {
                 let object = self.current_frame_mut().pop();
                 let object = match object {
-                    Value { tag: 4, value: object } => unsafe { object.r }
+                    StackValue::Reference(object) => object,
                     _ => todo!("report not accessing object correctly"),
                 };
 
@@ -2041,7 +2121,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::U16 | TypeTag::I16 => {
                         let value = Object::get_16(self, object, *access, *parent_name, *index);
@@ -2049,7 +2129,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::U32 | TypeTag::I32 => {
                         let value = Object::get_32(self, object, *access, *parent_name, *index);
@@ -2057,7 +2137,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::U64 | TypeTag::I64 => {
                         let value = Object::get_64(self, object, *access, *parent_name, *index);
@@ -2065,7 +2145,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::F32 => {
                         let value = Object::get_f32(self, object, *access, *parent_name, *index);
@@ -2073,7 +2153,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::F64 => {
                         let value = Object::get_f64(self, object, *access, *parent_name, *index);
@@ -2081,7 +2161,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     TypeTag::Object => {
                         let value = Object::get_object(self, object, *access, *parent_name, *index);
@@ -2090,7 +2170,7 @@ impl BytecodeContext {
                             _ => {}
                         }
                         let value = value as usize as Reference;
-                        self.current_frame_mut().push(Value::from(value));
+                        self.current_frame_mut().push(StackValue::from(value));
                     }
                     _ => unreachable!("Invalid Type Tag"),
                 }
@@ -2099,60 +2179,59 @@ impl BytecodeContext {
                 let value = self.current_frame_mut().pop();
                 let object = self.current_frame_mut().pop();
                 let object = match object {
-                    Value { tag: 4, value: object } => unsafe { object.r }
+                    StackValue::Reference(object) => object,
                     _ => todo!("report needing u64"),
                 };
                 match (tag, value) {
-                    (TypeTag::U8, Value { tag: 0, value }) | (TypeTag::I8, Value { tag: 0, value }) => {
-                        let value = unsafe { value.c };
+                    (TypeTag::U8, StackValue::Int8(value)) | (TypeTag::I8, StackValue::Int8(value)) => {
+
                         Object::set_8(self, object, *access, *parent_name, *index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
                     }
-                    (TypeTag::U16, Value { tag: 1, value }) | (TypeTag::I16, Value { tag: 1, value }) => {
-                        let value = unsafe { value.s };
+                    (TypeTag::U16, StackValue::Int16(value)) | (TypeTag::I16, StackValue::Int16(value)) => {
+
                         Object::set_16(self, object, *access, *parent_name, *index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
                     }
-                    (TypeTag::U32, Value { tag: 2, value }) | (TypeTag::I32, Value { tag: 2, value }) => {
-                        let value = unsafe { value.i };
+                    (TypeTag::U32, StackValue::Int32(value)) | (TypeTag::I32, StackValue::Int32(value)) => {
+
                         Object::set_32(self, object, *access, *parent_name, *index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
                     }
-                    (TypeTag::U64, Value { tag: 3, value }) | (TypeTag::I64, Value { tag: 3, value }) => {
-                        let value = unsafe { value.l };
+                    (TypeTag::U64, StackValue::Int64(value)) | (TypeTag::I64, StackValue::Int64(value)) => {
+
                         Object::set_64(self, object, *access, *parent_name, *index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
                     }
-                    (TypeTag::F32, Value { tag: 5, value }) => {
-                        let value = unsafe { value.f };
+                    (TypeTag::F32, StackValue::Float32(value)) => {
+
                         Object::set_f32(self, object, *access, *parent_name, *index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
                     }
-                    (TypeTag::F32, Value { tag: 6, value }) => {
-                        let value = unsafe { value.d };
+                    (TypeTag::F32, StackValue::Float64(value)) => {
+
                         Object::set_f64(self, object, *access, *parent_name, *index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
                     }
-                    (TypeTag::Object, Value { tag: 4, value }) => {
-                        let value = unsafe { value.r };
+                    (TypeTag::Object, StackValue::Reference(value)) => {
                         let value = value as usize as u64;
                         Object::set_object(self, object, *access, *parent_name, *index, value);
                         match self.handle_exception() {
@@ -2166,14 +2245,14 @@ impl BytecodeContext {
             Bytecode::IsA(sym) => {
                 let object = self.current_frame_mut().pop();
                 let object = match object {
-                    Value { tag: 4, value: object } => unsafe { object.r }
+                    StackValue::Reference(object) => object,
                     _ => todo!("report needing object")
                 };
                 let object = unsafe {
                     object.as_ref().expect("check for null pointer")
                 };
                 let result = object.class as u64 == *sym;
-                self.current_frame_mut().push(Value::from(result as u8));
+                self.current_frame_mut().push(StackValue::from(result as u8));
             }
             Bytecode::InvokeVirt(specified, origin, method_name) => {
                 match self.invoke_virtual(
@@ -2212,7 +2291,7 @@ impl BytecodeContext {
                 todo!("access of static members")
             }
             Bytecode::GetStrRef(sym) => {
-                self.current_frame_mut().push(Value::from(*sym));
+                self.current_frame_mut().push(StackValue::from(*sym));
             }
             Bytecode::Return => {
                 let value = self.current_frame_mut().pop();
@@ -2234,7 +2313,7 @@ impl BytecodeContext {
             Bytecode::Throw => {
                 let exception = self.current_frame_mut().pop();
                 let exception = match exception {
-                    Value { tag: 4, value: exception } => unsafe { exception.r }
+                    StackValue::Reference(exception) => exception,
                     _ => todo!("report exception needing to be an object"),
                 };
                 self.current_exception = exception;
@@ -2246,7 +2325,7 @@ impl BytecodeContext {
             Bytecode::If(then_offset, else_offset) => {
                 let value = self.current_frame_mut().pop();
                 let boolean = match value {
-                    Value { tag: 0, value } => unsafe { value.c }
+                    StackValue::Int8(value) => value,
                     _ => todo!("report invalid type for boolean"),
                 };
 

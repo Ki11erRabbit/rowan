@@ -1,5 +1,5 @@
 use std::ffi::{c_char, CStr};
-use crate::context::{BytecodeContext, Value};
+use crate::context::{BytecodeContext, StackValue};
 use crate::runtime::{Runtime, Reference};
 use crate::runtime::core::{string_from_str, string_initialize};
 
@@ -46,7 +46,7 @@ pub extern "C" fn rowan_call_virtual_function(
     class: *const c_char,
     source_class: *const c_char,
     method_name: *const c_char,
-    return_slot: Option<&mut Value>,
+    return_slot: Option<&mut StackValue>,
 ) -> i32 {
     let class = unsafe { CStr::from_ptr(class) };
     let class = class.to_string_lossy();
@@ -86,7 +86,7 @@ pub extern "C" fn rowan_call_static_function(
     context: &mut BytecodeContext,
     class: *const c_char,
     method_name: *const c_char,
-    return_slot: Option<&mut Value>,
+    return_slot: Option<&mut StackValue>,
 ) -> i32 {
     let class = unsafe { CStr::from_ptr(class) };
     let class = class.to_string_lossy();
