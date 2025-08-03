@@ -1,7 +1,7 @@
 mod interpreter;
 use std::ffi::c_void;
 use libffi::low::{call, ffi_cif, CodePtr};
-use libffi::raw::{ffi_abi_FFI_UNIX64, ffi_prep_cif};
+use libffi::raw::{ffi_prep_cif};
 use libffi_sys::{ffi_abi, ffi_abi_FFI_WIN64, ffi_type_double, ffi_type_float, ffi_type_pointer, ffi_type_uint16, ffi_type_uint32, ffi_type_uint64, ffi_type_uint8, ffi_type_void};
 pub use interpreter::BytecodeContext;
 use crate::runtime::{Reference, Symbol};
@@ -40,10 +40,10 @@ impl MethodName {
 }
 
 #[cfg(unix)]
-const CALLING_CONVENTION: ffi_abi = libffi_sys::ffi_abi_FFI_UNIX64;
+const CALLING_CONVENTION: ffi_abi = libffi::raw::ffi_abi_FFI_SYSV;
 
 #[cfg(windows)]
-const CALLING_CONVENTION: ffi_abi = libffi_sys::ffi_abi_FFI_WIN64;
+const CALLING_CONVENTION: ffi_abi = libffi::raw::ffi_abi_FFI_WIN64;
 
 pub fn call_function_pointer(context: &mut BytecodeContext, call_args: &mut [StackValue], fn_pointer: *const (), return_type: TypeTag) -> StackValue {
     let mut cif = ffi_cif::default();

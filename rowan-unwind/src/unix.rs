@@ -1,6 +1,6 @@
 use std::cell::UnsafeCell;
-use libunwind_sys as unwind;
-use libunwind_sys::{UNW_TDEP_IP, UNW_TDEP_SP};
+use unwind_sys as unwind;
+use unwind_sys::{UNW_TDEP_IP, UNW_TDEP_SP};
 use crate::Frame;
 
 trait GetPointers {
@@ -15,49 +15,15 @@ pub struct LibUnwindCursor {
 
 impl LibUnwindCursor {
 
-    #[cfg(target_arch = "x86_64")]
     pub fn new() -> LibUnwindCursor {
-        let mut ctx = unwind::unw_context_t {
-            uc_flags: 0,
-            uc_link: unsafe { std::mem::zeroed() },
-            uc_stack: unsafe { std::mem::zeroed() },
-            uc_sigmask: unsafe { std::mem::zeroed() },
-            uc_mcontext: unsafe { std::mem::zeroed() },
-            __fpregs_mem: unsafe { std::mem::zeroed() },
-            __ssp: unsafe { std::mem::zeroed() },
-
-
-        };
-        let result = unsafe { unwind::unw_getcontext(&mut ctx) };
+        let mut ctx: unwind::unw_context_t = unsafe { std::mem::zeroed() };
+        let _result = unsafe { unwind_sys::unw_tdep_getcontext!(&mut ctx) };
 
         let mut cursor = unwind::unw_cursor_t {
             opaque: unsafe { std::mem::zeroed() },
         };
 
-        let result = unsafe {
-            unwind::unw_init_local(&mut cursor, &mut ctx as *mut unwind::unw_context_t)
-        };
-
-        LibUnwindCursor {
-            cursor: UnsafeCell::new(cursor),
-        }
-    }
-
-    #[cfg(target_arch = "aarch64")]
-    pub fn new() -> LibUnwindCursor {
-        let mut ctx = unwind::unw_context_t {
-            uc_flags: 0,
-            uc_stack: unsafe { std::mem::zeroed() },
-            uc_link: std::ptr::null_mut(),
-            uc_mcontext: unsafe { std::mem::zeroed() },
-        };
-        let result = unsafe { unwind::unw_getcontext(&mut ctx) };
-
-        let mut cursor = unwind::unw_cursor_t {
-            opaque: unsafe { std::mem::zeroed() },
-        };
-
-        let result = unsafe {
+        let _result = unsafe {
             unwind::unw_init_local(&mut cursor, &mut ctx as *mut unwind::unw_context_t)
         };
 
