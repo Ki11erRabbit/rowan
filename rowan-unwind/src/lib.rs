@@ -1,4 +1,3 @@
-use std::ffi::CString;
 use std::sync::{LazyLock, RwLock};
 
 #[cfg(unix)]
