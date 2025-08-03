@@ -1,8 +1,7 @@
 mod interpreter;
 use std::ffi::c_void;
-use libffi::low::{call, ffi_cif, CodePtr};
-use libffi::raw::{ffi_prep_cif};
-use libffi_sys::{ffi_abi, ffi_abi_FFI_WIN64, ffi_type_double, ffi_type_float, ffi_type_pointer, ffi_type_uint16, ffi_type_uint32, ffi_type_uint64, ffi_type_uint8, ffi_type_void};
+use libffi::low::{call, ffi_abi, ffi_cif, prep_cif, CodePtr};
+use libffi::raw::{ffi_prep_cif, ffi_type_double, ffi_type_float, ffi_type_pointer, ffi_type_uint16, ffi_type_uint32, ffi_type_uint64, ffi_type_uint8, ffi_type_void};
 pub use interpreter::BytecodeContext;
 use crate::runtime::{Reference, Symbol};
 use crate::runtime::class::TypeTag;
@@ -50,11 +49,16 @@ const CALLING_CONVENTION: ffi_abi = libffi::raw::ffi_abi_FFI_UNIX64;
 #[cfg(windows)]
 const CALLING_CONVENTION: ffi_abi = libffi::raw::ffi_abi_FFI_WIN64;
 
-pub fn call_function_pointer(context: &mut BytecodeContext, call_args: &mut [StackValue], fn_pointer: *const (), return_type: TypeTag) -> StackValue {
+pub fn call_function_pointer(
+    context: &mut BytecodeContext,
+    call_args: &mut [StackValue],
+    fn_pointer: *const (),
+    return_type: TypeTag
+) -> StackValue {
     let mut cif = ffi_cif::default();
     let mut types = Vec::new();
     let mut values = Vec::new();
-    let call_args_len = call_args.len() as u32 + 1;
+    let call_args_len = call_args.len() + 1;
     // Adding context
     unsafe {
         types.push(&raw mut ffi_type_pointer);
@@ -135,7 +139,14 @@ pub fn call_function_pointer(context: &mut BytecodeContext, call_args: &mut [Sta
     };
 
     unsafe {
-        ffi_prep_cif(&mut cif, CALLING_CONVENTION, call_args_len, &mut ret_type, types.as_mut_ptr());
+        let _ = prep_cif(
+            &mut cif,
+            CALLING_CONVENTION,
+            call_args_len,
+            &mut ret_type,
+            types.as_mut_ptr()
+        ).expect("Bad calling setup");
+
     }
 
     match return_type {
@@ -182,6 +193,9 @@ pub fn call_function_pointer(context: &mut BytecodeContext, call_args: &mut [Sta
             StackValue::from(out)
         }
         TypeTag::Void => {
+            let _ = unsafe {
+                call::<()>(&mut cif, CodePtr(fn_pointer as *mut _), values.as_mut_ptr())
+            };
             StackValue::Blank
         }
         x => unreachable!("return type: {x:?}")
