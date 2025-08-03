@@ -40,7 +40,12 @@ impl MethodName {
 }
 
 #[cfg(unix)]
+#[cfg(target_arch = "aarch64")]
 const CALLING_CONVENTION: ffi_abi = libffi::raw::ffi_abi_FFI_SYSV;
+
+#[cfg(unix)]
+#[cfg(target_arch = "x86_64")]
+const CALLING_CONVENTION: ffi_abi = libffi::raw::ffi_abi_FFI_UNIX64;
 
 #[cfg(windows)]
 const CALLING_CONVENTION: ffi_abi = libffi::raw::ffi_abi_FFI_WIN64;

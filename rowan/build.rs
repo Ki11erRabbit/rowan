@@ -23,6 +23,16 @@ fn main() {
 
     println!("cargo:rustc-link-search=native={}", lib_path.parent().unwrap().display());
     println!("cargo:rustc-link-lib=dylib={}", lib_name);
+
+    // Linking Libunwind
+    println!("cargo:rustc-link-lib=unwind");
+    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    match target_arch.as_str() {
+        "x86_64" => println!("cargo:rustc-link-lib=unwind-x86_64"),
+        "aarch64" => println!("cargo:rustc-link-lib=unwind-aarch64"),
+        "arm" => println!("cargo:rustc-link-lib=unwind-arm"),
+        _ => panic!("Unsupported architecture: {}", target_arch),
+    }
 }
 
 fn lib_prefix() -> &'static str {

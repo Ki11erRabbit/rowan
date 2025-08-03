@@ -1,10 +1,14 @@
 { pkgs ? import <nixpkgs> {} }:
 pkgs.mkShell {
-    nativeBuildInputs = with pkgs; [ libclang libunwind clang ];
-    packages = with pkgs; [ clang ];
-    #propagateBuildInputs = with pkgs; [ libunwind ];
+  buildInputs = with pkgs; [
+    rustc
+    cargo
+    libunwind
+    pkg-config
+  ];
+  
     shellHook = ''
-        export LIBCLANG_PATH="${pkgs.libclang.lib}/lib"
+      export LD_LIBRARY_PATH=${pkgs.libunwind}/lib:$LD_LIBRARY_PATH
+        export RUSTFLAGS="-C link-arg=-Wl,--export-dynamic -C link-arg=-Wl,--whole-archive -C link-arg=-lunwind -C link-arg=-Wl,--no-whole-archive"
     '';
-
 }
