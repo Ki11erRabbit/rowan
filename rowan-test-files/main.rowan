@@ -16,8 +16,11 @@ class Main {
         let g: u64 = 16;
         let printer: Printer = new Printer();
         printer.println-ints(a, b, c, d, e, f, g);
-
-
+        printer.println-int(a);
+        while True {
+            Main::thrash();
+        }
+        printer.println-int(a);
     }
 
     fn thrash() {

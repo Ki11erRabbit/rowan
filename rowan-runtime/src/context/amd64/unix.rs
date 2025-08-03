@@ -10,7 +10,6 @@ pub fn call_function_pointer(
     return_type: u8,
     padding_byte: u8,
 ) -> Value {
-    //println!("values: {context:p}, {call_args:p}, {call_args_len}, {fn_ptr:p}, {return_type}");
     unsafe {
         std::arch::asm!(
         "",
@@ -22,141 +21,6 @@ pub fn call_function_pointer(
         in("al") padding_byte,
         );
     }
-
-    /*let stack_byte_size = get_stack_byte_padding_size(unsafe {
-        std::slice::from_raw_parts(call_args, call_args_len)
-    });*/
-
-    /*
-    Here is what the assembly looked like before it was converted to use numeric labels
-    unsafe {
-        std::arch::asm!(
-                "jmp dispatch",
-            "handlers:",
-                ".quad integer",
-                ".quad float",
-            "load_int_handlers:",
-                ".quad first_int",
-                ".quad second_int",
-                ".quad third_int",
-                ".quad fourth_int",
-                ".quad fifth_int",
-            "load_float_handlers:",
-                ".quad first_float",
-                ".quad second_float",
-                ".quad third_float",
-                ".quad fourth_float",
-                ".quad fifth_float",
-                ".quad sixth_float",
-                ".quad seventh_float",
-                ".quad eighth_float",
-            "dispatch:",
-                "push rsp", // backing up rsp
-                "push r13", // storing fn_ptr
-                "push r12", // storing return_type
-                "test rax, rax",
-                "mov rax, rsp", // putting rsp into rax so that we can access it later
-                "jne body_label",
-                "sub rsp, 8", // Extending the stack if we have an odd number of arguments on the stack
-            "body_label:",
-                "mov rdi, r11", // putting context into first call register
-                "xor r11, r11", // Clear out r11 to be used as index offset
-                "xor r12, r12", // Clear out r12 to be used as float index
-                "xor r13, r13", // Clear out r13 to be used for int index
-            "start_of_for_loop:",
-                "cmp r11, r14", // checking if index is less than the length
-                "je call_label",
-                "mov r10, [r15+r11*16]", // load value tag into r10
-                "cmp r10, 4",
-                "jbe integer", // jump if we are less than or equal to the reference tag
-                "jmp float",   // otherwise jump to the float handler
-            "body_of_for_loop:",
-                "integer:",
-                    "mov r10, [r15+r11*16+8]", // fetch data and put it in r10
-                    "cmp r13, 5", // Checking if int index is less than 5 (we have already used rdi)
-                    "jl int_reg",
-                    "push r10", // putting arguments on the stack, although, right now they are in the wrong order
-                    "jmp end_of_for_loop",
-                "int_reg:",
-                    "jmp qword ptr [load_int_handlers+r13*8]",
-                "float:",
-                    "mov r10, [r15+r11*16+8]", // fetch data and put it in r10
-                    "cmp r12, 8", // Checking if float index is less than 8
-                    "jl float_reg",
-                    "inc r12",
-                    "push r10", // putting arguments on the stack, although, right now they are in the wrong order
-                    "jmp end_of_for_loop",
-                "float_reg:",
-                    "jmp qword ptr [load_float_handlers+r13*8]",
-            "end_of_for_loop:",
-                "inc r14",
-                "jmp start_of_for_loop",
-            "load_int_registers:",
-                "first_int:",
-                    "inc r13",
-                    "mov rsi, r10",
-                    "jmp end_of_for_loop",
-                "second_int:",
-                    "inc r13",
-                    "mov rdx, r10",
-                    "jmp end_of_for_loop",
-                "third_int:",
-                    "inc r13",
-                    "mov rcx, r10",
-                    "jmp end_of_for_loop",
-                "fourth_int:",
-                    "inc r13",
-                    "mov r8, r10",
-                    "jmp end_of_for_loop",
-                "fifth_int:",
-                    "inc r13",
-                    "mov r9, r10",
-                    "jmp end_of_for_loop",
-            "load_float_registers:",
-                "first_float:",
-                    "inc r12",
-                    "movq xmm0, r10",
-                    "jmp end_of_for_loop",
-                "second_float:",
-                    "inc r12",
-                    "movq xmm1, r10",
-                    "jmp end_of_for_loop",
-                "third_float:",
-                    "inc r12",
-                    "movq xmm2, r10",
-                    "jmp end_of_for_loop",
-                "fourth_float:",
-                    "inc r12",
-                    "movq xmm3, r10",
-                    "jmp end_of_for_loop",
-                "fifth_float:",
-                    "inc r12",
-                    "movq xmm4, r10",
-                    "jmp end_of_for_loop",
-                "sixth_float:",
-                    "inc r12",
-                    "movq xmm5, r10",
-                    "jmp end_of_for_loop",
-                "seventh_float:",
-                    "inc r12",
-                    "movq xmm6, r10",
-                    "jmp end_of_for_loop",
-                "eighth_float:",
-                    "inc r12",
-                    "movq xmm7, r10",
-                    "jmp end_of_for_loop",
-            "call_label:",
-                "mov r12, [rax]", // getting return type
-                "mov r13, [rax+8]", // getting fn_ptr
-                "mov r15, rax",   // putting older  stack pointer in r15 for quick reloading
-                "call r13", // calling function pointer
-                "mov rsp, [r15+16]", // restoring original stack pointer and handing control back to rust.
-            options(nostack)
-        );
-    }
-
-
-     */
 
     unsafe {
         std::arch::asm!(
@@ -216,7 +80,7 @@ pub fn call_function_pointer(
                 "pop rax",
                 "cmp r13, 5", // Checking if int index is less than 5 (we have already used rdi)
                 "jl 31f",
-                "push r10", // putting arguments on the stack, although, right now they are in the wrong order
+                "push r10", // putting arguments on the stack
                 "jmp 5f",
             "31:",
                 "push rax",
@@ -233,12 +97,12 @@ pub fn call_function_pointer(
                 "cmp r12, 8", // Checking if float index is greater than 8
                 "jl 32f",
                 "inc r12",
-                "push r10", // putting arguments on the stack, although, right now they are in the wrong order
+                "push r10", // putting arguments on the stack
                 "jmp 5f",
             "32:",
                 "push rax",
                 "lea rax, [rip+50b]",
-                "jmp qword ptr [rax+r13*8]",
+                "jmp qword ptr [rax+r12*8]",
         "5:",
             "inc r11",
             "jmp 4b",

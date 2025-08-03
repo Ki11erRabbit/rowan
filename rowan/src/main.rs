@@ -1,5 +1,5 @@
 
-#[link_name="rowan_runtime"]
+#[link(name="rowan_runtime")]
 extern "C" {
     fn rowan_main();
 }

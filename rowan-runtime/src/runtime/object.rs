@@ -323,7 +323,10 @@ impl Object {
 
     pub fn garbage_collect(this: Reference, live_objects: &mut HashSet<Reference>) {
         let object_ptr = this;
-        let object = unsafe { object_ptr.as_ref().unwrap() };
+        let object = unsafe { object_ptr.as_ref() };
+        let Some(object) = object else {
+            return
+        };
 
         for parent in object.parent_objects.iter() {
             live_objects.insert(*parent);

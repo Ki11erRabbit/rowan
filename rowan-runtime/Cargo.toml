@@ -18,3 +18,5 @@ env_logger = "0.11.8"
 log = "0.4.27"
 libloading = "0.8.8"
 rowan-unwind = { workspace = true }
+libffi = "4.1.1"
+libffi-sys = "3.3.2"

@@ -34,7 +34,7 @@ impl GarbageCollection {
             let now = std::time::Instant::now();
             let duration = now.duration_since(start);
 
-            if duration.as_secs() >= 300 {// TODO: make this 5 mins configurable
+            if duration.as_secs() >= 2 {// TODO: make this 5 mins configurable
                 let mut thread_count = unsafe {
                     THREAD_COUNT.read().load(std::sync::atomic::Ordering::Relaxed)
                 };
@@ -54,7 +54,6 @@ impl GarbageCollection {
                             thread_count -= 1;
 
                             if thread_count == 0 {
-                                //println!("Completed collecting all threads");
                                 break;
                             }
                         }
@@ -64,6 +63,7 @@ impl GarbageCollection {
 
                 Runtime::gc_collect_garbage(&self.live_objects);
                 self.live_objects.clear();
+                drop(lock);
 
                 start = std::time::Instant::now();
                 continue;

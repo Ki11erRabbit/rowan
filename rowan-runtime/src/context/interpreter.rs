@@ -295,8 +295,8 @@ impl BytecodeContext {
                 (Value { tag: 5, .. }, runtime::class::TypeTag::F32) => {}
                 (Value { tag: 6, .. }, runtime::class::TypeTag::F64) => {}
                 (Value { tag: 4, .. }, runtime::class::TypeTag::Object) => {}
-                _ => {
-                    todo!("report type error in typing")
+                (Value { tag, .. }, type_tag) => {
+                    todo!("report type error in typing for tag: {} and type_tag: {:?}", tag, type_tag);
                 }
             }
         }
@@ -309,15 +309,13 @@ impl BytecodeContext {
                 let mut variables = self.current_frame()
                     .variables[..var_len]
                     .to_vec();
-                super::sort_call_args(&mut variables);
-                let need_padding = super::need_padding(&variables);
+                //super::sort_call_args(&mut variables);
+                //let need_padding = super::need_padding(&variables);
                 let mut return_value = call_function_pointer(
                     self,
-                    variables.as_ptr(),
-                    var_len,
+                    &mut variables,
                     fn_ptr.as_ptr(),
-                    details.return_type.tag(),
-                    need_padding as u8
+                    details.return_type,
                 );
                 self.pop();
                 if let Some(return_slot) = return_slot {
@@ -411,6 +409,7 @@ impl BytecodeContext {
     }
 
     fn check_for_garbage_collection(&mut self) -> bool {
+        //println!("attempting to read");
         match DO_GARBAGE_COLLECTION.try_read() {
             Ok(_) => true,
             Err(TryLockError::WouldBlock) => {
@@ -439,6 +438,7 @@ impl BytecodeContext {
 
         self.sender.send(references).unwrap();
         loop {
+            //println!("spinlock");
             if self.check_for_garbage_collection() {
                 return
             }
@@ -484,6 +484,7 @@ impl BytecodeContext {
 
     /// The bool return dictates whether execution should continue or not.
     pub fn interpret(&mut self, bytecode: &Bytecode) -> bool {
+        //println!("Bytecode: {bytecode:?}");
         match bytecode {
             Bytecode::Nop => {}
             Bytecode::Breakpoint => {}
@@ -2182,7 +2183,6 @@ impl BytecodeContext {
                     None
                 ) {
                     CallContinueState::Error => return false,
-                    CallContinueState::Return => return false,
                     _ => return true,
                 }
             }
@@ -2196,7 +2196,6 @@ impl BytecodeContext {
                     None,
                 ) {
                     CallContinueState::Error => return false,
-                    CallContinueState::Return => return false,
                     _ => return true,
                 }
             }
@@ -2247,7 +2246,7 @@ impl BytecodeContext {
             Bytecode::If(then_offset, else_offset) => {
                 let value = self.current_frame_mut().pop();
                 let boolean = match value {
-                    Value { tag: 0, value: value } => unsafe { value.c }
+                    Value { tag: 0, value } => unsafe { value.c }
                     _ => todo!("report invalid type for boolean"),
                 };
 
