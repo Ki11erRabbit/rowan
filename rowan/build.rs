@@ -24,6 +24,13 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", lib_path.parent().unwrap().display());
     println!("cargo:rustc-link-lib=dylib={}", lib_name);
 
+    if let Some(os) = std::env::var_os("CARGO_CFG_TARGET_OS") {
+        if os == "macos" {
+            println!("cargo:rustc-link-lib=framework=System");
+            return;
+        }
+    }
+
     // Linking Libunwind
     println!("cargo:rustc-link-lib=unwind");
     let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
