@@ -682,9 +682,9 @@ impl Runtime {
             }
         }
         drop(class_table);
-        /*for function in init_functions {
-            //let (sender, _) = std::sync::mpsc::channel();
-            let mut context = BytecodeContext::new();
+        for function in init_functions {
+            let (sender, _) = std::sync::mpsc::channel();
+            let mut context = BytecodeContext::new(sender);
             function(&mut context);
             /*if !context.current_exception.borrow().is_null() {
                 println!("Failed to initialize class static members");
@@ -699,7 +699,7 @@ impl Runtime {
                 exception_print_stack_trace(&mut context, base_exception_ref);
                 std::process::exit(1);
             }*/
-        }*/
+        }
     }
 
     pub fn get_virtual_method_details(

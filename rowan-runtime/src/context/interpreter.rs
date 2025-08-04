@@ -499,7 +499,6 @@ impl BytecodeContext {
                 CallContinueState::Return
             }
             _ => {
-                println!("function pointer is null");
                 CallContinueState::ExecuteFunction
             }
         }
@@ -568,10 +567,10 @@ impl BytecodeContext {
             self.check_and_do_garbage_collection();
             return;
         }
-        println!("{:#?}", self.active_bytecodes[self.active_bytecodes.len() - 1]);
         loop {
             self.check_and_do_garbage_collection();
-            let bytecode = &self.active_bytecodes[self.active_bytecodes.len() - 1][self.current_frame().ip];
+            let active_bytecode = self.active_bytecodes[self.active_bytecodes.len() - 1];
+            let bytecode = &active_bytecode[self.current_frame().ip];
             self.current_frame_mut().ip += 1;
 
             if !self.interpret(bytecode) {
@@ -659,7 +658,7 @@ impl BytecodeContext {
 
     /// The bool return dictates whether execution should continue or not.
     pub fn interpret(&mut self, bytecode: &Bytecode) -> bool {
-        println!("Bytecode: {bytecode:?}");
+        //println!("Bytecode: {bytecode:?}");
         match bytecode {
             Bytecode::Nop => {}
             Bytecode::Breakpoint => {}
@@ -2384,9 +2383,6 @@ impl BytecodeContext {
                 self.current_exception = exception;
             }
             Bytecode::StartBlock(_) => {
-                if self.active_frames.len() > 1 {
-                    panic!("there are multiple frames");
-                }
             }
             Bytecode::Goto(offset) => {
                 self.current_frame_mut().goto(*offset as isize);
