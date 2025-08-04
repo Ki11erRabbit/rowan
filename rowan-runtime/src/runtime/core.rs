@@ -830,7 +830,7 @@ extern "C" fn string_len(context: &mut BytecodeContext, this: Reference) -> u64 
 
 extern "C" fn string_load_str(context: &mut BytecodeContext, this: Reference, string_ref: Reference) {
     use std::alloc::*;
-    println!("got: {this:p} {string_ref:p}");
+    //println!("got: {this:p} {string_ref:p}");
     let string = Runtime::get_string(string_ref as Symbol);
     let bytes = string.as_bytes();
     let object = this;

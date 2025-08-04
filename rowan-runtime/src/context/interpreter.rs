@@ -498,7 +498,10 @@ impl BytecodeContext {
                 //self.handle_exception()
                 CallContinueState::Return
             }
-            _ => CallContinueState::ExecuteFunction
+            _ => {
+                println!("function pointer is null");
+                CallContinueState::ExecuteFunction
+            }
         }
 
     }
@@ -565,6 +568,7 @@ impl BytecodeContext {
             self.check_and_do_garbage_collection();
             return;
         }
+        println!("{:#?}", self.active_bytecodes[self.active_bytecodes.len() - 1]);
         loop {
             self.check_and_do_garbage_collection();
             let bytecode = &self.active_bytecodes[self.active_bytecodes.len() - 1][self.current_frame().ip];
@@ -655,7 +659,7 @@ impl BytecodeContext {
 
     /// The bool return dictates whether execution should continue or not.
     pub fn interpret(&mut self, bytecode: &Bytecode) -> bool {
-        //println!("Bytecode: {bytecode:?}");
+        println!("Bytecode: {bytecode:?}");
         match bytecode {
             Bytecode::Nop => {}
             Bytecode::Breakpoint => {}
@@ -2284,11 +2288,72 @@ impl BytecodeContext {
             Bytecode::GetStaticMethod(..) => {
                 todo!("conversion of a static method into an object")
             }
-            Bytecode::GetStaticMember(..) => {
-                todo!("access of static members")
+            Bytecode::GetStaticMember(class, index, ty) => {
+                match ty {
+                    TypeTag::U8 | TypeTag::I8 => {
+                        let value = Runtime::get_static_member::<u8>(self, *class as runtime::Symbol, *index);
+                        let value = StackValue::from(value);
+                        self.current_frame_mut().push(value);
+                    }
+                    TypeTag::U16 | TypeTag::I16 => {
+                        let value = Runtime::get_static_member::<u16>(self, *class as runtime::Symbol, *index);
+                        let value = StackValue::from(value);
+                        self.current_frame_mut().push(value);
+                    }
+                    TypeTag::U32 | TypeTag::I32 => {
+                        let value = Runtime::get_static_member::<u32>(self, *class as runtime::Symbol, *index);
+                        let value = StackValue::from(value);
+                        self.current_frame_mut().push(value);
+                    }
+                    TypeTag::U64 | TypeTag::I64 => {
+                        let value = Runtime::get_static_member::<u64>(self, *class as runtime::Symbol, *index);
+                        let value = StackValue::from(value);
+                        self.current_frame_mut().push(value);
+                    }
+                    TypeTag::F32 => {
+                        let value = Runtime::get_static_member::<f32>(self, *class as runtime::Symbol, *index);
+                        let value = StackValue::from(value);
+                        self.current_frame_mut().push(value);
+                    }
+                    TypeTag::F64 => {
+                        let value = Runtime::get_static_member::<f64>(self, *class as runtime::Symbol, *index);
+                        let value = StackValue::from(value);
+                        self.current_frame_mut().push(value);
+                    }
+                    TypeTag::Object => {
+                        let value = Runtime::get_static_member::<Reference>(self, *class as runtime::Symbol, *index);
+                        let value = StackValue::from(value);
+                        self.current_frame_mut().push(value);
+                    }
+                    _ => unreachable!("Invalid Type Tag"),
+                }
             }
-            Bytecode::SetStaticMember(..) => {
-                todo!("access of static members")
+            Bytecode::SetStaticMember(class, index, ty) => {
+                let value = self.current_frame_mut().pop();
+                match (value, ty) {
+                    (StackValue::Int8(value), TypeTag::U8) | (StackValue::Int8(value), TypeTag::I8) => {
+                        let value = Runtime::set_static_member::<u8>(self, *class as runtime::Symbol, *index, value);
+                    }
+                    (StackValue::Int16(value), TypeTag::U16) | (StackValue::Int16(value), TypeTag::I16) => {
+                        let value = Runtime::set_static_member::<u16>(self, *class as runtime::Symbol, *index, value);
+                    }
+                    (StackValue::Int32(value), TypeTag::U32) | (StackValue::Int32(value), TypeTag::I32) => {
+                        let value = Runtime::set_static_member::<u32>(self, *class as runtime::Symbol, *index, value);
+                    }
+                    (StackValue::Int64(value), TypeTag::U64) | (StackValue::Int64(value), TypeTag::I64) => {
+                        let value = Runtime::set_static_member::<u64>(self, *class as runtime::Symbol, *index, value);
+                    }
+                    (StackValue::Float32(value), TypeTag::F32) => {
+                        let value = Runtime::set_static_member::<f32>(self, *class as runtime::Symbol, *index, value);
+                    }
+                    (StackValue::Float64(value), TypeTag::F64) => {
+                        let value = Runtime::set_static_member::<f64>(self, *class as runtime::Symbol, *index, value);
+                    }
+                    (StackValue::Reference(value), TypeTag::Object) => {
+                        let value = Runtime::set_static_member::<Reference>(self, *class as runtime::Symbol, *index, value);
+                    }
+                    _ => unreachable!("Invalid Type Tag"),
+                }
             }
             Bytecode::GetStrRef(sym) => {
                 self.current_frame_mut().push(StackValue::from(*sym));
@@ -2318,7 +2383,11 @@ impl BytecodeContext {
                 };
                 self.current_exception = exception;
             }
-            Bytecode::StartBlock(_) => {}
+            Bytecode::StartBlock(_) => {
+                if self.active_frames.len() > 1 {
+                    panic!("there are multiple frames");
+                }
+            }
             Bytecode::Goto(offset) => {
                 self.current_frame_mut().goto(*offset as isize);
             }

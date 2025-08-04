@@ -4,7 +4,7 @@
 #include <rowan.h>
 #include <rowan_runtime.h>
 
-#ifdef linux
+#ifdef __linux__
 
 #include <semaphore.h>
 
@@ -37,6 +37,39 @@ void rowan_lock_destroy(io_lock_t* io_lock) {
 
 #endif
 
+#ifdef __APPLE__
+
+#include <dispatch/dispatch.h>
+
+size_t rowan_sem_size() {
+    return sizeof(dispatch_semaphore_t);
+}
+
+typedef struct io_lock {
+    object_t object;
+    dispatch_semaphore_t lock;
+    uint8_t set;
+} io_lock_t;
+
+void rowan_lock_init(io_lock_t* io_lock) {
+    io_lock->lock = dispatch_semaphore_create(0);
+    dispatch_semaphore_signal(io_lock->lock);
+}
+
+void rowan_acquire_lock(io_lock_t* io_lock) {
+    dispatch_semaphore_wait(io_lock->lock, DISPATCH_TIME_FOREVER);
+}
+
+void rowan_release_lock(io_lock_t* io_lock) {
+    dispatch_semaphore_signal(io_lock->lock);
+}
+
+void rowan_lock_destroy(io_lock_t* io_lock) {
+    dispatch_release(io_lock->lock);
+}
+
+#endif
+
 
 size_t lock_dash_initalized__get_dash_size() {
     return sizeof(uint8_t);
@@ -54,14 +87,12 @@ void std__io__iolock__IOLock__lock(rowan_context_t context, object_t* self) {
     } else {
     }
     rowan_acquire_lock(io_lock);
-    rowan_normal_return(context);
 }
 
 void std__io__iolock__IOLock__release(rowan_context_t context, object_t* self) {
     io_lock_t* io_lock = (io_lock_t*)self;
 
     rowan_release_lock(io_lock);
-    rowan_normal_return(context);
 }
 
 void custom_drop(object_t* self) {

@@ -6,7 +6,20 @@
 #include <stdint.h>
 #include <string.h>
 
-#ifdef linux
+#ifdef __linux__
+#include <unistd.h>
+
+void rowan_print_internal(int fd, uint8_t* buff, uint64_t length) {
+    write(1, buff, length);
+}
+
+void rowan_flush(int fd) {
+    fsync(fd);
+}
+
+#endif
+
+#ifdef __APPLE__
 #include <unistd.h>
 
 void rowan_print_internal(int fd, uint8_t* buff, uint64_t length) {
@@ -24,7 +37,6 @@ void rowan_flush(int fd) {
 void std__console__Console__print_dash_internal(context_t context, object_t* text) {
     string_t* str = (string_t*)text;
     rowan_print_internal(1, str->buffer, str->length);
-    rowan_normal_return(context);
 }
 
 void std__console__Console__println_dash_internal(context_t context, object_t* text) {
@@ -38,13 +50,11 @@ void std__console__Console__println_dash_internal(context_t context, object_t* t
     rowan_flush(1);
     free(buff);
     buff = NULL;
-    rowan_normal_return(context);
 }
 
 void std__console__Console__eprint_dash_internal(context_t context, object_t* text) {
     string_t* str = (string_t*)text;
     rowan_print_internal(2, str->buffer, str->length);
-    rowan_normal_return(context);
 }
 
 void std__console__Console__eprintln_dash_internal(context_t context, object_t* text) {
@@ -55,5 +65,4 @@ void std__console__Console__eprintln_dash_internal(context_t context, object_t* 
     rowan_print_internal(2, buff, str->length + 1);
     free(buff);
     buff = NULL;
-    rowan_normal_return(context);
 }
