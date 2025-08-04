@@ -582,6 +582,13 @@ impl BytecodeContext {
         }
     }
 
+    pub fn run_bytecode(&mut self, bytecode: &'static [Bytecode]) {
+        self.active_bytecodes.push(bytecode);
+        self.active_frames.push(StackFrame::new(&[], bytecode, true, MethodName::StaticMethod { method_name: 0, class_symbol: 0 }));
+        self.main_loop();
+        self.pop();
+    }
+
     fn check_for_garbage_collection(&mut self) -> bool {
         //println!("attempting to read");
         match DO_GARBAGE_COLLECTION.try_read() {

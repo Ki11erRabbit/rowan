@@ -675,30 +675,28 @@ impl Runtime {
                     panic!("missing class");
                 }
                 TableEntry::Entry(class) => {
-                    init_functions.push(class.init_function);
+                    let init_function = if let Some(init_function) = &class.init_function {
+                        Some(init_function.as_ref() as *const [Bytecode])
+                    } else {
+                        None
+                    };
+                    init_functions.push(init_function);
                     class_table.insert_class(class);
                 }
 
             }
         }
         drop(class_table);
+        let (sender, _) = std::sync::mpsc::channel();
+        let mut context = BytecodeContext::new(sender);
         for function in init_functions {
-            let (sender, _) = std::sync::mpsc::channel();
-            let mut context = BytecodeContext::new(sender);
-            function(&mut context);
-            /*if !context.current_exception.borrow().is_null() {
-                println!("Failed to initialize class static members");
-                let exception = context.get_exception();
-                let exception = unsafe { exception.as_ref().unwrap() };
-                let base_exception_ref = exception.parent_objects[0];
-                let message = unsafe { exception.get::<Reference>(0) };
-                let message = unsafe { message.as_ref().unwrap() };
-                let message_slice = unsafe { std::slice::from_raw_parts(message.get::<*const u8>(16), message.get(0)) };
-                let message_str = std::str::from_utf8(message_slice).unwrap();
-                println!("{message_str}");
-                exception_print_stack_trace(&mut context, base_exception_ref);
-                std::process::exit(1);
-            }*/
+            if let Some(function) = function {
+                //let bytecode = unsafe { std::mem::transmute::<'static, _>(function.as_ref())};
+                let function = unsafe {
+                    function.as_ref().unwrap()
+                };
+                context.run_bytecode(function);
+            }
         }
     }
 

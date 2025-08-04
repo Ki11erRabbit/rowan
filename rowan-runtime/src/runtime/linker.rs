@@ -654,15 +654,9 @@ pub fn link_class_files(
 
             let static_init = if !static_init.is_empty() {
                 let bytecode = link_bytecode(&class, &static_init, string_map, class_map, string_table, symbol_table, class_table);
-
-                let cranelift_sig = jit_controller.create_signature(&[TypeTag::U64], &TypeTag::Void);
-                let func_id = jit_controller.declare_function(format!("{class_name_str}::static-init").as_str(), &cranelift_sig).expect("Failed to declare function");
-                let static_init = jit_compiler.compile_bytecode(&bytecode, &mut jit_controller.module, func_id).unwrap();
-                let static_init = unsafe { std::mem::transmute::<_, fn(&mut BytecodeContext)>(static_init) };
-
-                static_init
+                Some(bytecode.into_boxed_slice())
             } else {
-                |_: &mut BytecodeContext| {}
+                None
             };
 
 
@@ -1534,7 +1528,7 @@ pub fn link_vm_classes(
             let vtable_index = vtables_table.add_vtable(vtable);
 
             // Create new class
-            let class = Class::new(class_symbol, parents, class_vtable_mapper, members, vtable_index, static_members, |_| {}, None);
+            let class = Class::new(class_symbol, parents, class_vtable_mapper, members, vtable_index, static_members, None, None);
 
             let SymbolEntry::ClassRef(class_index) = &symbol_table[class_symbol] else {
                 unreachable!("Class symbol should have been a symbol to a class");
