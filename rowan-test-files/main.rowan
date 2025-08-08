@@ -23,6 +23,13 @@ class Main {
         printer.println-int(a);
     }
 
+    fn fib(n: u64) -> u64 {
+        if n <= 1 {
+            return n
+        }
+        return Main::fib(n - 1) + Main::fib(n - 2)
+    }
+
     fn thrash() {
         let i: u64 = 0;
         while i < 10 {

@@ -354,7 +354,11 @@ impl TypeChecker {
         for content in file.content.iter_mut() {
             match content {
                 crate::ast::TopLevelStatement::Class(class) => {
+                    let mut new_module = module.clone();
+                    new_module.push(class.name.to_string());
+                    self.active_paths.insert(class.name.to_string(), new_module);
                     self.check_class(class, &module)?;
+                    self.active_paths.remove(class.name.as_str());
                 }
                 crate::ast::TopLevelStatement::Import(import) => {
                     let path_terminator = import.path.segments.last().unwrap().to_string();

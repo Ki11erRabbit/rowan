@@ -166,14 +166,7 @@ pub fn generate_printer_class() -> VMClass {
 }
 
 
-extern "C" fn printer_println_int(ctx: &mut BytecodeContext, this: Reference, int: u64) {
-    println!("called println int");
-
-    let stack_var = 42u64;  // This will segfault if stack is bad
-    eprintln!("Created stack variable: {}", stack_var);
-
-    println!("ctx: {ctx:p}");
-    println!("this: {this:p}");
+extern "C" fn printer_println_int(_: &mut BytecodeContext, _: Reference, int: u64) {
     println!("{}", int);
     //Runtime::normal_return(context);
 }
