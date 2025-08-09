@@ -6,6 +6,7 @@ pkgs.mkShell {
     libunwind
     pkg-config
   ];
+
   
     shellHook = ''
       export LD_LIBRARY_PATH=${pkgs.libunwind}/lib:$LD_LIBRARY_PATH

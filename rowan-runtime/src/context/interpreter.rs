@@ -1,6 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::mpsc::Sender;
 use std::sync::TryLockError;
+use fxhash::FxHashMap;
 use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
 use crate::runtime;
@@ -199,7 +200,7 @@ pub struct StackFrame {
     operand_stack: Vec<StackValue>,
     ip: usize,
     current_block: usize,
-    block_positions: HashMap<usize, usize>,
+    block_positions: FxHashMap<usize, usize>,
     variables: [StackValue; 256],
     call_args: [StackValue; 256],
     method_name: MethodName,
@@ -208,7 +209,7 @@ pub struct StackFrame {
 
 impl StackFrame {
     pub fn new(args: &[StackValue], bytecode: &[Bytecode], is_for_bytecode: bool, method_name: MethodName) -> Self {
-        let mut block_positions = HashMap::new();
+        let mut block_positions = FxHashMap::default();
         for (i, bytecode) in bytecode.iter().enumerate() {
             match bytecode {
                 Bytecode::StartBlock(name) => {
@@ -225,7 +226,7 @@ impl StackFrame {
             *variable = *arg;
         }
         Self {
-            operand_stack: Vec::new(),
+            operand_stack: Vec::with_capacity(10),
             ip: 0,
             current_block: 0,
             block_positions,
