@@ -786,23 +786,15 @@ impl BytecodeContext {
 
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        
-                        
                         self.current_frame_mut().push(StackValue::from(lhs.wrapping_mul(rhs)));
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        
-                        
                         self.current_frame_mut().push(StackValue::from(lhs.wrapping_mul(rhs)));
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        
-                        
                         self.current_frame_mut().push(StackValue::from(lhs.wrapping_mul(rhs)));
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        
-                        
                         self.current_frame_mut().push(StackValue::from(lhs.wrapping_mul(rhs)));
                     }
                     _ => {
@@ -815,32 +807,24 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        
-                        
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_div(rhs);
                         self.current_frame_mut().push(StackValue::from(result));
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        
-                        
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_div(rhs);
                         self.current_frame_mut().push(StackValue::from(result));
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        
-                        
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_div(rhs);
                         self.current_frame_mut().push(StackValue::from(result));
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        
-                        
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_div(rhs);
@@ -856,23 +840,15 @@ impl BytecodeContext {
                 let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        
-                        
                         self.current_frame_mut().push(StackValue::from(lhs.wrapping_div(rhs)));
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        
-                        
                         self.current_frame_mut().push(StackValue::from(lhs.wrapping_div(rhs)));
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        
-                        
                         self.current_frame_mut().push(StackValue::from(lhs.wrapping_div(rhs)));
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        
-                        
                         self.current_frame_mut().push(StackValue::from(lhs.wrapping_div(rhs)));
                     }
                     _ => {
@@ -1291,8 +1267,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::EqualSigned => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
@@ -1332,8 +1308,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::NotEqualSigned => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
@@ -1373,8 +1349,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::EqualUnsigned => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
@@ -1406,8 +1382,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::NotEqualUnsigned => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
@@ -1439,8 +1415,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GreaterSigned => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
@@ -1480,36 +1456,28 @@ impl BytecodeContext {
                 }
             }
             Bytecode::LessSigned => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        
-                        
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs < rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        
-                        
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs < rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        
-                        
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs < rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        
-                        
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs < rhs;
@@ -1521,30 +1489,22 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GreaterUnsigned => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        
-                        
                         let value = lhs > rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        
-                        
                         let value = lhs > rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        
-                        
                         let value = lhs > rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        
-                        
                         let value = lhs > rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
@@ -1554,30 +1514,22 @@ impl BytecodeContext {
                 }
             }
             Bytecode::LessUnsigned => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        
-                        
                         let value = lhs < rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        
-                        
                         let value = lhs < rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        
-                        
                         let value = lhs < rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        
-                        
                         let value = lhs < rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
@@ -1587,36 +1539,28 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GreaterOrEqualSigned => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        
-                        
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        
-                        
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        
-                        
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        
-                        
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >= rhs;
@@ -1628,36 +1572,28 @@ impl BytecodeContext {
                 }
             }
             Bytecode::LessOrEqualSigned => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        
-                        
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs <= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        
-                        
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs <= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        
-                        
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs <= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        
-                        
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs <= rhs;
@@ -1669,30 +1605,22 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GreaterOrEqualUnsigned => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        
-                        
                         let value = lhs >= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        
-                        
                         let value = lhs >= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        
-                        
                         let value = lhs >= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        
-                        
                         let value = lhs >= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
@@ -1702,30 +1630,22 @@ impl BytecodeContext {
                 }
             }
             Bytecode::LessOrEqualUnsigned => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        
-                        
                         let value = lhs <= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        
-                        
                         let value = lhs <= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        
-                        
                         let value = lhs <= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        
-                        
                         let value = lhs <= rhs;
                         self.current_frame_mut().push(StackValue::from(value as u8))
                     }
@@ -1735,8 +1655,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::EqualFloat => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {                        
                         let value = lhs.eq(&rhs);
@@ -1752,8 +1672,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::NotEqualFloat => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.ne(&rhs);
@@ -1769,8 +1689,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GreaterFloat => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.gt(&rhs);
@@ -1786,8 +1706,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::LessFloat => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.lt(&rhs);
@@ -1803,8 +1723,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GreaterOrEqualFloat => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.ge(&rhs);
@@ -1820,8 +1740,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::LessOrEqualFloat => {
-                let lhs = self.current_frame_mut().pop();
                 let rhs = self.current_frame_mut().pop();
+                let lhs = self.current_frame_mut().pop();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.le(&rhs);
