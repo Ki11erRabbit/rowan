@@ -7,19 +7,9 @@ class Main {
     static thing: u64 = 66666666666;
 
     fn main(args: [String]) {
-        let a: u64 = 10;
-        let b: u64 = 11;
-        let c: u64 = 12;
-        let d: u64 = 13;
-        let e: u64 = 14;
-        let f: u64 = 15;
-        let g: u64 = 16;
         let printer: Printer = new Printer();
-        printer.println-ints(a, b, c, d, e, f, g);
-        printer.println-int(a);
-        while True {
-            Main::thrash();
-        }
+        let n: u64 = 40
+        let a: u64 = Main::fib(n);
         printer.println-int(a);
     }
 

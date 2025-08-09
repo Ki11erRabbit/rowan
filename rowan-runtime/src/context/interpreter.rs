@@ -202,7 +202,6 @@ pub struct StackFrame {
     current_block: usize,
     block_positions: FxHashMap<usize, usize>,
     variables: [StackValue; 256],
-    call_args: [StackValue; 256],
     method_name: MethodName,
     is_for_bytecode: bool,
 }
@@ -231,7 +230,6 @@ impl StackFrame {
             current_block: 0,
             block_positions,
             variables,
-            call_args: [StackValue::Blank; 256],
             is_for_bytecode,
             method_name,
         }
@@ -267,18 +265,6 @@ impl StackFrame {
         self.operand_stack.push(value);
     }
 
-    pub fn store_argument(&mut self, index: u8) {
-        let value = self.operand_stack.pop().unwrap();
-        self.call_args[index as usize] = value;
-    }
-
-    pub fn get_args(&self) -> &[StackValue] {
-        &self.call_args
-    }
-    pub fn get_args_mut(&mut self) -> &mut [StackValue] {
-        &mut self.call_args
-    }
-
     pub fn is_for_bytecode(&self) -> bool {
         self.is_for_bytecode
     }
@@ -312,17 +298,6 @@ impl StackFrame {
                 _ => {}
             }
         }
-        for call_arg in self.call_args.iter() {
-            match call_arg {
-                StackValue::Reference(value) =>  {
-                    references.insert(WrappedReference(*value));
-                }
-                StackValue::Blank => {
-                    break;
-                }
-                _ => {}
-            }
-        }
         for operand in self.operand_stack.iter() {
             match operand {
                 StackValue::Reference(value) =>  {
@@ -343,6 +318,7 @@ pub struct BytecodeContext {
     active_frames: Vec<StackFrame>,
     current_exception: Reference,
     sender: Sender<HashSet<WrappedReference>>,
+    call_args: [StackValue; 256],
 }
 
 
@@ -352,9 +328,22 @@ impl BytecodeContext {
             active_bytecodes: Vec::new(),
             active_frames: Vec::new(),
             current_exception: std::ptr::null_mut(),
+            call_args: [StackValue::Blank; 256],
             sender,
         }
     }
+
+    pub fn store_argument(&mut self, index: u8, value: StackValue) {
+        self.call_args[index as usize] = value;
+    }
+
+    pub fn get_args(&self) -> &[StackValue] {
+        &self.call_args
+    }
+    pub fn get_args_mut(&mut self) -> &mut [StackValue] {
+        &mut self.call_args
+    }
+
 
     pub fn is_current_exception_set(&self) -> bool {
         !self.current_exception.is_null()
@@ -363,10 +352,9 @@ impl BytecodeContext {
     pub fn push(&mut self, bytecode: &'static [Bytecode], is_for_bytecode: bool, method_name: MethodName) {
         self.active_bytecodes.push(bytecode);
         let frame = self.current_frame();
-        let args = frame.get_args();
+        let args = self.get_args();
         self.active_frames.push(StackFrame::new(args, bytecode, is_for_bytecode, method_name));
-        let frame_len = self.active_frames.len();
-        for arg in self.active_frames[frame_len - 2].get_args_mut() {
+        for arg in self.get_args_mut() {
             if arg.is_blank() {
                 break
             }
@@ -402,7 +390,7 @@ impl BytecodeContext {
         method_name: runtime::Symbol,
         return_slot: Option<&mut StackValue>,
     ) -> CallContinueState {
-        let object = self.current_frame().call_args[0];
+        let object = self.call_args[0];
         let object = match object {
             StackValue::Reference(object) => object,
             _ => todo!("report error that first call arg must be an object.")
@@ -454,7 +442,7 @@ impl BytecodeContext {
         method_name: MethodName,
         return_slot: Option<&mut StackValue>
     ) -> CallContinueState {
-        for pair in self.current_frame().call_args.iter().zip(details.arguments.iter()) {
+        for pair in self.call_args.iter().zip(details.arguments.iter()) {
             match pair {
                 (StackValue::Int8(_), runtime::class::TypeTag::U8) |
                 (StackValue::Int8(_), runtime::class::TypeTag::I8) => {}
@@ -632,6 +620,17 @@ impl BytecodeContext {
         for frame in self.active_frames.iter() {
             frame.collect(references);
         }
+        for call_arg in self.call_args.iter() {
+            match call_arg {
+                StackValue::Reference(value) =>  {
+                    references.insert(WrappedReference(*value));
+                }
+                StackValue::Blank => {
+                    break;
+                }
+                _ => {}
+            }
+        }
     }
 
     fn collect_jit_references(&mut self, references: &mut HashSet<WrappedReference>) {
@@ -719,7 +718,8 @@ impl BytecodeContext {
                 self.current_frame_mut().load_local(*index);
             }
             Bytecode::StoreArgument(index) => {
-                self.current_frame_mut().store_argument(*index);
+                let value = self.current_frame_mut().pop();
+                self.store_argument(*index, value);
             }
             Bytecode::AddInt => {
                 let rhs = self.current_frame_mut().pop();
@@ -2336,32 +2336,26 @@ impl BytecodeContext {
     }
 
     pub extern "C" fn store_argument_int8(&mut self, index: u8, value: u8) {
-        self.current_frame_mut().push(value.into());
-        self.current_frame_mut().store_argument(index);
+        self.store_argument(index, value.into());
     }
 
     pub extern "C" fn store_argument_int16(&mut self, index: u8, value: u16) {
-        self.current_frame_mut().push(value.into());
-        self.current_frame_mut().store_argument(index);
+        self.store_argument(index, value.into());
     }
 
     pub extern "C" fn store_argument_int32(&mut self, index: u8, value: u32) {
-        self.current_frame_mut().push(value.into());
-        self.current_frame_mut().store_argument(index);
+        self.store_argument(index, value.into());
     }
 
     pub extern "C" fn store_argument_int64(&mut self, index: u8, value: u64) {
-        self.current_frame_mut().push(value.into());
-        self.current_frame_mut().store_argument(index);
+        self.store_argument(index, value.into());
     }
 
     pub extern "C" fn store_argument_float32(&mut self, index: u8, value: f32) {
-        self.current_frame_mut().push(value.into());
-        self.current_frame_mut().store_argument(index);
+        self.store_argument(index, value.into());
     }
 
     pub extern "C" fn store_argument_float64(&mut self, index: u8, value: f64) {
-        self.current_frame_mut().push(value.into());
-        self.current_frame_mut().store_argument(index);
+        self.store_argument(index, value.into());
     }
 }
