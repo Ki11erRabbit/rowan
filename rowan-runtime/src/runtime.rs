@@ -16,6 +16,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32};
 use std::sync::mpsc::Sender;
+use fxhash::FxHashMap;
 use rowan_shared::bytecode::linked::Bytecode;
 use crate::context::{BytecodeContext, MethodName, WrappedReference};
 use crate::fake_lock::FakeLock;
@@ -689,13 +690,16 @@ impl Runtime {
         drop(class_table);
         let (sender, _) = std::sync::mpsc::channel();
         let mut context = BytecodeContext::new(sender);
+        let block_positions = Box::new(FxHashMap::default());
+        let block_positions = &*block_positions as *const FxHashMap<_, _>;
+        let block_positions = unsafe { block_positions.as_ref().unwrap() };
         for function in init_functions {
             if let Some(function) = function {
                 //let bytecode = unsafe { std::mem::transmute::<'static, _>(function.as_ref())};
                 let function = unsafe {
                     function.as_ref().unwrap()
                 };
-                context.run_bytecode(function);
+                context.run_bytecode(function, block_positions);
             }
         }
     }

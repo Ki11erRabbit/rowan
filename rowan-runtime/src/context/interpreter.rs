@@ -3,6 +3,7 @@ mod stackframe;
 use std::collections::HashSet;
 use std::sync::mpsc::Sender;
 use std::sync::TryLockError;
+use fxhash::FxHashMap;
 use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
 use crate::runtime;
@@ -10,8 +11,7 @@ use crate::context::{call_function_pointer, MethodName, WrappedReference};
 use crate::runtime::{FunctionDetails, Reference, Runtime, DO_GARBAGE_COLLECTION};
 use crate::runtime::object::Object;
 use paste::paste;
-use pool_box::PoolBox;
-use crate::context::interpreter::stackframe::{StackFrame, StackFramePoolBoxAllocator};
+use crate::context::interpreter::stackframe::{StackFrame};
 
 #[derive(Debug, Copy, Clone)]
 pub enum CallContinueState {
@@ -203,8 +203,9 @@ impl From<Reference> for StackValue {
 
 
 pub struct BytecodeContext {
+    operand_stack: Vec<StackValue>,
     active_bytecodes: Vec<&'static [Bytecode]>,
-    active_frames: Vec<PoolBox<StackFrame, StackFramePoolBoxAllocator>>,
+    active_frames: Vec<StackFrame>,
     current_exception: Reference,
     sender: Sender<HashSet<WrappedReference>>,
     call_args: [StackValue; 256],
@@ -214,12 +215,44 @@ pub struct BytecodeContext {
 impl BytecodeContext {
     pub fn new(sender: Sender<HashSet<WrappedReference>>) -> Self {
         BytecodeContext {
+            operand_stack: Vec::with_capacity(10),
             active_bytecodes: Vec::new(),
             active_frames: Vec::new(),
             current_exception: std::ptr::null_mut(),
             call_args: [StackValue::Blank; 256],
             sender,
         }
+    }
+    
+    pub fn push_value(&mut self, stack_value: StackValue) {
+        assert_ne!(stack_value.is_blank(), true, "Added a blank to the stack");
+        self.operand_stack.push(stack_value);
+    }
+    
+    pub fn pop_value(&mut self) -> StackValue {
+        self.operand_stack.pop().unwrap()
+    }
+
+    pub fn dup(&mut self) {
+        let value = self.operand_stack.last().unwrap();
+        self.operand_stack.push(*value);
+    }
+
+    pub fn swap(&mut self) {
+        let value1 = self.pop_value();
+        let value2 = self.pop_value();
+        self.push_value(value2);
+        self.push_value(value1);
+    }
+
+    pub fn store_local(&mut self, index: u8) {
+        let value = self.pop_value();
+        self.current_frame_mut().variables[index as usize] = value;
+    }
+
+    pub fn load_local(&mut self, index: u8) {
+        let value = self.current_frame_mut().variables[index as usize];
+        self.push_value(value);
     }
 
     pub fn store_argument(&mut self, index: u8, value: StackValue) {
@@ -238,11 +271,10 @@ impl BytecodeContext {
         !self.current_exception.is_null()
     }
 
-    pub fn push(&mut self, bytecode: &'static [Bytecode], is_for_bytecode: bool, method_name: MethodName) {
+    pub fn push(&mut self, bytecode: &'static [Bytecode], is_for_bytecode: bool, method_name: MethodName, block_positions: &'static FxHashMap<usize, usize>) {
         self.active_bytecodes.push(bytecode);
-        let frame = self.current_frame();
         let args = self.get_args();
-        self.active_frames.push(PoolBox::new(StackFrame::new(args, bytecode, is_for_bytecode, method_name)));
+        self.active_frames.push(StackFrame::new(args, is_for_bytecode, method_name, block_positions));
         for arg in self.get_args_mut() {
             if arg.is_blank() {
                 break
@@ -350,7 +382,7 @@ impl BytecodeContext {
             }
         }
 
-        self.push(details.bytecode, details.fn_ptr.is_none(), method_name);
+        self.push(details.bytecode, details.fn_ptr.is_none(), method_name, details.block_positions);
 
         match details.fn_ptr {
             Some(fn_ptr) => {
@@ -371,7 +403,7 @@ impl BytecodeContext {
                     *return_slot = return_value;
                 }
                 if !return_value.is_blank() {
-                    self.current_frame_mut().push(return_value);
+                    self.push_value(return_value);
                 }
                 //self.handle_exception()
                 CallContinueState::Return
@@ -395,7 +427,7 @@ impl BytecodeContext {
         };
         self.active_bytecodes.push(details.bytecode);
         // TODO: add passing of cmdline args
-        self.active_frames.push(PoolBox::new(StackFrame::new(&[], details.bytecode, details.fn_ptr.is_none(), method_name)));
+        self.active_frames.push(StackFrame::new(&[], details.fn_ptr.is_none(), method_name, details.block_positions));
         self.current_frame_mut().variables[0] = StackValue::Reference(std::ptr::null_mut());
         self.main_loop();
     }
@@ -460,9 +492,9 @@ impl BytecodeContext {
         }
     }
 
-    pub fn run_bytecode(&mut self, bytecode: &'static [Bytecode]) {
+    pub fn run_bytecode(&mut self, bytecode: &'static [Bytecode], block_positions: &'static FxHashMap<usize, usize>) {
         self.active_bytecodes.push(bytecode);
-        self.active_frames.push(PoolBox::new(StackFrame::new(&[], bytecode, true, MethodName::StaticMethod { method_name: 0, class_symbol: 0 })));
+        self.active_frames.push(StackFrame::new(&[], true, MethodName::StaticMethod { method_name: 0, class_symbol: 0 }, block_positions));
         self.main_loop();
         self.pop();
     }
@@ -520,6 +552,17 @@ impl BytecodeContext {
                 _ => {}
             }
         }
+        for operand in self.operand_stack.iter() {
+            match operand {
+                StackValue::Reference(value) =>  {
+                    references.insert(WrappedReference(*value));
+                }
+                StackValue::Blank => {
+                    break;
+                }
+                _ => {}
+            }
+        }
     }
 
     fn collect_jit_references(&mut self, references: &mut HashSet<WrappedReference>) {
@@ -559,81 +602,81 @@ impl BytecodeContext {
             Bytecode::Nop => {}
             Bytecode::Breakpoint => {}
             Bytecode::LoadU8(value) => {
-                self.current_frame_mut().push(StackValue::from(*value));
+                self.push_value(StackValue::from(*value));
             }
             Bytecode::LoadU16(value) => {
-                self.current_frame_mut().push(StackValue::from(*value));
+                self.push_value(StackValue::from(*value));
             }
             Bytecode::LoadU32(value) => {
-                self.current_frame_mut().push(StackValue::from(*value));
+                self.push_value(StackValue::from(*value));
             }
             Bytecode::LoadU64(value) => {
-                self.current_frame_mut().push(StackValue::from(*value));
+                self.push_value(StackValue::from(*value));
             }
             Bytecode::LoadI8(value) => {
-                self.current_frame_mut().push(StackValue::from(*value));
+                self.push_value(StackValue::from(*value));
             }
             Bytecode::LoadI16(value) => {
-                self.current_frame_mut().push(StackValue::from(*value));
+                self.push_value(StackValue::from(*value));
             }
             Bytecode::LoadI32(value) => {
-                self.current_frame_mut().push(StackValue::from(*value));
+                self.push_value(StackValue::from(*value));
             }
             Bytecode::LoadI64(value) => {
-                self.current_frame_mut().push(StackValue::from(*value));
+                self.push_value(StackValue::from(*value));
             }
             Bytecode::LoadF32(value) => {
-                self.current_frame_mut().push(StackValue::from(*value));
+                self.push_value(StackValue::from(*value));
             }
             Bytecode::LoadF64(value) => {
-                self.current_frame_mut().push(StackValue::from(*value));
+                self.push_value(StackValue::from(*value));
             }
             Bytecode::LoadSymbol(_sym) => {
                 todo!("LoadSymbol")
             }
             Bytecode::Pop => {
-                self.current_frame_mut().pop();
+                self.pop_value();
             }
             Bytecode::Dup => {
-                self.current_frame_mut().dup();
+                self.dup();
             }
             Bytecode::Swap => {
-                self.current_frame_mut().swap();
+                self.swap();
             }
             Bytecode::StoreLocal(index) => {
-                self.current_frame_mut().store_local(*index);
+                self.store_local(*index);
             }
             Bytecode::LoadLocal(index) => {
-                self.current_frame_mut().load_local(*index);
+                self.load_local(*index);
             }
             Bytecode::StoreArgument(index) => {
-                let value = self.current_frame_mut().pop();
+                let value = self.pop_value();
                 self.store_argument(*index, value);
             }
             Bytecode::AddInt => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
 
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_add(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_add(rhs)));
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_add(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_add(rhs)));
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_add(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_add(rhs)));
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_add(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_add(rhs)));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -641,29 +684,29 @@ impl BytecodeContext {
                 }
             }
             Bytecode::SubInt => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
 
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_sub(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_sub(rhs)));
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_sub(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_sub(rhs)));
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_sub(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_sub(rhs)));
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_sub(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_sub(rhs)));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -671,21 +714,21 @@ impl BytecodeContext {
                 }
             }
             Bytecode::MulInt => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
 
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_mul(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_mul(rhs)));
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_mul(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_mul(rhs)));
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_mul(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_mul(rhs)));
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_mul(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_mul(rhs)));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -693,32 +736,32 @@ impl BytecodeContext {
                 }
             }
             Bytecode::DivSigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_div(rhs);
-                        self.current_frame_mut().push(StackValue::from(result));
+                        self.push_value(StackValue::from(result));
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_div(rhs);
-                        self.current_frame_mut().push(StackValue::from(result));
+                        self.push_value(StackValue::from(result));
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_div(rhs);
-                        self.current_frame_mut().push(StackValue::from(result));
+                        self.push_value(StackValue::from(result));
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_div(rhs);
-                        self.current_frame_mut().push(StackValue::from(result));
+                        self.push_value(StackValue::from(result));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -726,20 +769,20 @@ impl BytecodeContext {
                 }
             }
             Bytecode::DivUnsigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_div(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_div(rhs)));
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_div(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_div(rhs)));
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_div(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_div(rhs)));
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_div(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_div(rhs)));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -747,8 +790,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::ModSigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
@@ -756,7 +799,7 @@ impl BytecodeContext {
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_rem(rhs);
-                        self.current_frame_mut().push(StackValue::from(result));
+                        self.push_value(StackValue::from(result));
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         
@@ -764,7 +807,7 @@ impl BytecodeContext {
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_rem(rhs);
-                        self.current_frame_mut().push(StackValue::from(result));
+                        self.push_value(StackValue::from(result));
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         
@@ -772,7 +815,7 @@ impl BytecodeContext {
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_rem(rhs);
-                        self.current_frame_mut().push(StackValue::from(result));
+                        self.push_value(StackValue::from(result));
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         
@@ -780,7 +823,7 @@ impl BytecodeContext {
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let result = lhs.wrapping_rem(rhs);
-                        self.current_frame_mut().push(StackValue::from(result));
+                        self.push_value(StackValue::from(result));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -788,20 +831,20 @@ impl BytecodeContext {
                 }
             }
             Bytecode::ModUnsigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_rem(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_rem(rhs)));
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_rem(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_rem(rhs)));
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_rem(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_rem(rhs)));
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.wrapping_rem(rhs)));
+                        self.push_value(StackValue::from(lhs.wrapping_rem(rhs)));
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -809,14 +852,14 @@ impl BytecodeContext {
                 }
             }
             Bytecode::AddFloat => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs + rhs))
+                        self.push_value(StackValue::from(lhs + rhs))
                     }
                     (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs + rhs))
+                        self.push_value(StackValue::from(lhs + rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -824,14 +867,14 @@ impl BytecodeContext {
                 }
             }
             Bytecode::SubFloat => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs - rhs))
+                        self.push_value(StackValue::from(lhs - rhs))
                     }
                     (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs - rhs))
+                        self.push_value(StackValue::from(lhs - rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -839,14 +882,14 @@ impl BytecodeContext {
                 }
             }
             Bytecode::MulFloat => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs * rhs))
+                        self.push_value(StackValue::from(lhs * rhs))
                     }
                     (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs * rhs))
+                        self.push_value(StackValue::from(lhs * rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -854,14 +897,14 @@ impl BytecodeContext {
                 }
             }
             Bytecode::DivFloat => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs / rhs))
+                        self.push_value(StackValue::from(lhs / rhs))
                     }
                     (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs / rhs))
+                        self.push_value(StackValue::from(lhs / rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -869,14 +912,14 @@ impl BytecodeContext {
                 }
             }
             Bytecode::ModFloat => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs % rhs))
+                        self.push_value(StackValue::from(lhs % rhs))
                     }
                     (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs % rhs))
+                        self.push_value(StackValue::from(lhs % rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -884,20 +927,20 @@ impl BytecodeContext {
                 }
             }
             Bytecode::SatAddIntUnsigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.saturating_add(rhs)))
+                        self.push_value(StackValue::from(lhs.saturating_add(rhs)))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.saturating_add(rhs)))
+                        self.push_value(StackValue::from(lhs.saturating_add(rhs)))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.saturating_add(rhs)))
+                        self.push_value(StackValue::from(lhs.saturating_add(rhs)))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.saturating_add(rhs)))
+                        self.push_value(StackValue::from(lhs.saturating_add(rhs)))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -905,20 +948,20 @@ impl BytecodeContext {
                 }
             }
             Bytecode::SatSubIntUnsigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.saturating_sub(rhs)))
+                        self.push_value(StackValue::from(lhs.saturating_sub(rhs)))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.saturating_sub(rhs)))
+                        self.push_value(StackValue::from(lhs.saturating_sub(rhs)))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.saturating_sub(rhs)))
+                        self.push_value(StackValue::from(lhs.saturating_sub(rhs)))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs.saturating_sub(rhs)))
+                        self.push_value(StackValue::from(lhs.saturating_sub(rhs)))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -926,24 +969,24 @@ impl BytecodeContext {
                 }
             }
             Bytecode::And => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs & rhs))
+                        self.push_value(StackValue::from(lhs & rhs))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs & rhs))
+                        self.push_value(StackValue::from(lhs & rhs))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs & rhs))
+                        self.push_value(StackValue::from(lhs & rhs))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs & rhs))
+                        self.push_value(StackValue::from(lhs & rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -951,28 +994,28 @@ impl BytecodeContext {
                 }
             }
             Bytecode::Or => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs | rhs))
+                        self.push_value(StackValue::from(lhs | rhs))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs | rhs))
+                        self.push_value(StackValue::from(lhs | rhs))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs | rhs))
+                        self.push_value(StackValue::from(lhs | rhs))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs | rhs))
+                        self.push_value(StackValue::from(lhs | rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -980,28 +1023,28 @@ impl BytecodeContext {
                 }
             }
             Bytecode::Xor => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs ^ rhs))
+                        self.push_value(StackValue::from(lhs ^ rhs))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs ^ rhs))
+                        self.push_value(StackValue::from(lhs ^ rhs))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs ^ rhs))
+                        self.push_value(StackValue::from(lhs ^ rhs))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs ^ rhs))
+                        self.push_value(StackValue::from(lhs ^ rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1009,19 +1052,19 @@ impl BytecodeContext {
                 }
             }
             Bytecode::Not => {
-                let value = self.current_frame_mut().pop();
+                let value = self.pop_value();
                 match value {
                     StackValue::Int8(value) => {
-                        self.current_frame_mut().push(StackValue::from(!value))
+                        self.push_value(StackValue::from(!value))
                     }
                     StackValue::Int16(value) => {
-                        self.current_frame_mut().push(StackValue::from(!value))
+                        self.push_value(StackValue::from(!value))
                     }
                     StackValue::Int32(value) => {
-                        self.current_frame_mut().push(StackValue::from(!value))
+                        self.push_value(StackValue::from(!value))
                     }
                     StackValue::Int64(value) => {
-                        self.current_frame_mut().push(StackValue::from(!value))
+                        self.push_value(StackValue::from(!value))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1029,28 +1072,28 @@ impl BytecodeContext {
                 }
             }
             Bytecode::Shl => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs << rhs))
+                        self.push_value(StackValue::from(lhs << rhs))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs << rhs))
+                        self.push_value(StackValue::from(lhs << rhs))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs << rhs))
+                        self.push_value(StackValue::from(lhs << rhs))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         
                         
-                        self.current_frame_mut().push(StackValue::from(lhs << rhs))
+                        self.push_value(StackValue::from(lhs << rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1058,8 +1101,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::AShr => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
@@ -1067,7 +1110,7 @@ impl BytecodeContext {
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >> rhs;
-                        self.current_frame_mut().push(StackValue::from(value))
+                        self.push_value(StackValue::from(value))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         
@@ -1075,7 +1118,7 @@ impl BytecodeContext {
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >> rhs;
-                        self.current_frame_mut().push(StackValue::from(value))
+                        self.push_value(StackValue::from(value))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         
@@ -1083,7 +1126,7 @@ impl BytecodeContext {
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >> rhs;
-                        self.current_frame_mut().push(StackValue::from(value))
+                        self.push_value(StackValue::from(value))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         
@@ -1091,7 +1134,7 @@ impl BytecodeContext {
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >> rhs;
-                        self.current_frame_mut().push(StackValue::from(value))
+                        self.push_value(StackValue::from(value))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1099,20 +1142,20 @@ impl BytecodeContext {
                 }
             }
             Bytecode::LShr => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs >> rhs))
+                        self.push_value(StackValue::from(lhs >> rhs))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs >> rhs))
+                        self.push_value(StackValue::from(lhs >> rhs))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
-                        self.current_frame_mut().push(StackValue::from(lhs >> rhs))
+                        self.push_value(StackValue::from(lhs >> rhs))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {                        
-                        self.current_frame_mut().push(StackValue::from(lhs >> rhs))
+                        self.push_value(StackValue::from(lhs >> rhs))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1120,35 +1163,35 @@ impl BytecodeContext {
                 }
             }
             Bytecode::Neg => {
-                let value = self.current_frame_mut().pop();
+                let value = self.pop_value();
                 match value {
                     StackValue::Int8(value) => {
                         let value = i8::from_ne_bytes(value.to_ne_bytes());
                         let value = -value;
-                        self.current_frame_mut().push(StackValue::from(value))
+                        self.push_value(StackValue::from(value))
                     }
                     StackValue::Int16(value) => {
                         let value = i16::from_ne_bytes(value.to_ne_bytes());
                         let value = -value;
-                        self.current_frame_mut().push(StackValue::from(value))
+                        self.push_value(StackValue::from(value))
                     }
                     StackValue::Int32(value) => {
                         let value = i32::from_ne_bytes(value.to_ne_bytes());
                         let value = -value;
-                        self.current_frame_mut().push(StackValue::from(value))
+                        self.push_value(StackValue::from(value))
                     }
                     StackValue::Int64(value) => {
                         let value = i64::from_ne_bytes(value.to_ne_bytes());
                         let value = -value;
-                        self.current_frame_mut().push(StackValue::from(value))
+                        self.push_value(StackValue::from(value))
                     }
                     StackValue::Float32(value) => {
                         let value = -value;
-                        self.current_frame_mut().push(StackValue::from(value))
+                        self.push_value(StackValue::from(value))
                     }
                     StackValue::Float64(value) => {
                         let value = -value;
-                        self.current_frame_mut().push(StackValue::from(value))
+                        self.push_value(StackValue::from(value))
                     }
                     StackValue::Reference(_) => {
                         todo!("Throw error saying that you can't negate references")
@@ -1157,8 +1200,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::EqualSigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
@@ -1166,7 +1209,7 @@ impl BytecodeContext {
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         
@@ -1174,7 +1217,7 @@ impl BytecodeContext {
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         
@@ -1182,7 +1225,7 @@ impl BytecodeContext {
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         
@@ -1190,7 +1233,7 @@ impl BytecodeContext {
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1198,8 +1241,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::NotEqualSigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
@@ -1207,7 +1250,7 @@ impl BytecodeContext {
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         
@@ -1215,7 +1258,7 @@ impl BytecodeContext {
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         
@@ -1223,7 +1266,7 @@ impl BytecodeContext {
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         
@@ -1231,7 +1274,7 @@ impl BytecodeContext {
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1239,32 +1282,32 @@ impl BytecodeContext {
                 }
             }
             Bytecode::EqualUnsigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
                         
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         
                         
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         
                         
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         
                         
                         let value = lhs == rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1272,32 +1315,32 @@ impl BytecodeContext {
                 }
             }
             Bytecode::NotEqualUnsigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
                         
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         
                         
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         
                         
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         
                         
                         let value = lhs != rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1305,8 +1348,8 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GreaterSigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         
@@ -1314,7 +1357,7 @@ impl BytecodeContext {
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         
@@ -1322,7 +1365,7 @@ impl BytecodeContext {
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         
@@ -1330,7 +1373,7 @@ impl BytecodeContext {
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         
@@ -1338,7 +1381,7 @@ impl BytecodeContext {
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1346,32 +1389,32 @@ impl BytecodeContext {
                 }
             }
             Bytecode::LessSigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1379,24 +1422,24 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GreaterUnsigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         let value = lhs > rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1404,24 +1447,24 @@ impl BytecodeContext {
                 }
             }
             Bytecode::LessUnsigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         let value = lhs < rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1429,32 +1472,32 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GreaterOrEqualSigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1462,32 +1505,32 @@ impl BytecodeContext {
                 }
             }
             Bytecode::LessOrEqualSigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         let lhs = i8::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i8::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         let lhs = i16::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i16::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         let lhs = i64::from_ne_bytes(lhs.to_ne_bytes());
                         let rhs = i64::from_ne_bytes(rhs.to_ne_bytes());
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1495,24 +1538,24 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GreaterOrEqualUnsigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         let value = lhs >= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1520,24 +1563,24 @@ impl BytecodeContext {
                 }
             }
             Bytecode::LessOrEqualUnsigned => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Int8(lhs), StackValue::Int8(rhs)) => {
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int16(lhs), StackValue::Int16(rhs)) => {
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int32(lhs), StackValue::Int32(rhs)) => {
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Int64(lhs), StackValue::Int64(rhs)) => {
                         let value = lhs <= rhs;
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1545,16 +1588,16 @@ impl BytecodeContext {
                 }
             }
             Bytecode::EqualFloat => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {                        
                         let value = lhs.eq(&rhs);
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
                         let value = lhs.eq(&rhs);
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1562,16 +1605,16 @@ impl BytecodeContext {
                 }
             }
             Bytecode::NotEqualFloat => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.ne(&rhs);
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
                         let value = lhs.ne(&rhs);
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1579,16 +1622,16 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GreaterFloat => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.gt(&rhs);
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
                         let value = lhs.gt(&rhs);
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1596,16 +1639,16 @@ impl BytecodeContext {
                 }
             }
             Bytecode::LessFloat => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.lt(&rhs);
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
                         let value = lhs.lt(&rhs);
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1613,16 +1656,16 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GreaterOrEqualFloat => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.ge(&rhs);
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
                         let value = lhs.ge(&rhs);
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1630,16 +1673,16 @@ impl BytecodeContext {
                 }
             }
             Bytecode::LessOrEqualFloat => {
-                let rhs = self.current_frame_mut().pop();
-                let lhs = self.current_frame_mut().pop();
+                let rhs = self.pop_value();
+                let lhs = self.pop_value();
                 match (lhs, rhs) {
                     (StackValue::Float32(lhs), StackValue::Float32(rhs)) => {
                         let value = lhs.le(&rhs);
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     (StackValue::Float64(lhs), StackValue::Float64(rhs)) => {
                         let value = lhs.le(&rhs);
-                        self.current_frame_mut().push(StackValue::from(value as u8))
+                        self.push_value(StackValue::from(value as u8))
                     }
                     _ => {
                         todo!("Throw error saying that types should match if they are different")
@@ -1647,47 +1690,47 @@ impl BytecodeContext {
                 }
             }
             Bytecode::Convert(tag) => {
-                let value = self.current_frame_mut().pop();
+                let value = self.pop_value();
                 match tag {
                     TypeTag::U8 => {
                         let value = value.as_u8();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::U16 => {
                         let value = value.as_u16();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::U32 => {
                         let value = value.as_u32();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::U64 => {
                         let value = value.as_u64();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::I8 => {
                         let value = value.as_i8();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::I16 => {
                         let value = value.as_i16();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::I32 => {
                         let value = value.as_i32();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::I64 => {
                         let value = value.as_i64();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::F32 => {
                         let value = value.as_f32();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::F64 => {
                         let value = value.as_f64();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::Object => {
                         todo!("report object conversion errors")
@@ -1696,47 +1739,47 @@ impl BytecodeContext {
                 }
             }
             Bytecode::BinaryConvert(tag) => {
-                let value = self.current_frame_mut().pop();
+                let value = self.pop_value();
                 match tag {
                     TypeTag::U8 => {
                         let value = value.into_u8();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::U16 => {
                         let value = value.into_u16();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::U32 => {
                         let value = value.into_u32();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::U64 => {
                         let value = value.into_u64();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::I8 => {
                         let value = value.into_i8();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::I16 => {
                         let value = value.into_i16();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::I32 => {
                         let value = value.into_i32();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::I64 => {
                         let value = value.into_i64();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::F32 => {
                         let value = value.into_f32();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::F64 => {
                         let value = value.into_f64();
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::Object => {
                         todo!("report object conversion errors")
@@ -1745,7 +1788,7 @@ impl BytecodeContext {
                 }
             }
             Bytecode::CreateArray(tag) => {
-                let size = self.current_frame_mut().pop();
+                let size = self.pop_value();
                 let size = match size {
                     StackValue::Int64(size) => size,
                     _ => todo!("report needing u64 for array alloc"),
@@ -1777,15 +1820,15 @@ impl BytecodeContext {
                 // TODO: add call to stack so that it can record the backtrace correctly
                 let object = Runtime::new_object(class_name);
                 init(self, object, size);
-                self.current_frame_mut().push(StackValue::from(object));
+                self.push_value(StackValue::from(object));
             }
             Bytecode::ArrayGet(tag) => {
-                let index = self.current_frame_mut().pop();
+                let index = self.pop_value();
                 let index = match index {
                     StackValue::Int64(index) => index,
                     _ => todo!("report needing u64"),
                 };
-                let array = self.current_frame_mut().pop();
+                let array = self.pop_value();
                 let array = match array {
                     StackValue::Reference(object) => object,
                     _ => todo!("report needing reference for index"),
@@ -1797,7 +1840,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::U16 | TypeTag::I16 => {
                         let value = runtime::core::array16_get(self, array, index);
@@ -1805,7 +1848,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::U32 | TypeTag::I32 => {
                         let value = runtime::core::array32_get(self, array, index);
@@ -1813,7 +1856,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::U64 | TypeTag::I64 => {
                         let value = runtime::core::array64_get(self, array, index);
@@ -1821,7 +1864,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::F32 => {
                         let value = runtime::core::arrayf32_get(self, array, index);
@@ -1829,7 +1872,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::F64 => {
                         let value = runtime::core::arrayf64_get(self, array, index);
@@ -1837,7 +1880,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::Object => {
                         let value = runtime::core::arrayobject_get(self, array, index);
@@ -1846,19 +1889,19 @@ impl BytecodeContext {
                             _ => {}
                         }
                         let value = value as usize as Reference;
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     _ => unreachable!("Invalid Type Tag"),
                 }
             }
             Bytecode::ArraySet(tag) => {
-                let value = self.current_frame_mut().pop();
-                let index = self.current_frame_mut().pop();
+                let value = self.pop_value();
+                let index = self.pop_value();
                 let index = match index {
                     StackValue::Int64(index) => index,
                     _ => todo!("report needing u64"),
                 };
-                let array = self.current_frame_mut().pop();
+                let array = self.pop_value();
                 let array = match array {
                     StackValue::Reference(object) => object,
                     _ => todo!("report needing reference for index"),
@@ -1925,10 +1968,10 @@ impl BytecodeContext {
             }
             Bytecode::NewObject(sym) => {
                 let object = Runtime::new_object(*sym as usize);
-                self.current_frame_mut().push(StackValue::from(object));
+                self.push_value(StackValue::from(object));
             }
             Bytecode::GetField(access, parent_name, index, tag) => {
-                let object = self.current_frame_mut().pop();
+                let object = self.pop_value();
                 let object = match object {
                     StackValue::Reference(object) => object,
                     _ => todo!("report not accessing object correctly"),
@@ -1941,7 +1984,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::U16 | TypeTag::I16 => {
                         let value = Object::get_16(self, object, *access, *parent_name, *index);
@@ -1949,7 +1992,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::U32 | TypeTag::I32 => {
                         let value = Object::get_32(self, object, *access, *parent_name, *index);
@@ -1957,7 +2000,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::U64 | TypeTag::I64 => {
                         let value = Object::get_64(self, object, *access, *parent_name, *index);
@@ -1965,7 +2008,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::F32 => {
                         let value = Object::get_f32(self, object, *access, *parent_name, *index);
@@ -1973,7 +2016,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::F64 => {
                         let value = Object::get_f64(self, object, *access, *parent_name, *index);
@@ -1981,7 +2024,7 @@ impl BytecodeContext {
                             CallContinueState::Error => return false,
                             _ => {}
                         }
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     TypeTag::Object => {
                         let value = Object::get_object(self, object, *access, *parent_name, *index);
@@ -1990,14 +2033,14 @@ impl BytecodeContext {
                             _ => {}
                         }
                         let value = value as usize as Reference;
-                        self.current_frame_mut().push(StackValue::from(value));
+                        self.push_value(StackValue::from(value));
                     }
                     _ => unreachable!("Invalid Type Tag"),
                 }
             }
             Bytecode::SetField(access, parent_name, index, tag) => {
-                let value = self.current_frame_mut().pop();
-                let object = self.current_frame_mut().pop();
+                let value = self.pop_value();
+                let object = self.pop_value();
                 let object = match object {
                     StackValue::Reference(object) => object,
                     _ => todo!("report needing u64"),
@@ -2063,7 +2106,7 @@ impl BytecodeContext {
                 }
             }
             Bytecode::IsA(sym) => {
-                let object = self.current_frame_mut().pop();
+                let object = self.pop_value();
                 let object = match object {
                     StackValue::Reference(object) => object,
                     _ => todo!("report needing object")
@@ -2072,7 +2115,7 @@ impl BytecodeContext {
                     object.as_ref().expect("check for null pointer")
                 };
                 let result = object.class as u64 == *sym;
-                self.current_frame_mut().push(StackValue::from(result as u8));
+                self.push_value(StackValue::from(result as u8));
             }
             Bytecode::InvokeVirt(specified, origin, method_name) => {
                 match self.invoke_virtual(
@@ -2109,43 +2152,43 @@ impl BytecodeContext {
                     TypeTag::U8 | TypeTag::I8 => {
                         let value = Runtime::get_static_member::<u8>(self, *class as runtime::Symbol, *index);
                         let value = StackValue::from(value);
-                        self.current_frame_mut().push(value);
+                        self.push_value(value);
                     }
                     TypeTag::U16 | TypeTag::I16 => {
                         let value = Runtime::get_static_member::<u16>(self, *class as runtime::Symbol, *index);
                         let value = StackValue::from(value);
-                        self.current_frame_mut().push(value);
+                        self.push_value(value);
                     }
                     TypeTag::U32 | TypeTag::I32 => {
                         let value = Runtime::get_static_member::<u32>(self, *class as runtime::Symbol, *index);
                         let value = StackValue::from(value);
-                        self.current_frame_mut().push(value);
+                        self.push_value(value);
                     }
                     TypeTag::U64 | TypeTag::I64 => {
                         let value = Runtime::get_static_member::<u64>(self, *class as runtime::Symbol, *index);
                         let value = StackValue::from(value);
-                        self.current_frame_mut().push(value);
+                        self.push_value(value);
                     }
                     TypeTag::F32 => {
                         let value = Runtime::get_static_member::<f32>(self, *class as runtime::Symbol, *index);
                         let value = StackValue::from(value);
-                        self.current_frame_mut().push(value);
+                        self.push_value(value);
                     }
                     TypeTag::F64 => {
                         let value = Runtime::get_static_member::<f64>(self, *class as runtime::Symbol, *index);
                         let value = StackValue::from(value);
-                        self.current_frame_mut().push(value);
+                        self.push_value(value);
                     }
                     TypeTag::Object => {
                         let value = Runtime::get_static_member::<Reference>(self, *class as runtime::Symbol, *index);
                         let value = StackValue::from(value);
-                        self.current_frame_mut().push(value);
+                        self.push_value(value);
                     }
                     _ => unreachable!("Invalid Type Tag"),
                 }
             }
             Bytecode::SetStaticMember(class, index, ty) => {
-                let value = self.current_frame_mut().pop();
+                let value = self.pop_value();
                 match (value, ty) {
                     (StackValue::Int8(value), TypeTag::U8) | (StackValue::Int8(value), TypeTag::I8) => {
                         let value = Runtime::set_static_member::<u8>(self, *class as runtime::Symbol, *index, value);
@@ -2172,12 +2215,12 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GetStrRef(sym) => {
-                self.current_frame_mut().push(StackValue::from(*sym));
+                self.push_value(StackValue::from(*sym));
             }
             Bytecode::Return => {
-                let value = self.current_frame_mut().pop();
+                let value = self.pop_value();
                 self.pop();
-                self.current_frame_mut().push(value);
+                self.push_value(value);
             }
             Bytecode::ReturnVoid => {
                 if self.active_frames.len() == 1 {
@@ -2192,7 +2235,7 @@ impl BytecodeContext {
                 todo!("unregistering of exceptions");
             }
             Bytecode::Throw => {
-                let exception = self.current_frame_mut().pop();
+                let exception = self.pop_value();
                 let exception = match exception {
                     StackValue::Reference(exception) => exception,
                     _ => todo!("report exception needing to be an object"),
@@ -2205,7 +2248,7 @@ impl BytecodeContext {
                 self.current_frame_mut().goto(*offset as isize);
             }
             Bytecode::If(then_offset, else_offset) => {
-                let value = self.current_frame_mut().pop();
+                let value = self.pop_value();
                 let boolean = match value {
                     StackValue::Int8(value) => value,
                     _ => todo!("report invalid type for boolean"),

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ptr::NonNull;
-use std::sync::{Arc, RwLock};
 
 use cranelift::prelude::Signature;
 use cranelift_module::FuncId;
+use fxhash::FxHashMap;
 use rowan_shared::bytecode::linked::Bytecode;
 
 use crate::runtime::{class::TypeTag, Index, Symbol, VTableIndex};
@@ -13,7 +13,8 @@ pub struct FunctionDetails {
     pub bytecode: &'static [Bytecode],
     pub arguments: &'static [TypeTag],
     pub return_type: TypeTag,
-    pub fn_ptr: Option<NonNull<()>>
+    pub fn_ptr: Option<NonNull<()>>,
+    pub block_positions: &'static FxHashMap<usize, usize>,
 }
 
 pub struct VTable {
@@ -59,6 +60,7 @@ pub struct Function {
     pub arguments: Box<[TypeTag]>,
     pub return_type: TypeTag,
     pub signature: Signature,
+    pub block_positions: Box<FxHashMap<usize, usize>>,
 }
 
 impl Function {
@@ -69,6 +71,7 @@ impl Function {
         arguments: Box<[TypeTag]>,
         return_type: TypeTag,
         signature: Signature,
+        block_positions: Box<FxHashMap<usize, usize>>,
     ) -> Self {
         Function {
             name,
@@ -77,6 +80,7 @@ impl Function {
             arguments,
             return_type,
             signature,
+            block_positions,
         }
     }
 
@@ -105,11 +109,14 @@ impl Function {
             _ => None,
         };
 
+        let block_positions = &*self.block_positions as *const FxHashMap<usize, usize>;
+
         FunctionDetails {
             bytecode: bytecode_ref,
             arguments: arguments_ref,
             return_type: self.return_type,
             fn_ptr,
+            block_positions: unsafe { block_positions.as_ref().unwrap() }
         }
     }
 }

@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use cranelift::prelude::Signature;
+use fxhash::FxHashMap;
 use rowan_shared::classfile::{ClassFile, VTableEntry};
-use rowan_shared::{classfile, TypeTag};
+use rowan_shared::{bytecode, classfile, TypeTag};
 use crate::context::BytecodeContext;
 use crate::runtime::class::{ClassMember, ClassMemberData};
 use crate::runtime::jit::JITCompiler;
@@ -392,7 +393,7 @@ pub fn link_class_files(
                             // TODO: investigate if this is correct
                             let bytecode = Box::new([]) as Box<[rowan_shared::bytecode::linked::Bytecode]>;
 
-                            Function::new(*derived_name_symbol, bytecode, derived_value.clone(), arguments.into(), return_type, sig.clone())
+                            Function::new(*derived_name_symbol, bytecode, derived_value.clone(), arguments.into(), return_type, sig.clone(), Box::new(FxHashMap::default()))
                         })
                         .collect::<Vec<_>>();
                     vtables_to_add.push((*class_name, Some(*source_class), VTable::new(functions, functions_mapper)));
@@ -468,7 +469,9 @@ pub fn link_class_files(
                                 .map(convert_type)
                                 .collect::<Vec<_>>();
 
-                            Function::new(name_symbol, bytecode, value, arguments.into(), return_type, sig)
+                            let block_positions = Box::new(create_block_positions(bytecode.as_ref()));
+
+                            Function::new(name_symbol, bytecode, value, arguments.into(), return_type, sig, block_positions)
                         })
                         .collect::<Vec<_>>();
 
@@ -559,7 +562,9 @@ pub fn link_class_files(
                                 .map(convert_type)
                                 .collect::<Vec<_>>();
 
-                            Function::new(name_symbol, bytecode, value, arguments.into(), return_type, sig)
+                            let block_positions = Box::new(create_block_positions(bytecode.as_ref()));
+
+                            Function::new(name_symbol, bytecode, value, arguments.into(), return_type, sig, block_positions)
                         })
                         .collect::<Vec<_>>();
 
@@ -643,7 +648,9 @@ pub fn link_class_files(
                             }
                         };
 
-                        Function::new(name_symbol, bytecode, value, arguments.into(), return_type, sig)
+                        let block_positions = Box::new(create_block_positions(bytecode.as_ref()));
+
+                        Function::new(name_symbol, bytecode, value, arguments.into(), return_type, sig, block_positions)
                     })
                     .collect::<Vec<_>>(), location_path)
             };
@@ -1402,7 +1409,7 @@ pub fn link_vm_classes(
                                 .map(convert_type)
                                 .collect::<Vec<_>>();
 
-                            Function::new(*derived_name_symbol, Box::new([]) as Box<[rowan_shared::bytecode::linked::Bytecode]>, derived_value.clone(), arguments.into(), return_type, sig.clone())
+                            Function::new(*derived_name_symbol, Box::new([]) as Box<[rowan_shared::bytecode::linked::Bytecode]>, derived_value.clone(), arguments.into(), return_type, sig.clone(), Box::new(FxHashMap::default()))
                         })
                         .collect::<Vec<_>>();
                     vtables_to_add.push((*class_name, Some(*source_class), VTable::new(functions, functions_mapper)));
@@ -1430,7 +1437,7 @@ pub fn link_vm_classes(
                                 .map(convert_type)
                                 .collect::<Vec<_>>();
 
-                            Function::new(name_symbol, code, value, arguments.into(), return_type, sig)
+                            Function::new(name_symbol, code, value, arguments.into(), return_type, sig, Box::new(FxHashMap::default()))
                         })
                         .collect::<Vec<_>>();
 
@@ -1483,7 +1490,7 @@ pub fn link_vm_classes(
                                 .map(convert_type)
                                 .collect::<Vec<_>>();
 
-                            Function::new(name_symbol, code, value, arguments.into(), return_type, sig)
+                            Function::new(name_symbol, code, value, arguments.into(), return_type, sig, Box::new(FxHashMap::default()))
                         })
                         .collect::<Vec<_>>();
 
@@ -1520,7 +1527,7 @@ pub fn link_vm_classes(
                     let return_type = convert_type(&signature[0]);
 
 
-                    Function::new(name_symbol, Box::new([]) as Box<[rowan_shared::bytecode::linked::Bytecode]>, value, arguments, return_type, sig)
+                    Function::new(name_symbol, Box::new([]) as Box<[rowan_shared::bytecode::linked::Bytecode]>, value, arguments, return_type, sig, Box::new(FxHashMap::default()))
                 })
                 .collect::<Vec<_>>();
 
@@ -1580,7 +1587,26 @@ fn add_parent_vtables(
 fn add_library_mod(name: &str) -> String {
     format!("{name}.dll")
 }
-#[cfg(target_family = "unix")]
+#[cfg(target_os = "macos")]
+fn add_library_mod(name: &str) -> String {
+    format!("{name}.dylib")
+}
+
+#[cfg(target_os = "linux")]
 fn add_library_mod(name: &str) -> String {
     format!("{name}.so")
+}
+
+fn create_block_positions(bytecode: &[bytecode::linked::Bytecode]) -> FxHashMap<usize, usize> {
+    let mut block_positions = FxHashMap::default();
+    for (i, bytecode) in bytecode.iter().enumerate() {
+        match bytecode {
+            bytecode::linked::Bytecode::StartBlock(name) => {
+                block_positions.insert(*name as usize, i);
+            }
+            _ => {}
+        }
+    }
+    block_positions
+
 }
