@@ -1,7 +1,8 @@
+mod stackframe;
+
 use std::collections::HashSet;
 use std::sync::mpsc::Sender;
 use std::sync::TryLockError;
-use fxhash::FxHashMap;
 use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::TypeTag;
 use crate::runtime;
@@ -9,6 +10,8 @@ use crate::context::{call_function_pointer, MethodName, WrappedReference};
 use crate::runtime::{FunctionDetails, Reference, Runtime, DO_GARBAGE_COLLECTION};
 use crate::runtime::object::Object;
 use paste::paste;
+use pool_box::PoolBox;
+use crate::context::interpreter::stackframe::{StackFrame, StackFramePoolBoxAllocator};
 
 #[derive(Debug, Copy, Clone)]
 pub enum CallContinueState {
@@ -196,126 +199,12 @@ impl From<Reference> for StackValue {
 }
 
 
-pub struct StackFrame {
-    operand_stack: Vec<StackValue>,
-    ip: usize,
-    current_block: usize,
-    block_positions: FxHashMap<usize, usize>,
-    variables: [StackValue; 256],
-    method_name: MethodName,
-    is_for_bytecode: bool,
-}
 
-impl StackFrame {
-    pub fn new(args: &[StackValue], bytecode: &[Bytecode], is_for_bytecode: bool, method_name: MethodName) -> Self {
-        let mut block_positions = FxHashMap::default();
-        for (i, bytecode) in bytecode.iter().enumerate() {
-            match bytecode {
-                Bytecode::StartBlock(name) => {
-                    block_positions.insert(*name as usize, i);
-                }
-                _ => {}
-            }
-        }
-        let mut variables = [StackValue::Blank; 256];
-        for (arg, variable) in args.iter().zip(variables.iter_mut()) {
-            if arg.is_blank() {
-                break;
-            }
-            *variable = *arg;
-        }
-        Self {
-            operand_stack: Vec::with_capacity(10),
-            ip: 0,
-            current_block: 0,
-            block_positions,
-            variables,
-            is_for_bytecode,
-            method_name,
-        }
-    }
-
-    pub fn push(&mut self, stack_value: StackValue) {
-        assert_ne!(stack_value.is_blank(), true, "Added a blank to the stack");
-        self.operand_stack.push(stack_value);
-    }
-    pub fn pop(&mut self) -> StackValue {
-        self.operand_stack.pop().unwrap()
-    }
-
-    pub fn dup(&mut self) {
-        let value = self.operand_stack.last().unwrap();
-        self.operand_stack.push(*value);
-    }
-
-    pub fn swap(&mut self) {
-        let value1 = self.operand_stack.pop().unwrap();
-        let value2 = self.operand_stack.pop().unwrap();
-        self.operand_stack.push(value2);
-        self.operand_stack.push(value1);
-    }
-
-    pub fn store_local(&mut self, index: u8) {
-        let value = self.operand_stack.pop().unwrap();
-        self.variables[index as usize] = value;
-    }
-
-    pub fn load_local(&mut self, index: u8) {
-        let value = self.variables[index as usize];
-        self.operand_stack.push(value);
-    }
-
-    pub fn is_for_bytecode(&self) -> bool {
-        self.is_for_bytecode
-    }
-
-    pub fn goto(&mut self, block_offset: isize) {
-        let next_block = self.current_block as isize + block_offset;
-        let next_block = next_block as usize;
-        let pc = self.block_positions[&next_block];
-        self.ip = pc;
-        self.current_block = next_block;
-    }
-
-    pub fn vars_len(&self) -> usize {
-        for (i, var) in self.variables.iter().enumerate() {
-            if var.is_blank() {
-                return i;
-            }
-        }
-        self.variables.len()
-    }
-
-    pub fn collect(&self, references: &mut HashSet<WrappedReference>) {
-        for variable in self.variables.iter() {
-            match variable {
-                StackValue::Reference(value) =>  {
-                    references.insert(WrappedReference(*value));
-                }
-                StackValue::Blank => {
-                    break;
-                }
-                _ => {}
-            }
-        }
-        for operand in self.operand_stack.iter() {
-            match operand {
-                StackValue::Reference(value) =>  {
-                    references.insert(WrappedReference(*value));
-                }
-                StackValue::Blank => {
-                    break;
-                }
-                _ => {}
-            }
-        }
-    }
-}
 
 
 pub struct BytecodeContext {
     active_bytecodes: Vec<&'static [Bytecode]>,
-    active_frames: Vec<StackFrame>,
+    active_frames: Vec<PoolBox<StackFrame, StackFramePoolBoxAllocator>>,
     current_exception: Reference,
     sender: Sender<HashSet<WrappedReference>>,
     call_args: [StackValue; 256],
@@ -353,7 +242,7 @@ impl BytecodeContext {
         self.active_bytecodes.push(bytecode);
         let frame = self.current_frame();
         let args = self.get_args();
-        self.active_frames.push(StackFrame::new(args, bytecode, is_for_bytecode, method_name));
+        self.active_frames.push(PoolBox::new(StackFrame::new(args, bytecode, is_for_bytecode, method_name)));
         for arg in self.get_args_mut() {
             if arg.is_blank() {
                 break
@@ -506,7 +395,7 @@ impl BytecodeContext {
         };
         self.active_bytecodes.push(details.bytecode);
         // TODO: add passing of cmdline args
-        self.active_frames.push(StackFrame::new(&[], details.bytecode, details.fn_ptr.is_none(), method_name));
+        self.active_frames.push(PoolBox::new(StackFrame::new(&[], details.bytecode, details.fn_ptr.is_none(), method_name)));
         self.current_frame_mut().variables[0] = StackValue::Reference(std::ptr::null_mut());
         self.main_loop();
     }
@@ -573,7 +462,7 @@ impl BytecodeContext {
 
     pub fn run_bytecode(&mut self, bytecode: &'static [Bytecode]) {
         self.active_bytecodes.push(bytecode);
-        self.active_frames.push(StackFrame::new(&[], bytecode, true, MethodName::StaticMethod { method_name: 0, class_symbol: 0 }));
+        self.active_frames.push(PoolBox::new(StackFrame::new(&[], bytecode, true, MethodName::StaticMethod { method_name: 0, class_symbol: 0 })));
         self.main_loop();
         self.pop();
     }

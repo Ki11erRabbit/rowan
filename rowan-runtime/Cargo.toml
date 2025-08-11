@@ -20,3 +20,4 @@ libloading = "0.8.8"
 rowan-unwind = { workspace = true }
 libffi = "4.1.1"
 fxhash = "0.2.1"
+pool-box = { workspace = true }
