@@ -478,7 +478,6 @@ impl BytecodeContext {
             return;
         }
         loop {
-            self.check_and_do_garbage_collection();
             let active_bytecode = self.active_bytecodes[self.active_bytecodes.len() - 1];
             let bytecode = &active_bytecode[self.current_frame().ip];
             self.current_frame_mut().ip += 1;
@@ -1788,6 +1787,7 @@ impl BytecodeContext {
                 }
             }
             Bytecode::CreateArray(tag) => {
+                self.check_and_do_garbage_collection();
                 let size = self.pop_value();
                 let size = match size {
                     StackValue::Int64(size) => size,
@@ -1967,6 +1967,7 @@ impl BytecodeContext {
                 }
             }
             Bytecode::NewObject(sym) => {
+                self.check_and_do_garbage_collection();
                 let object = Runtime::new_object(*sym as usize);
                 self.push_value(StackValue::from(object));
             }
@@ -2218,11 +2219,13 @@ impl BytecodeContext {
                 self.push_value(StackValue::from(*sym));
             }
             Bytecode::Return => {
+                self.check_and_do_garbage_collection();
                 let value = self.pop_value();
                 self.pop();
                 self.push_value(value);
             }
             Bytecode::ReturnVoid => {
+                self.check_and_do_garbage_collection();
                 if self.active_frames.len() == 1 {
                     return false;
                 }
@@ -2243,6 +2246,7 @@ impl BytecodeContext {
                 self.current_exception = exception;
             }
             Bytecode::StartBlock(_) => {
+                self.check_and_do_garbage_collection();
             }
             Bytecode::Goto(offset) => {
                 self.current_frame_mut().goto(*offset as isize);
