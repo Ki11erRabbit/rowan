@@ -7,7 +7,7 @@ use crate::context::BytecodeContext;
 /// This represents a class in the Virtual Machine.
 pub struct VMClass {
     pub name: &'static str,
-    pub parents: Vec<&'static str>,
+    pub parent: &'static str,
     pub vtables: Vec<VMVTable>,
     pub members: Vec<VMMember>,
     pub static_methods: Vec<VMMethod>,
@@ -17,7 +17,7 @@ pub struct VMClass {
 impl VMClass {
     pub fn new(
         name: &'static str,
-        parents: Vec<&'static str>,
+        parent: &'static str,
         vtables: Vec<VMVTable>,
         members: Vec<VMMember>,
         static_methods: Vec<VMMethod>,
@@ -25,7 +25,7 @@ impl VMClass {
     ) -> Self {
         VMClass {
             name,
-            parents,
+            parent,
             vtables,
             members,
             static_methods,
@@ -94,7 +94,7 @@ pub fn generate_object_class() -> VMClass {
         ]
     );
 
-    VMClass::new("core::Object", Vec::new(), vec![vtable], Vec::new(), Vec::new(), Vec::new())
+    VMClass::new("core::Object", "", vec![vtable], Vec::new(), Vec::new(), Vec::new())
 }
 
 
@@ -104,10 +104,8 @@ extern "C" fn object_downcast(context: &mut BytecodeContext, this: Reference, cl
     if object.class == class_index as Symbol {
         this
     } else {
-        for obj in object.parent_objects.iter() {
-            if !object_downcast(context, *obj, class_index).is_null() {
-                return this;
-            }
+        if !object_downcast(context, object.parent_object, class_index).is_null() {
+            return this;
         }
         std::ptr::null_mut()
     }
@@ -141,7 +139,7 @@ pub fn generate_printer_class() -> VMClass {
         ]
     );
 
-    VMClass::new("core::Printer", vec!["core::Object"], vec![vtable], Vec::new(), Vec::new(), Vec::new())
+    VMClass::new("core::Printer", "core::Object", vec![vtable], Vec::new(), Vec::new(), Vec::new())
 }
 
 
@@ -238,7 +236,7 @@ macro_rules! array_create_class {
                     VMMember::new(concat!("core::", std::stringify!($array_name), "::pointer"), TypeTag::U64)
                 ];
 
-                VMClass::new(concat!("core::", std::stringify!($array_name)), vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
+                VMClass::new(concat!("core::", std::stringify!($array_name)), "core::Object", vec![vtable], elements, Vec::new(), Vec::new())
             }
         }
     };
@@ -474,7 +472,7 @@ pub fn generate_exception_class() -> VMClass {
         VMMember::new("stack-trace-pointer", TypeTag::U64),
     ];
 
-    VMClass::new("Exception", vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
+    VMClass::new("Exception", "core::Object", vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 extern "C" fn exception_init(_: &BytecodeContext, this: Reference, message: Reference) {
@@ -588,7 +586,7 @@ pub fn generate_backtrace_class() -> VMClass {
         VMMember::new("column-number", TypeTag::Object),
     ];
 
-    VMClass::new("Backtrace", vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
+    VMClass::new("Backtrace", "core::Object", vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 extern "C" fn backtrace_init(_context: &mut Runtime, this: Reference, function_name: Reference, line: u64, column: u64) {
@@ -635,7 +633,7 @@ pub fn generate_index_out_of_bounds_class() -> VMClass {
     let elements = vec![
     ];
 
-    VMClass::new("IndexOutOfBounds", vec!["Exception"], vec![vtable], elements, Vec::new(), Vec::new())
+    VMClass::new("IndexOutOfBounds", "Exception", vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 extern "C" fn out_of_bounds_init(context: &mut BytecodeContext, this: Reference, bounds: u64, index: u64) {
@@ -646,7 +644,7 @@ extern "C" fn out_of_bounds_init(context: &mut BytecodeContext, this: Reference,
 
     string_from_str(message, &format!("Index was {index} but length was {bounds}"));
 
-    let base_exception = object.parent_objects[0];
+    let base_exception = object.parent_object;
     exception_init(context, base_exception, message);
 }
 
@@ -666,7 +664,7 @@ pub fn generate_null_pointer_class() -> VMClass {
     let elements = vec![
     ];
 
-    VMClass::new("NullPointerException", vec!["Exception"], vec![vtable], elements, Vec::new(), Vec::new())
+    VMClass::new("NullPointerException", "Exception", vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 pub extern "C" fn null_pointer_init(context: &BytecodeContext, this: Reference) {
@@ -677,7 +675,7 @@ pub extern "C" fn null_pointer_init(context: &BytecodeContext, this: Reference) 
 
     string_from_str(message, "NullPointerException");
 
-    let base_exception = object.parent_objects[0];
+    let base_exception = object.parent_object;
     exception_init(context, base_exception, message);
 }
 
@@ -783,7 +781,7 @@ pub fn generate_string_class() -> VMClass {
         VMMember::new("core::String::pointer", TypeTag::U64)
     ];
 
-    VMClass::new("core::String", vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
+    VMClass::new("core::String", "core::Object", vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 extern "C" fn string_len(context: &mut BytecodeContext, this: Reference) -> u64 {
@@ -857,7 +855,7 @@ pub fn string_drop(object: &mut StringObject) {
     }
 }
 
-extern "C" fn string_is_char_boundary(context: &mut BytecodeContext, this: Reference, index: u64) -> u8 {
+extern "C" fn string_is_char_boundary(_: &mut BytecodeContext, this: Reference, index: u64) -> u8 {
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };

@@ -35,16 +35,14 @@ impl ObjectTable {
         }
         //println!("Freeing: {reference}");
 
-        let (class_symbol, parent_objects) = unsafe {
-            pointer.as_ref().expect("Non-null pointer was null").get_class_and_parents()
+        let (class_symbol, parent_object) = unsafe {
+            pointer.as_ref().expect("Non-null pointer was null").get_class_and_parent()
         };
         let SymbolEntry::ClassRef(class_ref) = symbol_table[class_symbol] else {
             panic!("Expected SymbolEntry::ClassRef");
         };
 
-        for parent in parent_objects.iter() {
-            self.free(*parent, symbol_table, class_table);
-        }
+        self.free(parent_object, symbol_table, class_table);
 
         let class = &class_table[class_ref];
         let data_size = class.get_member_size();

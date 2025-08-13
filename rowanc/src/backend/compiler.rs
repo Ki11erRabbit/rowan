@@ -416,7 +416,7 @@ impl Compiler {
         let Class {
             name,
             type_params,
-            parents,
+            parent,
             members,
             methods,
             static_members,
@@ -426,7 +426,7 @@ impl Compiler {
         let class_name = self.add_path_if_needed(name.to_string());
 
         if type_params.is_empty() {
-            let new_parents = self.create_new_parents(&parents);
+            let new_parents = self.create_new_parent(&parent);
             self.compile_class_inner(&class_name, &new_parents, &methods, &members, &static_members)?;
         } else {
             let mut name_order = Vec::new();
@@ -465,7 +465,7 @@ impl Compiler {
                     modifier_string.push_str(modifier);
                 }
 
-                let new_parents = self.create_new_parents(&parents);
+                let new_parents = self.create_new_parent(&parent);
 
                 self.imports_to_change.entry(class_name.last().unwrap().to_string())
                     .or_insert(Vec::new())
@@ -481,24 +481,24 @@ impl Compiler {
         Ok(())
     }
 
-    fn create_new_parents<'a>(&mut self, parents: &'a Vec<ParentDec<'a>>) -> Vec<ParentDec<'a>> {
-        parents.into_iter().map(|parent| {
+    fn create_new_parent<'a>(&mut self, parent: &'a Option<ParentDec<'a>>) -> Option<ParentDec<'a>> {
+        parent.as_ref().map(|parent| {
             let mut string = parent.name.to_string();
             for type_arg in parent.type_args.iter() {
                 let str_value = match type_arg {
                     Type::I8 | Type::U8 => "8",
-                    Type::I16 | Type::I16 => "16",
-                    Type::I32 | Type::I32 => "32",
-                    Type::I64 | Type::I64 => "64",
+                    Type::I16 | Type::U16 => "16",
+                    Type::I32 | Type::U32 => "32",
+                    Type::I64 | Type::U64 => "64",
                     Type::F32 => "f32",
                     Type::F64 => "f64",
                     Type::Object(name, _) => {
                         if self.current_type_args.contains_key(name.as_str()) {
                             match type_arg {
                                 Type::I8 | Type::U8 => "8",
-                                Type::I16 | Type::I16 => "16",
-                                Type::I32 | Type::I32 => "32",
-                                Type::I64 | Type::I64 => "64",
+                                Type::I16 | Type::U16 => "16",
+                                Type::I32 | Type::U32 => "32",
+                                Type::I64 | Type::U64 => "64",
                                 Type::F32 => "f32",
                                 Type::F64 => "f64",
                                 _ => "object",
@@ -517,13 +517,13 @@ impl Compiler {
                 type_params: parent.type_params.clone(),
                 span: parent.span,
             }
-        }).collect()
+        })
     }
 
     fn compile_class_inner(
         &mut self,
         name: &Vec<String>,
-        parents: &Vec<ParentDec>,
+        parent: &Option<ParentDec>,
         methods: &Vec<Method>,
         members: &Vec<ast::Member>,
         static_members: &Vec<ast::StaticMember>,
@@ -531,9 +531,8 @@ impl Compiler {
         let mut partial_class = PartialClass::new();
         let path_name = name.join("::");
         partial_class.set_name(&path_name);
-        let class_name = name;
 
-        let parent_vtables = parents.iter().map(|parent_name| {
+        let parent_vtables = parent.as_ref().map(|parent_name| {
             let path = self.add_path_if_needed(parent_name.name.clone().to_string());
             let partial_class = self.classes.get(&path).expect("Order of files is wrong");
             let vtables = partial_class.get_vtables(&path);
@@ -549,9 +548,10 @@ impl Compiler {
             }).collect::<Vec<_>>()
 
         });
-        parents.iter().for_each(|parent| {
+        
+        parent.as_ref().map(|parent| {
             let path = self.add_path_if_needed(parent.name.clone().to_string()).join("::");
-            partial_class.add_parent(&path);
+            partial_class.set_parent(&path);
         });
 
         let (
@@ -580,7 +580,7 @@ impl Compiler {
             drop(signatures);
         }
 
-        if parents.len() == 0 {
+        if parent.is_none() {
             let object_class = self.classes.get(&vec!["Object".to_string()]).expect("Object not added to known classes");
 
             let vtables = object_class.get_vtables(&[
@@ -593,7 +593,7 @@ impl Compiler {
                 .collect::<Vec<String>>();
 
             partial_class.add_vtable(&vec![String::from("core"), String::from("Object")], vtable.clone(), &names, signatures);
-            partial_class.add_parent("core::Object");
+            partial_class.set_parent("core::Object");
         }
 
         for vtables in parent_vtables {
@@ -860,7 +860,7 @@ impl Compiler {
         
         for statement in body {
             match statement {
-                Statement::Expression(expr, span) => {
+                Statement::Expression(expr, _) => {
                     self.compile_expression(class_name, partial_class, &expr, output, false)?;
                 }
                 Statement::Let { bindings, value, .. } => {
@@ -993,7 +993,7 @@ impl Compiler {
                                 let class_name = partial_class.add_string("core::String");
                                 let method_name = partial_class.add_string("core::String::load-str");
 
-                                output.push(Bytecode::InvokeVirt(class_name, class_name, method_name));
+                                output.push(Bytecode::InvokeVirt(class_name, method_name));
                             }
                             Constant::Float(value, ty, _) => {
                                 match ty {
@@ -1904,25 +1904,16 @@ impl Compiler {
             let method_entry = partial_class.get_method_entry(&name).expect("add proper handling of missing method");
 
             //println!("{}", partial_class.index_string_table(vtable.class_name));
-            let mut path = class_name.clone();
 
             let class_name = partial_class.index_string_table(vtable.class_name);
             let class_name = class_name.to_string();
             let vtable_class_name = partial_class.add_string(class_name);
 
-            let source_class = if vtable.sub_class_name == 0 {
-                0
-            } else {
-                let class_name = partial_class.index_string_table(vtable.sub_class_name);
-                let class_name = class_name.to_string();
-                partial_class.add_string(class_name)
-            };
-
             let method_name = partial_class.index_string_table(method_entry.name);
             let method_name = method_name.to_string();
             let method_name = partial_class.add_string(method_name);
 
-            output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
+            output.push(Bytecode::InvokeVirt(vtable_class_name, method_name));
         }
         else if let Some(class) = self.classes.get(&ty) {
             //println!("{:#?}", class);
@@ -1938,18 +1929,11 @@ impl Compiler {
             let class_name = class.index_string_table(vtable.class_name);
             let vtable_class_name = partial_class.add_string(class_name);
 
-            let source_class = if vtable.sub_class_name == 0 {
-                0
-            } else {
-                let class_name = class.index_string_table(vtable.sub_class_name);
-                partial_class.add_string(class_name)
-            };
-
             let method_name = class.index_string_table(method_entry.name);
             let method_name = partial_class.add_string(method_name);
 
 
-            output.push(Bytecode::InvokeVirt(vtable_class_name, source_class, method_name));
+            output.push(Bytecode::InvokeVirt(vtable_class_name, method_name));
         } else {
             panic!("Classes are in a bad order of compiling")
         }

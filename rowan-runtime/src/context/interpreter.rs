@@ -315,7 +315,6 @@ impl BytecodeContext {
     pub fn invoke_virtual(
         &mut self,
         specified: runtime::Symbol,
-        origin: Option<runtime::Symbol>,
         method_name: runtime::Symbol,
         return_slot: Option<&mut StackValue>,
     ) -> CallContinueState {
@@ -331,14 +330,12 @@ impl BytecodeContext {
         let details = Runtime::get_virtual_method_details(
             object.class,
             specified,
-            origin,
             method_name,
         );
 
         let method_name = MethodName::VirtualMethod {
             object_class_symbol: object.class,
             class_symbol: specified,
-            source_class: origin,
             method_name,
         };
 
@@ -447,11 +444,10 @@ impl BytecodeContext {
     pub fn invoke_virtual_extern(
         &mut self,
         specified: runtime::Symbol,
-        origin: Option<runtime::Symbol>,
         method_name: runtime::Symbol,
         return_slot: Option<&mut StackValue>,
     ) -> bool {
-        let result = self.invoke_virtual(specified, origin, method_name, return_slot);
+        let result = self.invoke_virtual(specified, method_name, return_slot);
         match result {
             CallContinueState::Success => false,
             CallContinueState::Return => true,
@@ -2126,10 +2122,9 @@ impl BytecodeContext {
                 let result = object.class as u64 == *sym;
                 self.push_value(StackValue::from(result as u8));
             }
-            Bytecode::InvokeVirt(specified, origin, method_name) => {
+            Bytecode::InvokeVirt(specified, method_name) => {
                 match self.invoke_virtual(
                     *specified as runtime::Symbol,
-                    origin.map(|s| s as runtime::Symbol),
                     *method_name as runtime::Symbol,
                     None
                 ) {

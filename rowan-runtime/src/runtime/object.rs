@@ -8,7 +8,7 @@ use super::{Runtime, Reference, Symbol};
 #[repr(C)]
 pub struct Object {
     pub class: Symbol,
-    pub parent_objects: Box<[Reference]>,
+    pub parent_object: Reference,
     pub custom_drop: Option<extern "C" fn(&mut Object)>,
     //data: [u8]
 }
@@ -17,7 +17,7 @@ pub struct Object {
 impl Object {
     pub fn new(
         class: Symbol,
-        parents: Box<[Reference]>,
+        parent: Reference,
         data_size: usize,
         drop: Option<extern "C" fn(&mut Object)>,
     ) -> *mut Object {
@@ -47,7 +47,7 @@ impl Object {
 
             std::ptr::write(pointer, Object {
                 class,
-                parent_objects: parents,
+                parent_object: parent,
                 custom_drop: drop,
             });
 
@@ -58,8 +58,6 @@ impl Object {
     pub unsafe fn free(ptr: *mut Self, data_size: usize) {
         use std::alloc::*;
         unsafe {
-            // Dropping boxed and vec members from pointer
-            drop(ptr.read().parent_objects);
             let self_ptr = ptr.as_mut().unwrap();
             if let Some(func) = self_ptr.custom_drop {
                 func(self_ptr);
@@ -151,10 +149,10 @@ impl Object {
         }
     }
 
-    pub fn get_class_and_parents(&self) -> (Symbol, &Box<[Reference]>) {
+    pub fn get_class_and_parent(&self) -> (Symbol, Reference) {
         let class_symbol = self.class;
 
-        (class_symbol, &self.parent_objects)
+        (class_symbol, self.parent_object)
     }
 
     pub fn add_custom_drop(&mut self, func: extern "C" fn(&mut Object)) {
@@ -169,20 +167,16 @@ impl Object {
             return object.get_safe(offset as usize).unwrap();
         }
 
-        for parent in object.parent_objects.iter() {
-            let parent = unsafe { parent.as_ref().unwrap() };
+        let parent = unsafe { object.parent_object.as_ref().unwrap() };
 
-            if parent.class == parent_symbol as Symbol {
-                if parent.class == class_symbol as Symbol {
-                    return parent.get_safe(offset as usize).unwrap();
-                }
-                for parent in parent.parent_objects.iter() {
-                    let Some(value) = Self::get_internal_helper(context, *parent, class_symbol, offset) else {
-                        continue;
-                    };
-                    return value;
-                }
+        if parent.class == parent_symbol as Symbol {
+            if parent.class == class_symbol as Symbol {
+                return parent.get_safe(offset as usize).unwrap();
             }
+            let Some(value) = Self::get_internal_helper(context, parent.parent_object, class_symbol, offset) else {
+                todo!("Throw exception saying invalid offset")
+            };
+            return value;
         }
 
         todo!("Throw exception saying invalid offset")
@@ -195,22 +189,14 @@ impl Object {
             return object.get_safe(offset as usize).unwrap();
         }
 
-        for parent in object.parent_objects.iter() {
-            let parent = unsafe { parent.as_ref().unwrap() };
+        let parent = unsafe { object.parent_object.as_ref().unwrap() };
 
 
-            if parent.class == class_symbol as Symbol {
-                return parent.get_safe(offset as usize).unwrap();
-            }
-            for parent in parent.parent_objects.iter() {
-                let Some(value) = Self::get_internal_helper(context, *parent, class_symbol, offset) else {
-                    continue;
-                };
-                return Some(value);
-            }
+        if parent.class == class_symbol as Symbol {
+            return parent.get_safe(offset as usize).unwrap();
         }
 
-        None
+        Self::get_internal_helper(context, parent.parent_object, class_symbol, offset)
     }
 
     pub extern "C" fn get_8(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64) -> u8 {
@@ -250,20 +236,16 @@ impl Object {
             return;
         }
 
-        for parent in object.parent_objects.iter() {
-            let parent = unsafe { parent.as_mut().unwrap() };
+        let parent = unsafe { object.parent_object.as_mut().unwrap() };
 
-            if parent.class == parent_symbol as Symbol {
-                if parent.class == class_symbol as Symbol {
-                    return parent.set_safe(offset as usize, value).unwrap();
-                }
-                for parent in parent.parent_objects.iter() {
-                    let Some(_) = Self::set_internal_helper(context, *parent, class_symbol, offset, value) else {
-                        continue;
-                    };
-                    return;
-                }
+        if parent.class == parent_symbol as Symbol {
+            if parent.class == class_symbol as Symbol {
+                return parent.set_safe(offset as usize, value).unwrap();
             }
+            let Some(_) = Self::set_internal_helper(context, parent.parent_object, class_symbol, offset, value) else {
+                panic!("Throw exception saying invalid offset");
+            };
+            return;
         }
 
         todo!("Throw exception saying invalid offset")
@@ -276,21 +258,13 @@ impl Object {
             return object.get_safe(offset as usize).unwrap();
         }
 
-        for parent in object.parent_objects.iter() {
-            let parent = unsafe { parent.as_mut().unwrap() };
+        let parent = unsafe { object.parent_object.as_mut().unwrap() };
 
-            if parent.class == class_symbol as Symbol {
-                return parent.get_safe(offset as usize).unwrap();
-            }
-            for parent in parent.parent_objects.iter() {
-                let Some(_) = Self::set_internal_helper(context, *parent, class_symbol, offset, value) else {
-                    continue;
-                };
-                return Some(());
-            }
+        if parent.class == class_symbol as Symbol {
+            return parent.get_safe(offset as usize).unwrap();
         }
 
-        None
+        Self::set_internal_helper(context, parent.parent_object, class_symbol, offset, value)
     }
 
     pub extern "C" fn set_8(context: &mut BytecodeContext, this: Reference, class_symbol: u64, parent_symbol: u64, offset: u64, value: u8) {
@@ -328,10 +302,7 @@ impl Object {
             return
         };
 
-        for parent in object.parent_objects.iter() {
-            live_objects.insert(*parent);
-            Self::garbage_collect(*parent, live_objects);
-        }
+        live_objects.insert(object.parent_object);
         let class = Runtime::get_class(object.class);
         let class = unsafe { class.as_ref().unwrap() };
         let live_objects_indices = class.get_object_member_indices();

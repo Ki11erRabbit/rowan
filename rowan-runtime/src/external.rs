@@ -44,27 +44,19 @@ pub extern "C" fn rowan_create_empty_string() -> Reference {
 pub extern "C" fn rowan_call_virtual_function(
     context: &mut BytecodeContext,
     class: *const c_char,
-    source_class: *const c_char,
     method_name: *const c_char,
     return_slot: Option<&mut StackValue>,
 ) -> i32 {
     let class = unsafe { CStr::from_ptr(class) };
     let class = class.to_string_lossy();
-    let source = if source_class.is_null() {
-        None
-    } else {
-        let cstring = unsafe { CStr::from_ptr(source_class) };
-        Some(cstring)
-    };
-    let source = source.map(|s| s.to_string_lossy());
     let method_name = unsafe { CStr::from_ptr(method_name) };
     let method_name = method_name.to_string_lossy();
 
-    let Some((class, source_class, method_name)) = Runtime::get_virtual_method_name(&class, source, &method_name) else {
+    let Some((class, method_name)) = Runtime::get_virtual_method_name(&class, &method_name) else {
         return 2;
     };
 
-    let result = context.invoke_virtual_extern(class, source_class, method_name, return_slot);
+    let result = context.invoke_virtual_extern(class, method_name, return_slot);
 
     if result {
         0

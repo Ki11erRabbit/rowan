@@ -159,14 +159,10 @@ pub Decl: TopLevelStatement<'a> = {
 };
 
 pub Class: TopLevelStatement<'a> = {
-    <start: @L> "class" <name:Identifier> <type_params:TypeParamList?> <parents:ParentDecl?> "{" <class_members:ClassMembers> "}" <end: @R> => {
+    <start: @L> "class" <name:Identifier> <type_params:TypeParamList?> <parent:ParentDecl?> "{" <class_members:ClassMembers> "}" <end: @R> => {
          let span = Span::new(start, end);
          let type_params = match type_params {
             Some(typ) => typ,
-            None => Vec::new(),
-         };
-         let parents = match parents {
-            Some(p) => p,
             None => Vec::new(),
          };
          let mut members = Vec::new();
@@ -179,18 +175,12 @@ pub Class: TopLevelStatement<'a> = {
                 ClassMember::StaticMember(mem) => static_members.push(mem),
             }
          }
-         TopLevelStatement::Class(Class::new(name, parents, members, methods, static_members, type_params, span))
+         TopLevelStatement::Class(Class::new(name, parent, members, methods, static_members, type_params, span))
     }
 };
 
-ParentDecl: Vec<ParentDec<'a>> = {
-    "extends" <p1:ParentDec> <parents:("," <ParentDec>)*> => {
-        let mut v = vec![p1];
-        for p in parents.into_iter() {
-            v.push(p);
-        }
-        v
-    }
+ParentDecl: ParentDec<'a> = {
+    "extends" <p:ParentDec> => p,
 };
 
 ParentDec: ParentDec<'a> = {

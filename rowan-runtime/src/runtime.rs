@@ -421,16 +421,10 @@ impl MakeObject<Symbol> for RuntimeHelper {
             panic!("Lock poisoned");
         };
         let class = &class_table[class_ref];
-        let parent_objects = &class.parents;
-
-        let mut parents = Vec::new();
-
-        for parent in parent_objects.iter() {
-            parents.push(Runtime::new_object(*parent));
-        }
+        let parent_object = Runtime::new_object(class.parent);
 
         let data_size = class.get_member_size();
-        let object = Object::new(class_symbol, parents.into_boxed_slice(), data_size, class.drop_function);
+        let object = Object::new(class_symbol, parent_object, data_size, class.drop_function);
 
         let Ok(mut object_table) = OBJECT_TABLE.write() else {
             panic!("Lock poisoned");
@@ -466,17 +460,11 @@ impl MakeObject<&str> for RuntimeHelper {
             panic!("Lock poisoned");
         };
         let class = &class_table[class_ref];
-        let parent_objects = &class.parents;
-
-        let mut parents = Vec::new();
-
-        for parent in parent_objects.iter() {
-            parents.push(Runtime::new_object(*parent));
-        }
+        let parent_object = Runtime::new_object(class.parent);
 
         let data_size = class.get_member_size();
 
-        let object = Object::new(class_symbol, parents.into_boxed_slice(), data_size, class.drop_function);
+        let object = Object::new(class_symbol, parent_object, data_size, class.drop_function);
 
         let Ok(mut object_table) = OBJECT_TABLE.write() else {
             panic!("Lock poisoned");
@@ -654,7 +642,6 @@ impl Runtime {
     pub fn get_virtual_method_details(
         object_class_symbol: Symbol,
         class_symbol: Symbol,
-        source_class: Option<Symbol>,
         method_name: Symbol,
     ) -> FunctionDetails {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
@@ -669,21 +656,10 @@ impl Runtime {
         };
 
         let class = &class_table[object_class_index];
-        let vtable_index = if source_class.is_some() {
-            let key = (class_symbol, None);
-            if let Some(index) = class.get_vtable(&key) {
-                index
-            } else if let Some(index) = class.get_vtable(&(class_symbol, source_class)) {
-                index
-            } else {
-                panic!("unable to find vtable");
-            }
+        let vtable_index = if let Some(index) = class.get_vtable(&class_symbol) {
+            index
         } else {
-            if let Some(index) = class.get_vtable(&(class_symbol, source_class)) {
-                index
-            } else {
-                panic!("unable to find vtable");
-            }
+            panic!("unable to find vtable");
         };
 
         let Ok(vtables_table) = VTABLES.read() else {
@@ -696,7 +672,6 @@ impl Runtime {
         function.create_details(MethodName::VirtualMethod {
             object_class_symbol,
             class_symbol,
-            source_class,
             method_name,
         })
     }
@@ -737,7 +712,6 @@ impl Runtime {
     pub fn jit_virtual_method(
         object_class_symbol: Symbol,
         class_symbol: Symbol,
-        source_class: Option<Symbol>,
         method_name: Symbol,
     ) {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
@@ -753,21 +727,10 @@ impl Runtime {
         };
 
         let class = &class_table[object_class_index];
-        let vtable_index = if source_class.is_some() {
-            let key = (class_symbol, None);
-            if let Some(index) = class.get_vtable(&key) {
-                index
-            } else if let Some(index) = class.get_vtable(&(class_symbol, source_class)) {
-                index
-            } else {
-                panic!("unable to find vtable");
-            }
+        let vtable_index = if let Some(index) = class.get_vtable(&class_symbol) {
+            index
         } else {
-            if let Some(index) = class.get_vtable(&(class_symbol, source_class)) {
-                index
-            } else {
-                panic!("unable to find vtable");
-            }
+            panic!("unable to find vtable");
         };
 
         let Ok(vtables_table) = VTABLES.read() else {
@@ -1022,7 +985,7 @@ impl Runtime {
         };
 
         let class = &class_table[object_class_index];
-        let vtable_index = class.get_vtable(&(class_symbol, None)).unwrap();
+        let vtable_index = class.get_vtable(&class_symbol).unwrap();
         let Ok(vtables_table) = VTABLES.read() else {
             panic!("Lock poisoned");
         };
@@ -1190,7 +1153,6 @@ impl Runtime {
                 MethodName::VirtualMethod {
                     object_class_symbol,
                     class_symbol,
-                    source_class,
                     method_name
                 } => {
                     let SymbolEntry::ClassRef(object_class_index) = symbol_table[*object_class_symbol] else {
@@ -1198,21 +1160,10 @@ impl Runtime {
                     };
 
                     let class = &class_table[object_class_index];
-                    let vtable_index = if source_class.is_some() {
-                        let key = (*class_symbol, None);
-                        if let Some(index) = class.get_vtable(&key) {
-                            index
-                        } else if let Some(index) = class.get_vtable(&(*class_symbol, *source_class)) {
-                            index
-                        } else {
-                            panic!("unable to find vtable");
-                        }
+                    let vtable_index = if let Some(index) = class.get_vtable(&class_symbol) {
+                        index
                     } else {
-                        if let Some(index) = class.get_vtable(&(*class_symbol, *source_class)) {
-                            index
-                        } else {
-                            panic!("unable to find vtable");
-                        }
+                        panic!("unable to find vtable");
                     };
 
                     let Ok(vtables_table) = VTABLES.read() else {
@@ -1282,23 +1233,18 @@ impl Runtime {
     }
 
 
-    pub fn get_virtual_method_name<S: AsRef<str>>(class: &str, source_class: Option<S>, method_name: &str) -> Option<(Symbol, Option<Symbol>, Symbol)> {
-        let Ok(mut class_map) = CLASS_MAPPER.write() else {
+    pub fn get_virtual_method_name(class: &str, method_name: &str) -> Option<(Symbol, Symbol)> {
+        let Ok(class_map) = CLASS_MAPPER.write() else {
             panic!("Lock poisoned");
         };
-        let Ok(mut string_map) = STRING_MAP.write() else {
+        let Ok(string_map) = STRING_MAP.write() else {
             panic!("Lock poisoned");
         };
 
         let class_symbol = *class_map.get(class)?;
-        let source_class = if let Some(source_class) = source_class {
-            class_map.get(source_class.as_ref()).map(|x| *x)
-        } else {
-            None
-        };
         let method_name = *string_map.get(method_name)?;
 
-        Some((class_symbol, source_class, method_name))
+        Some((class_symbol, method_name))
     }
 
     pub fn get_static_method_name(class: &str, method_name: &str) -> Option<(Symbol, Symbol)> {
@@ -1331,15 +1277,10 @@ impl Runtime {
 }
 
 
-pub extern "C" fn call_virtual_function(context: &mut BytecodeContext, class_symbol: u64, source_class: i64, method_name: u64) {
+pub extern "C" fn call_virtual_function(context: &mut BytecodeContext, class_symbol: u64, method_name: u64) {
     let class_symbol = class_symbol as Symbol;
-    let source_class = if source_class < 0 {
-        None
-    } else {
-        Some(source_class as Symbol)
-    };
     let method_name = method_name as Symbol;
-    context.invoke_virtual_extern(class_symbol, source_class, method_name, None);
+    context.invoke_virtual_extern(class_symbol, method_name, None);
 }
 
 pub extern "C" fn new_object(class_symbol: u64) -> u64 {

@@ -1,29 +1,27 @@
 use std::{borrow::BorrowMut, collections::HashMap};
 use std::cmp::Ordering;
-use std::collections::HashSet;
 use either::Either;
-use itertools::Itertools;
 use crate::ast::{BinaryOperator, Expression, Literal, PathName, Span, Text, Type};
 
-fn create_stdlib<'a>() -> HashMap<Vec<String>, (Vec<String>, HashMap<String, ClassAttribute>)> {
+fn create_stdlib<'a>() -> HashMap<Vec<String>, (String, HashMap<String, ClassAttribute>)> {
     let mut info = HashMap::new();
     let mut object_attributes = HashMap::new();
     object_attributes.insert("downcast".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::Object(String::from("Object"))))));
 
-    info.insert(vec!["Object".to_string()], (Vec::new(), object_attributes));
+    info.insert(vec!["Object".to_string()], (String::new(), object_attributes));
 
     let mut printer_attributes = HashMap::new();
     printer_attributes.insert("println-int".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64], Box::new(TypeCheckerType::Void))));
     printer_attributes.insert("println".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::Object(String::from("String"))], Box::new(TypeCheckerType::Void))));
     printer_attributes.insert("println-ints".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64, TypeCheckerType::U64, TypeCheckerType::U64, TypeCheckerType::U64, TypeCheckerType::U64, TypeCheckerType::U64, TypeCheckerType::U64], Box::new(TypeCheckerType::Void))));
 
-    info.insert(vec!["Printer".to_string()], (vec![String::from("Object")], printer_attributes));
+    info.insert(vec!["Printer".to_string()], (String::from("Object"), printer_attributes));
 
     let mut array_attributes = HashMap::new();
     array_attributes.insert("len".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::U64))));
     array_attributes.insert("downcast-contents".to_string(), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::Object(String::from(""))))));
 
-    info.insert(vec!["Array".to_string()], (vec![String::from("Object")], array_attributes));
+    info.insert(vec!["Array".to_string()], (String::from("Object"), array_attributes));
     
     info
 }
@@ -168,7 +166,7 @@ impl Frame {
 }
 
 pub struct TypeChecker {
-    class_information: HashMap<Vec<String>, (Vec<String>, HashMap<String, ClassAttribute>)>,
+    class_information: HashMap<Vec<String>, (String, HashMap<String, ClassAttribute>)>,
     scopes: Vec<Frame>,
     current_class: Vec<String>,
     active_paths: HashMap<String, Vec<String>>,
@@ -310,16 +308,12 @@ impl TypeChecker {
             true
         } else {
             let right_path = self.active_paths.get(right).unwrap();
-            for right_parents in self.class_information.get(right_path).unwrap().0.iter() {
-                if self.compare_object(left, right_parents) {
-                    return true;
-                }
+            if self.compare_object(left, &self.class_information.get(right_path).unwrap().0) {
+                return true;
             }
             let left_path = self.active_paths.get(left).unwrap();
-            for left_parent in self.class_information.get(left_path).unwrap().0.iter() {
-                if self.compare_object(right, left_parent) {
-                    return true;
-                }
+            if self.compare_object(right, &self.class_information.get(left_path).unwrap().0) {
+                return true;
             }
             false
         }
@@ -375,7 +369,7 @@ impl TypeChecker {
             name,
             members,
             methods,
-            parents,
+            parent,
             static_members,
             ..
         } = class;
@@ -413,11 +407,13 @@ impl TypeChecker {
         }
 
         
-        let parents = parents.iter().map(|dec| dec.name.to_string()).collect();
+        let parent = parent.as_ref()
+            .map(|dec| dec.name.to_string())
+            .unwrap_or(String::from("Object"));
         let mut module = module.clone();
         module.push(class_name.to_string());
 
-        self.class_information.insert(module.clone(), (parents, class_attributes));
+        self.class_information.insert(module.clone(), (parent, class_attributes));
 
         self.current_class = module;
         for method in methods.iter_mut() {
@@ -511,7 +507,7 @@ impl TypeChecker {
                 self.check_if_expr(return_type, expr)?;
             }
             Expression::Return(value, _) => {
-                let result = value.as_mut().map(|mut value| {
+                let result = value.as_mut().map(|value| {
                     self.annotate_expr(&return_type.into(), value.as_mut())?;
                     let ty = self.get_type(value.as_mut())?;
                     if <&TypeCheckerType as Into<Type>>::into(return_type) != ty {
@@ -600,7 +596,7 @@ impl TypeChecker {
                 }
             }
             Expression::UnaryOperation { operator: UnaryOperator::Neg, operand, .. } => {
-                let ty = self.get_type(operand)?;
+                let _ty = self.get_type(operand)?;
                 // TODO check if ty is a numeric type
             }
             Expression::UnaryOperation { operator: UnaryOperator::Not, operand, .. } => {
@@ -767,7 +763,7 @@ impl TypeChecker {
             }
             Expression::New(_, arr_size, _) => {
                 if let Some(arr_size) = arr_size {
-                    let ty = self.get_type(arr_size.as_mut())?;
+                    let _ty = self.get_type(arr_size.as_mut())?;
 
                 }
             }
@@ -1060,7 +1056,7 @@ impl TypeChecker {
                                     }
                                 }
                             }
-                            TypeCheckerType::TypeArg(obj, args) => {
+                            TypeCheckerType::TypeArg(obj, _args) => {
                                 match obj.as_ref() {
                                     TypeCheckerType::Object(name) => {
                                         let path = self.attach_module_if_needed(name.to_string());
@@ -1087,7 +1083,7 @@ impl TypeChecker {
                                     _ => unreachable!("Only object types can have type parameters")
                                 }
                             }
-                            TypeCheckerType::Array(ty) => {
+                            TypeCheckerType::Array(_ty) => {
                                 let path = self.attach_module_if_needed(String::from("Array"));
 
                                 match self.get_attribute(&path, field.to_string()) {
@@ -1154,7 +1150,7 @@ impl TypeChecker {
                         let ty = self.get_type_member_access(object.as_mut())?;
                         let name = match ty {
                             Type::Object(name, _) => name,
-                            Type::Array(ty, _) => {
+                            Type::Array(_ty, _) => {
                                 Text::Borrowed("Array")
                             },
                             _ => unreachable!("Only object types can have type parameters"),
@@ -1184,7 +1180,7 @@ impl TypeChecker {
                         }
 
                     },
-                    Expression::ClassAccess { class_name, span } => {
+                    Expression::ClassAccess { class_name, span: _span } => {
 
 
                         let path = self.attach_module_if_needed(class_name.to_string());

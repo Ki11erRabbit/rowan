@@ -324,9 +324,9 @@ impl<'a> TokenLexer<'a> {
             '*' => Ok(SpannedToken::new(Token::Multiply, start, start + 1)),
             '/' => {
                 if let Some((_, '/')) = self.chars.peek() {
-                    let mut end = start + 2;
+                    
                     while let Some((_, c)) = self.chars.next() {
-                        end += 1;
+                        
                         if c == '\n' {
                             break;
                         }
@@ -622,11 +622,9 @@ impl<'a> TokenLexer<'a> {
                 Ok(SpannedToken::new(Token::LineBreak, start, end))
             }
             c if c.is_whitespace() => {
-                let mut end = start + 1;
                 while let Some((_, c)) = self.chars.peek() {
                     if c.is_whitespace() {
                         self.chars.next();
-                        end += 1;
                     } else {
                         break;
                     }

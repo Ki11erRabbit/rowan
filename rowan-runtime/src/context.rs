@@ -24,7 +24,6 @@ pub enum MethodName {
     VirtualMethod {
         object_class_symbol: Symbol,
         class_symbol: Symbol,
-        source_class: Option<Symbol>,
         method_name: Symbol,
     }
 }

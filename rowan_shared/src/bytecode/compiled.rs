@@ -157,16 +157,14 @@ pub enum Bytecode {
     /// Check if an object is of a specified class
     IsA(StringIndex),
     /// Invoke a virtual method on an object of the specified class
-    /// The StringIndices are class names. 
-    /// The first is the specific class name
-    /// The second is an originator class name
-    InvokeVirt(StringIndex, StringIndex, StringIndex),
+    /// The first is the class name that the method belongs to
+    /// The second is the method name
+    InvokeVirt(StringIndex, StringIndex),
     /// Invoke a virtual method on an object of the specified class
-    /// The StringIndices are class names. 
-    /// The first is the specific class name
-    /// The second is an originator class name
+    /// The first is the class name that the method belongs to
+    /// The second is the method name
     /// This is for tail recursion
-    InvokeVirtTail(StringIndex, StringIndex, StringIndex),
+    InvokeVirtTail(StringIndex, StringIndex),
     /// Invoke a static method from a class
     /// The first StringIndex is the class name
     /// The second StringIndex is the Method Name
@@ -444,19 +442,13 @@ impl Bytecode {
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                     ]);
-                    let parent_class_name = u64::from_le_bytes([
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                    ]);
                     let method_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                     ]);
-                    result.push(Bytecode::InvokeVirt(class_name, parent_class_name, method_name));
+                    result.push(Bytecode::InvokeVirt(class_name, method_name));
                 },
                 69 => {
                     let class_name = u64::from_le_bytes([
@@ -465,19 +457,13 @@ impl Bytecode {
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                     ]);
-                    let parent_class_name = u64::from_le_bytes([
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
-                    ]);
                     let method_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                     ]);
-                    result.push(Bytecode::InvokeVirtTail(class_name, parent_class_name, method_name));
+                    result.push(Bytecode::InvokeVirtTail(class_name, method_name));
                 },
                 70 => {
                     let class_name = u64::from_le_bytes([
@@ -810,16 +796,14 @@ impl Bytecode {
                 result.push(67);
                 result.extend_from_slice(&class_name.to_le_bytes());
             },
-            Bytecode::InvokeVirt(class_name, parent_class_name, method_name) => {
+            Bytecode::InvokeVirt(class_name, method_name) => {
                 result.push(68);
                 result.extend_from_slice(&class_name.to_le_bytes());
-                result.extend_from_slice(&parent_class_name.to_le_bytes());
                 result.extend_from_slice(&method_name.to_le_bytes());
             },
-            Bytecode::InvokeVirtTail(class_name, parent_class_name, method_name) => {
+            Bytecode::InvokeVirtTail(class_name, method_name) => {
                 result.push(69);
                 result.extend_from_slice(&class_name.to_le_bytes());
-                result.extend_from_slice(&parent_class_name.to_le_bytes());
                 result.extend_from_slice(&method_name.to_le_bytes());
             },
             Bytecode::InvokeStatic(class_name, method_name) => {

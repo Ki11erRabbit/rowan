@@ -192,7 +192,7 @@ impl Import<'_> {
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Class<'a> {
     pub name: Text<'a>,
-    pub parents: Vec<ParentDec<'a>>,
+    pub parent: Option<ParentDec<'a>>,
     pub members: Vec<Member<'a>>,
     pub methods: Vec<Method<'a>>,
     pub static_members: Vec<StaticMember<'a>>,
@@ -203,7 +203,7 @@ pub struct Class<'a> {
 impl Class<'_> {
     pub fn new<'a>(
         name: Text<'a>,
-        parents: Vec<ParentDec<'a>>,
+        parent: Option<ParentDec<'a>>,
         members: Vec<Member<'a>>,
         methods: Vec<Method<'a>>,
         static_members: Vec<StaticMember<'a>>,
@@ -212,7 +212,7 @@ impl Class<'_> {
     ) -> Class<'a> {
         Class {
             name,
-            parents,
+            parent,
             members,
             methods,
             static_members,

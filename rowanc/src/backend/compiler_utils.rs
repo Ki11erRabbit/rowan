@@ -92,7 +92,7 @@ impl Into<Member> for StaticMember {
 pub struct PartialClass {
     name: StringIndex,
     /// Parent class names
-    parents: Vec<StringIndex>,
+    parent: StringIndex,
     /// Virtual tables
     vtables: Vec<VTable>,
     /// Members and their types
@@ -186,7 +186,7 @@ impl PartialClass {
     pub fn new() -> PartialClass {
         PartialClass {
             name: 0,
-            parents: Vec::new(),
+            parent: 0,
             vtables: Vec::new(),
             members: Vec::new(),
             static_methods: Vec::new(),
@@ -218,7 +218,7 @@ impl PartialClass {
         let class_name = self.get_class_name().join("::");
         Some((ClassFile::new_from_parts(
             self.name,
-            self.parents,
+            self.parent,
             self.vtables,
             self.members,
             StaticMethods::new(self.static_methods),
@@ -243,9 +243,9 @@ impl PartialClass {
         self.static_method_to_signature = map;
     }
 
-    pub fn add_parent(&mut self, name: &str) {
+    pub fn set_parent(&mut self, name: &str) {
         let index = self.add_string(name);
-        self.parents.push(index);
+        self.parent = index;
     }
 
     pub fn add_vtable(
@@ -461,17 +461,14 @@ impl PartialClass {
         compiler: &'a Compiler,
         field: &str
     ) -> Option<(Vec<String>, Vec<String>)> {
-        for parent in self.parents.iter() {
-            let parent = self.index_string_table(*parent);
-            let parent = parent.split("::").map(ToString::to_string).collect::<Vec<String>>();
-            let parent_class = compiler.classes.get(&parent).unwrap();
-            
-            let Some(class_name) = parent_class.find_class_with_field_helper(compiler, field) else {
-                continue;
-            };
-            return Some((class_name, parent))
-        }
-        None
+        let parent = self.index_string_table(self.parent);
+        let parent = parent.split("::").map(ToString::to_string).collect::<Vec<String>>();
+        let parent_class = compiler.classes.get(&parent).unwrap();
+
+        let Some(class_name) = parent_class.find_class_with_field_helper(compiler, field) else {
+            return None;
+        };
+        Some((class_name, parent))
     }
     
     fn find_class_with_field_helper<'a>(
@@ -486,19 +483,16 @@ impl PartialClass {
             .collect::<Vec<String>>();
             return Some(class_name)
         }
-        
-        for parent in self.parents.iter() {
-            let parent = self.index_string_table(*parent);
-            let parent = parent.split("::").map(ToString::to_string).collect::<Vec<String>>();
-            let parent = compiler.classes.get(&parent).unwrap();
-            
-            let Some(class_name) = parent.find_class_with_field_helper(compiler, field) else {
-                continue;
-            };
-            
-            return Some(class_name);
-        }
-        None
+
+        let parent = self.index_string_table(self.parent);
+        let parent = parent.split("::").map(ToString::to_string).collect::<Vec<String>>();
+        let parent = compiler.classes.get(&parent).unwrap();
+
+        let Some(class_name) = parent.find_class_with_field_helper(compiler, field) else {
+            return None;
+        };
+
+        Some(class_name)
     }
     
     pub fn get_member_offset(&self, field: &str) -> (u64, TypeTag) {

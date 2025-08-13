@@ -101,8 +101,8 @@ pub enum ClassMemberData {
 #[derive(Debug)]
 pub struct Class {
     pub name: Symbol,
-    pub parents: Vec<Symbol>,
-    pub vtables: HashMap<(Symbol, Option<Symbol>), VTableIndex>,
+    pub parent: Symbol,
+    pub vtables: HashMap<Symbol, VTableIndex>,
     pub members: Vec<MemberInfo>,
     pub static_methods: VTableIndex,
     pub class_members: Vec<ClassMember>,
@@ -113,8 +113,8 @@ pub struct Class {
 impl Class {
     pub fn new(
         name: Symbol,
-        parents: Vec<Symbol>,
-        vtables: HashMap<(Symbol, Option<Symbol>), VTableIndex>,
+        parent: Symbol,
+        vtables: HashMap<Symbol, VTableIndex>,
         members: Vec<MemberInfo>,
         static_methods: VTableIndex,
         class_members: Vec<ClassMember>,
@@ -124,7 +124,7 @@ impl Class {
     ) -> Self {
         Class {
             name,
-            parents,
+            parent,
             vtables,
             members,
             static_methods,
@@ -147,7 +147,7 @@ impl Class {
         out
     }
 
-    pub fn get_vtable(&self, sym: &(Symbol, Option<Symbol>)) -> Option<VTableIndex> {
+    pub fn get_vtable(&self, sym: &Symbol) -> Option<VTableIndex> {
         self.vtables.get(sym).map(|index| *index)
     }
 

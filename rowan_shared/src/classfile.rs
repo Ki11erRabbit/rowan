@@ -91,8 +91,8 @@ pub struct ClassFile {
     pub patch_version: u8,
     /// Class name
     pub name: StringIndex,
-    /// Parent class names
-    pub parents: Vec<StringIndex>,
+    /// Parent class name
+    pub parent: StringIndex,
     /// Virtual tables
     pub vtables: Vec<VTable>,
     /// Members and their types
@@ -118,7 +118,7 @@ impl ClassFile {
     
     pub fn new_from_parts(
         name: StringIndex,
-        parents: Vec<StringIndex>,
+        parent: StringIndex,
         vtables: Vec<VTable>,
         members: Vec<Member>,
         static_methods: StaticMethods,
@@ -134,7 +134,7 @@ impl ClassFile {
             minor_version: 1,
             patch_version: 0,
             name,
-            parents,
+            parent,
             vtables,
             members,
             static_methods,
@@ -158,20 +158,13 @@ impl ClassFile {
             binary[8], binary[9], binary[10], binary[11]
         ]);
         index += 8;
-        let parents_size = binary[12];
-        index += 1;
 
-        index += 3; // Weird padding of 3 bytes
-        
-        let mut parents = Vec::new();
-        for _ in 0..parents_size {
-            let parent = u64::from_le_bytes([
-                binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
-                binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
-            ]);
-            parents.push(parent);
-            index += std::mem::size_of::<StringIndex>();
-        }
+        let parent = u64::from_le_bytes([
+            binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+            binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+        ]);
+        index += std::mem::size_of::<StringIndex>();
+
         let vtables_size = u64::from_le_bytes([
             binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
             binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
@@ -365,7 +358,7 @@ impl ClassFile {
             minor_version,
             patch_version,
             name,
-            parents,
+            parent,
             vtables,
             members,
             static_methods,
@@ -397,11 +390,8 @@ impl ClassFile {
         binary.push(self.minor_version);
         binary.push(self.patch_version);
         binary.extend_from_slice(&self.name.to_le_bytes());
-        binary.push(self.parents.len() as u8);
+        binary.extend_from_slice(&self.parent.to_le_bytes());
 
-        binary.extend_from_slice(&[0; 3]); // Weird padding of 3 bytes
-
-        binary.extend_from_slice(&self.parents.iter().flat_map(|&p| p.to_le_bytes()).collect::<Vec<u8>>());
         binary.extend_from_slice(&self.vtables.len().to_le_bytes());
         for vtable in &self.vtables {
             binary.extend_from_slice(&vtable.class_name.to_le_bytes());
@@ -468,7 +458,6 @@ impl ClassFile {
     
     pub fn clear(&mut self) {
         self.name = 0;
-        self.parents.clear();
         self.vtables.clear();
         self.members.clear();
         self.static_methods.functions.clear();

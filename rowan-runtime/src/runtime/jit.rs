@@ -145,10 +145,9 @@ impl JITController {
                 MethodName::VirtualMethod {
                     object_class_symbol,
                     class_symbol,
-                    source_class,
                     method_name
                 } => {
-                    Runtime::jit_virtual_method(object_class_symbol, class_symbol, source_class, method_name);
+                    Runtime::jit_virtual_method(object_class_symbol, class_symbol, method_name);
                 }
             }
             //println!("done");
@@ -1267,10 +1266,9 @@ impl FunctionTranslator<'_> {
 
                     self.create_bail_block(module, None, &[]);
                 }
-                Bytecode::InvokeVirt(class_name, source_class, method_name) => {
+                Bytecode::InvokeVirt(class_name, method_name) => {
 
                     let mut call_virt_func = module.make_signature();
-                    call_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
                     call_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
                     call_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
                     call_virt_func.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
@@ -1282,18 +1280,6 @@ impl FunctionTranslator<'_> {
                     let class_name_value = self.builder
                         .ins()
                         .iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(class_name.to_le_bytes())));
-                    let source_class_value = match source_class {
-                        Some(source_class) => {
-                            self.builder
-                                .ins()
-                                .iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(source_class.to_le_bytes())))
-                        }
-                        None => {
-                            self.builder
-                                .ins()
-                                .iconst(cranelift::codegen::ir::types::I64, i64::from(-1))
-                        }
-                    };
                     let method_name_value = self.builder
                         .ins()
                         .iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(method_name.to_le_bytes())));
@@ -1305,7 +1291,6 @@ impl FunctionTranslator<'_> {
                         .call(call_virt_func_func, &[
                             context_value,
                             class_name_value,
-                            source_class_value,
                             method_name_value,
                         ]);
 
