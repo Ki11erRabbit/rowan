@@ -401,7 +401,7 @@ impl BytecodeContext {
                     .to_vec();
                 //super::sort_call_args(&mut variables);
                 //let need_padding = super::need_padding(&variables);
-                let mut return_value = call_function_pointer(
+                let return_value = call_function_pointer(
                     self,
                     &mut variables,
                     fn_ptr.as_ptr(),
@@ -2200,25 +2200,25 @@ impl BytecodeContext {
                 let value = self.pop_value();
                 match (value, ty) {
                     (StackValue::Int8(value), TypeTag::U8) | (StackValue::Int8(value), TypeTag::I8) => {
-                        let value = Runtime::set_static_member::<u8>(self, *class as runtime::Symbol, *index, value);
+                        Runtime::set_static_member::<u8>(self, *class as runtime::Symbol, *index, value);
                     }
                     (StackValue::Int16(value), TypeTag::U16) | (StackValue::Int16(value), TypeTag::I16) => {
-                        let value = Runtime::set_static_member::<u16>(self, *class as runtime::Symbol, *index, value);
+                        Runtime::set_static_member::<u16>(self, *class as runtime::Symbol, *index, value);
                     }
                     (StackValue::Int32(value), TypeTag::U32) | (StackValue::Int32(value), TypeTag::I32) => {
-                        let value = Runtime::set_static_member::<u32>(self, *class as runtime::Symbol, *index, value);
+                        Runtime::set_static_member::<u32>(self, *class as runtime::Symbol, *index, value);
                     }
                     (StackValue::Int64(value), TypeTag::U64) | (StackValue::Int64(value), TypeTag::I64) => {
-                        let value = Runtime::set_static_member::<u64>(self, *class as runtime::Symbol, *index, value);
+                        Runtime::set_static_member::<u64>(self, *class as runtime::Symbol, *index, value);
                     }
                     (StackValue::Float32(value), TypeTag::F32) => {
-                        let value = Runtime::set_static_member::<f32>(self, *class as runtime::Symbol, *index, value);
+                        Runtime::set_static_member::<f32>(self, *class as runtime::Symbol, *index, value);
                     }
                     (StackValue::Float64(value), TypeTag::F64) => {
-                        let value = Runtime::set_static_member::<f64>(self, *class as runtime::Symbol, *index, value);
+                        Runtime::set_static_member::<f64>(self, *class as runtime::Symbol, *index, value);
                     }
                     (StackValue::Reference(value), TypeTag::Object) => {
-                        let value = Runtime::set_static_member::<Reference>(self, *class as runtime::Symbol, *index, value);
+                        Runtime::set_static_member::<Reference>(self, *class as runtime::Symbol, *index, value);
                     }
                     _ => unreachable!("Invalid Type Tag"),
                 }

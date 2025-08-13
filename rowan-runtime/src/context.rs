@@ -1,7 +1,7 @@
 mod interpreter;
 use std::ffi::c_void;
 use libffi::low::{call, ffi_abi, ffi_cif, prep_cif, CodePtr};
-use libffi::raw::{ffi_prep_cif, ffi_type_double, ffi_type_float, ffi_type_pointer, ffi_type_uint16, ffi_type_uint32, ffi_type_uint64, ffi_type_uint8, ffi_type_void};
+use libffi::raw::{ffi_type_double, ffi_type_float, ffi_type_pointer, ffi_type_uint16, ffi_type_uint32, ffi_type_uint64, ffi_type_uint8, ffi_type_void};
 pub use interpreter::BytecodeContext;
 use crate::runtime::{Reference, Symbol};
 use crate::runtime::class::TypeTag;
@@ -26,15 +26,6 @@ pub enum MethodName {
         class_symbol: Symbol,
         source_class: Option<Symbol>,
         method_name: Symbol,
-    }
-}
-
-impl MethodName {
-    pub fn get_method_name(&self) -> Symbol {
-        match self {
-            MethodName::StaticMethod { method_name, .. } => *method_name,
-            MethodName::VirtualMethod { method_name, .. } => *method_name,
-        }
     }
 }
 

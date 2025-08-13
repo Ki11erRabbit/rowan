@@ -14,10 +14,6 @@ impl NativeObjectTable {
         self.table.insert(path, lib);
     }
 
-    pub fn get(&self, path: &str) -> Option<&Library> {
-        self.table.get(path)
-    }
-
     pub fn get_mut(&mut self, path: &str) -> Option<&mut Library> {
         self.table.get_mut(path)
     }

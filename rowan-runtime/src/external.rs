@@ -107,11 +107,6 @@ pub extern "C" fn rowan_call_static_function(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rowan_set_exception(context: &mut Runtime, exception: Reference) {
+pub extern "C" fn rowan_set_exception(_context: &mut Runtime, _exception: Reference) {
     //context.set_exception(exception);
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn rowan_normal_return(context: &mut Runtime) {
-    Runtime::normal_return(context);
 }

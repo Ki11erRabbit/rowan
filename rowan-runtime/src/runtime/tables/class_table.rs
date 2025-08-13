@@ -13,10 +13,6 @@ impl ClassTable {
         }
     }
 
-    pub fn get_next_index(&self) -> usize {
-        self.table.len()
-    }
-
     pub fn insert_class(&mut self, class: Class) -> usize {
         let out = self.table.len();
         self.table.push(class);

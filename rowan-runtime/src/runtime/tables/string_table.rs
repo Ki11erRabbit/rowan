@@ -1,5 +1,3 @@
-use std::ffi::{c_char, CStr};
-
 pub struct StringTable {
     table: Vec<(usize, *const u8)>
 }
@@ -47,13 +45,6 @@ impl StringTable {
             std::str::from_utf8_unchecked(slice)
         };
         s
-    }
-
-    pub fn get_cstr(&self, index: usize) -> &'static CStr {
-        let (_, ptr) = self.table[index];
-        unsafe {
-            CStr::from_ptr(ptr as *const c_char)
-        }
     }
 }
 

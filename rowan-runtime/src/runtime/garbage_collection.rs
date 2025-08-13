@@ -18,7 +18,7 @@ impl GarbageCollection {
     pub fn new() -> Self {
         let (sender, receiver) = std::sync::mpsc::channel();
 
-        unsafe {
+        {
             *GC_SENDER.write() = Some(sender);
         }
 
@@ -35,11 +35,11 @@ impl GarbageCollection {
             let duration = now.duration_since(start);
 
             if duration.as_secs() >= 2 {// TODO: make this 5 mins configurable
-                let mut thread_count = unsafe {
+                let mut thread_count = {
                     THREAD_COUNT.read().load(std::sync::atomic::Ordering::Relaxed)
                 };
 
-                let lock = unsafe {
+                let lock = {
                     DO_GARBAGE_COLLECTION.write().unwrap()
                 };
 

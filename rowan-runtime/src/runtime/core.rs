@@ -81,24 +81,6 @@ impl VMMember {
     }
 }
 
-pub struct VMSignal {
-    pub name: &'static str,
-    pub is_static: bool,
-    pub arguments: Vec<TypeTag>
-}
-
-impl VMSignal {
-    pub fn new(name: &'static str, is_static: bool, arguments: Vec<TypeTag>) -> Self {
-        VMSignal {
-            name,
-            is_static,
-            arguments
-        }
-    }
-}
-
-
-
 pub fn generate_object_class() -> VMClass {
     let vtable = VMVTable::new(
         "core::Object",
@@ -120,7 +102,6 @@ extern "C" fn object_downcast(context: &mut BytecodeContext, this: Reference, cl
     let object = this;
     let object = unsafe { object.as_mut().unwrap() };
     if object.class == class_index as Symbol {
-        //Runtime::normal_return(context);
         this
     } else {
         for obj in object.parent_objects.iter() {
@@ -128,7 +109,6 @@ extern "C" fn object_downcast(context: &mut BytecodeContext, this: Reference, cl
                 return this;
             }
         }
-        //Runtime::normal_return(context);
         std::ptr::null_mut()
     }
 }
@@ -167,12 +147,10 @@ pub fn generate_printer_class() -> VMClass {
 
 extern "C" fn printer_println_int(_: &mut BytecodeContext, _: Reference, int: u64) {
     println!("{}", int);
-    //Runtime::normal_return(context);
 }
 
 extern "C" fn printer_println_float(context: &mut BytecodeContext, _: Reference, float: f64) {
     println!("{}", float);
-    //Runtime::normal_return(context);
 }
 
 extern "C" fn printer_println(context: &mut BytecodeContext, _: Reference, string: Reference) {
@@ -184,7 +162,6 @@ extern "C" fn printer_println(context: &mut BytecodeContext, _: Reference, strin
     let slice = unsafe { std::slice::from_raw_parts(pointer, length as usize) };
     let string = unsafe { std::str::from_utf8_unchecked(slice) };
     println!("{}", string);
-    //Runtime::normal_return(context);
 }
 
 extern "C" fn printer_println_ints(ctx: &mut BytecodeContext, this: Reference, int1: u64, int2: u64, int3: u64, int4: u64, int5: u64, int6: u64, int7: u64) {
@@ -201,7 +178,6 @@ extern "C" fn printer_println_ints(ctx: &mut BytecodeContext, this: Reference, i
     /*for (i, int) in ints.iter().enumerate() {
         println!("{i}: {}", int);
     }*/
-    //Runtime::normal_return(context);
 }
 
 macro_rules! array_downcast_contents {
@@ -291,7 +267,6 @@ macro_rules! array_create_init {
                 object.buffer = pointer as *mut u8;
 
                 object.custom_drop = Some([< array $variant _drop >]);
-                //Runtime::normal_return(context);
             }
         }
     };
@@ -450,12 +425,11 @@ create_array_class!(object, u64);
 create_array_class!(f32, f32);
 create_array_class!(f64, f64);
 
-extern "C" fn array_len(context: &mut Runtime, this: Reference) -> u64 {
+extern "C" fn array_len(_: &mut Runtime, this: Reference) -> u64 {
     let object = this;
     let object = object as *mut Array;
     let object = unsafe { object.as_ref().unwrap() };
     let length = object.length;
-    Runtime::normal_return(context);
     length
 }
 
@@ -523,7 +497,7 @@ extern "C" fn exception_init(_: &BytecodeContext, this: Reference, message: Refe
     object.stack_pointer = pointer as *mut Reference;
 }
 
-pub extern "C" fn exception_fill_in_stack_trace(context: &mut Runtime, this: Reference) {
+pub extern "C" fn exception_fill_in_stack_trace(_context: &mut Runtime, this: Reference) {
     let object = this;
     let object = object as *mut Exception;
     let object = unsafe { object.as_mut().unwrap() };
@@ -617,7 +591,7 @@ pub fn generate_backtrace_class() -> VMClass {
     VMClass::new("Backtrace", vec!["core::Object"], vec![vtable], elements, Vec::new(), Vec::new())
 }
 
-extern "C" fn backtrace_init(context: &mut Runtime, this: Reference, function_name: Reference, line: u64, column: u64) {
+extern "C" fn backtrace_init(_context: &mut Runtime, this: Reference, function_name: Reference, line: u64, column: u64) {
     let object = this;
     let object = object as *mut Backtrace;
     let object = unsafe { object.as_mut().unwrap() };
@@ -626,7 +600,7 @@ extern "C" fn backtrace_init(context: &mut Runtime, this: Reference, function_na
     object.column_number = column;
 }
 
-extern "C" fn backtrace_display(context: &mut Runtime, this: Reference) {
+extern "C" fn backtrace_display(_context: &mut Runtime, this: Reference) {
     let object = this;
     let object = object as *mut Backtrace;
     let object = unsafe { object.as_ref().unwrap() };
@@ -708,7 +682,7 @@ pub extern "C" fn null_pointer_init(context: &BytecodeContext, this: Reference) 
 }
 
 #[repr(C)]
-struct StringObject {
+pub struct StringObject {
     pub class: Symbol,
     pub parent_objects: Box<[Reference]>,
     pub custom_drop: Option<fn(&mut Object)>,
@@ -816,12 +790,10 @@ extern "C" fn string_len(context: &mut BytecodeContext, this: Reference) -> u64 
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_ref().unwrap() };
-    //Runtime::normal_return(context);
     object.length
 }
 
 extern "C" fn string_load_str(context: &mut BytecodeContext, this: Reference, string_ref: Reference) {
-    use std::alloc::*;
     //println!("got: {this:p} {string_ref:p}");
     let string = Runtime::get_string(string_ref as Symbol);
     let bytes = string.as_bytes();
@@ -839,7 +811,6 @@ extern "C" fn string_load_str(context: &mut BytecodeContext, this: Reference, st
     object.custom_drop = Some(unsafe {
         std::mem::transmute::<_, fn(&mut Object)>(string_drop as *const ())
     });
-    //Runtime::normal_return(context);
 }
 
 extern "C" fn string_init(_: &mut BytecodeContext, this: Reference) {
@@ -897,7 +868,6 @@ extern "C" fn string_is_char_boundary(context: &mut BytecodeContext, this: Refer
         return 0;
     }
 
-    //Runtime::normal_return(context);
     unsafe {
         if *pointer.add(index as usize) ^ 0b10000000 == 0b10000000 {
             1
@@ -933,7 +903,6 @@ extern "C" fn string_as_bytes(context: &mut BytecodeContext, this: Reference) ->
             array_pointer.add(i as usize).write(*pointer.add(i as usize))
         }
     }
-    //Runtime::normal_return(context);
     byte_array
 }
 
@@ -941,7 +910,6 @@ extern "C" fn string_push(context: &mut BytecodeContext, this: Reference, charac
     let object = this;
     let object = object as *mut StringObject;
     let object = unsafe { object.as_mut().unwrap() };
-    //Runtime::normal_return(context);
     object.push_char(unsafe {
         char::from_u32_unchecked(character)
     })

@@ -4,9 +4,7 @@ use cranelift::prelude::Signature;
 use fxhash::FxHashMap;
 use rowan_shared::classfile::{ClassFile, VTableEntry};
 use rowan_shared::{bytecode, classfile, TypeTag};
-use crate::context::BytecodeContext;
 use crate::runtime::class::{ClassMember, ClassMemberData};
-use crate::runtime::jit::JITCompiler;
 use crate::runtime::object::Object;
 use crate::runtime::tables::native_object_table::NativeObjectTable;
 use super::{class::{self, Class, MemberInfo}, jit::JITController, core::{VMClass, VMMember, VMMethod, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Symbol, VTableIndex};
@@ -31,7 +29,6 @@ pub fn link_class_files(
     classes: Vec<ClassFile>,
     class_locations: Vec<PathBuf>,
     jit_controller: &mut JITController,
-    jit_compiler: &mut JITCompiler,
     symbol_table: &mut SymbolTable,
     class_table: &mut Vec<TableEntry<Class>>,
     string_table: &mut StringTable,
@@ -288,7 +285,7 @@ pub fn link_class_files(
                 class_map.insert(String::from(class_name_str), symbol);
                 symbol
             };
-            let (sub_class_name_str, sub_class_name_symbol) = if *sub_class_name != 0 {
+            let (_sub_class_name_str, sub_class_name_symbol) = if *sub_class_name != 0 {
                 let sub_class_name_str = class.index_string_table(*sub_class_name);
                 let symbol = if let Some(symbol) = class_map.get(sub_class_name_str) {
                     Some(*symbol)
@@ -381,8 +378,8 @@ pub fn link_class_files(
                         .zip(derived_functions.into_iter())
                         .enumerate()
                         .map(|(i, (base, derived))| {
-                            let (base_name_symbol,  base_signature, base_bytecode, _, base_value, sig) = base;
-                            let (derived_name_symbol,  derived_signature, derived_bytecode, _, derived_value, _) = derived;
+                            let (_base_name_symbol,  base_signature, _base_bytecode, _, _base_value, sig) = base;
+                            let (derived_name_symbol,  _derived_signature, _derived_bytecode, _, derived_value, _) = derived;
                             functions_mapper.insert(*derived_name_symbol, i);
                             let return_type = convert_type(&base_signature[0]);
                             let arguments = base_signature[1..]
@@ -499,7 +496,7 @@ pub fn link_class_files(
                         .zip(derived_functions.into_iter())
                         .enumerate()
                         .map(|(i, (base, derived))| {
-                            let (_base_name_symbol, base_signature, _, _, base_value, sig) = base;
+                            let (_base_name_symbol, _base_signature, _, _, base_value, sig) = base;
                             let (derived_name_symbol, derived_signature, derived_bytecode, _, _, _) = derived;
 
                             let SymbolEntry::StringRef(name_index) = &symbol_table[*derived_name_symbol] else {
@@ -591,8 +588,7 @@ pub fn link_class_files(
             }
 
             let mut static_method_mapper = HashMap::new();
-            let mut location_path = location.clone();
-            let (functions, mut location_path) = {
+            let (functions, location_path) = {
                 let mut location_path = location;
                 (static_methods.into_iter()
                     .enumerate()
@@ -1399,9 +1395,9 @@ pub fn link_vm_classes(
                     let functions = base_functions.into_iter()
                         .zip(derived_functions.into_iter())
                         .enumerate()
-                        .map(|(i, (base, derived))| {
-                            let (base_name_symbol,  base_signature, base_bytecode, _, base_value, sig) = base;
-                            let (derived_name_symbol,  derived_signature, derived_bytecode, _, derived_value, _) = base;
+                        .map(|(i, (base, _derived))| {
+                            let (_base_name_symbol,  base_signature, _base_bytecode, _, _base_value, sig) = base;
+                            let (derived_name_symbol,  _derived_signature, _derived_bytecode, _, derived_value, _) = base;
                             functions_mapper.insert(*derived_name_symbol, i);
                             let return_type = convert_type(&base_signature[0]);
                             let arguments = base_signature[1..]
@@ -1421,7 +1417,7 @@ pub fn link_vm_classes(
                     let mut functions_mapper = HashMap::new();
                     let functions = functions.into_iter()
                         .enumerate()
-                        .map(|(i, (name_symbol, signature, bytecode, code, value, sig))| {
+                        .map(|(i, (name_symbol, signature, _bytecode, code, value, sig))| {
                             functions_mapper.insert(*name_symbol, i);
 
                             (*name_symbol, signature.clone(), MethodLocation::Blank, code.clone(), value.clone(), sig.clone())

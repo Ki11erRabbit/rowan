@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 use rowan_shared::bytecode::linked::Bytecode;
-use crate::context::BytecodeContext;
 use crate::runtime::object::Object;
-use super::{Runtime, Reference, Symbol, VTableIndex};
+use super::{Reference, Symbol, VTableIndex};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum TypeTag {

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Mutex};
 use cranelift::prelude::Signature;
 use cranelift_module::FuncId;
 use fxhash::FxHashMap;
@@ -46,10 +46,6 @@ impl VTable {
             let index = self.symbol_mapper.get(&symbol).unwrap();
             Some(&self.table[*index])
         }
-    }
-    pub fn get_function_mut(&mut self, symbol: Symbol) -> &mut Function {
-        let index = self.symbol_mapper.get(&symbol).unwrap();
-        &mut self.table[*index]
     }
 }
 
@@ -95,7 +91,7 @@ impl Function {
         // TODO: make this configurable
         if times_called == 1000 && !self.value.lock().unwrap().is_compiled() {
             //println!("Requesting JIT");
-            request_to_jit_method((name))
+            request_to_jit_method(name)
         }
 
         let bytecode_ptr = self.bytecode.as_ptr();

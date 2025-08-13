@@ -3,8 +3,6 @@ use std::path::PathBuf;
 use rowan_shared::classfile::ClassFile;
 use runtime::{core, Runtime};
 use crate::context::BytecodeContext;
-use crate::runtime::Reference;
-use crate::runtime::core::exception_print_stack_trace;
 use crate::runtime::garbage_collection::{GarbageCollection, GC_SENDER};
 use crate::runtime::jit::{set_jit_sender, JITController};
 

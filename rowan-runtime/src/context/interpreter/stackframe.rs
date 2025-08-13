@@ -36,10 +36,6 @@ impl StackFrame {
         }
     }
 
-    pub fn is_for_bytecode(&self) -> bool {
-        self.is_for_bytecode
-    }
-
     pub fn goto(&mut self, block_offset: isize) {
         let next_block = self.current_block as isize + block_offset;
         let next_block = next_block as usize;

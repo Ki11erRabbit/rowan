@@ -1,6 +1,5 @@
 use std::{collections::HashMap, sync::LazyLock};
-use std::cell::RefCell;
-use std::sync::{Arc, RwLock, TryLockError};
+use std::sync::{Arc, RwLock};
 
 use class::Class;
 
@@ -11,11 +10,10 @@ use object::Object;
 use rowan_shared::classfile::ClassFile;
 use core::VMClass;
 use tables::{class_table::ClassTable, object_table::ObjectTable, string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{FunctionValue, VTables}};
-use std::borrow::{BorrowMut, Cow};
+use std::borrow::{BorrowMut};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32};
-use std::sync::mpsc::Sender;
 use fxhash::FxHashMap;
 use rowan_shared::bytecode::linked::Bytecode;
 use crate::context::{BytecodeContext, MethodName, WrappedReference};
@@ -31,8 +29,6 @@ pub mod jit;
 pub mod garbage_collection;
 pub use tables::FunctionDetails;
 
-use crate::runtime::core::{exception_fill_in_stack_trace, exception_print_stack_trace};
-use crate::runtime::garbage_collection::GC_SENDER;
 use crate::runtime::tables::native_object_table::NativeObjectTable;
 
 pub type Symbol = usize;
@@ -101,7 +97,7 @@ static STRING_MAP: LazyLock<RwLock<HashMap<String, Symbol>>> = LazyLock::new(|| 
     RwLock::new(map)
 });
 
-trait StaticMemberAccess<T>: Sized + Default {
+pub trait StaticMemberAccess<T>: Sized + Default {
     fn make_self() -> Self {
         Default::default()
     }
@@ -397,13 +393,13 @@ impl StaticMemberAccess<f64> for RuntimeHelper {
     }
 }
 
-trait MakeObject<N> {
+pub trait MakeObject<N> {
     fn make_self() -> Self;
     fn new_object(&self, class_name: N) -> Reference;
 }
 
 #[derive(Default)]
-struct RuntimeHelper;
+pub struct RuntimeHelper;
 
 impl MakeObject<Symbol> for RuntimeHelper {
 
@@ -455,7 +451,7 @@ impl MakeObject<&str> for RuntimeHelper {
 
     #[inline]
     fn new_object(&self, class_name: &str) -> Reference {
-        let Ok(mut class_map) = CLASS_MAPPER.read() else {
+        let Ok(class_map) = CLASS_MAPPER.read() else {
             panic!("Lock poisoned");
         };
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
@@ -494,50 +490,9 @@ impl MakeObject<&str> for RuntimeHelper {
 
 
 
-pub struct Runtime {
-    /// A map between function_backtraces and all currently registered exceptions
-    registered_exceptions: HashMap<Symbol, Vec<Symbol>>,
-    static_memo: HashMap<(Symbol, Symbol), *const ()>,
-    virtual_memo: HashMap<(Symbol, Symbol, Option<Symbol>, Symbol), *const ()>,
-    sender: Sender<HashSet<WrappedReference>>,
-}
+pub struct Runtime {}
 
 impl Runtime {
-    pub fn new(sender: Sender<HashSet<WrappedReference>>) -> Self {
-        Runtime {
-            registered_exceptions: HashMap::new(),
-            static_memo: HashMap::new(),
-            virtual_memo: HashMap::new(),
-            sender,
-        }
-    }
-    
-
-
-    /*pub fn get_current_method(&mut self) -> Reference {
-        let string_ref = Self::new_object("String");
-
-        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
-            unreachable!("Lock poisoned");
-        };
-
-        let Ok(string_table) = STRING_TABLE.read() else {
-            unreachable!("Lock poisoned");
-        };
-
-        let method_name = self.function_backtrace[self.function_backtrace.len() - 1].get_method_name();
-
-        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
-            panic!("method wasn't a string");
-        };
-
-        let name = &string_table[method_name_index];
-
-        core::string_from_str(string_ref, name);
-
-        string_ref
-    }*/
-
     pub extern "C" fn should_unwind(context: &mut BytecodeContext) -> u8 {
         if !context.is_current_exception_set() {
             return 0;
@@ -564,12 +519,6 @@ impl Runtime {
         1
     }
 
-    pub extern "C" fn normal_return(ctx: &mut Self) {
-        //let _out = ctx.pop_backtrace();
-        //println!("Normal Return: {out:?}");
-    }
-
-
     pub fn link_classes(
         classes: Vec<ClassFile>,
         class_locations: Vec<PathBuf>,
@@ -588,7 +537,6 @@ impl Runtime {
         let Ok(mut vtable_tables) = VTABLES.write() else {
             panic!("Lock poisoned");
         };
-        let mut jit_compiler = Runtime::create_jit_compiler();
         let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
             panic!("Lock poisoned");
         };
@@ -606,7 +554,6 @@ impl Runtime {
             classes,
             class_locations,
             &mut jit_controller,
-            &mut jit_compiler,
             &mut symbol_table,
             pre_class_table,
             &mut string_table,
@@ -720,15 +667,6 @@ impl Runtime {
         let SymbolEntry::ClassRef(object_class_index) = symbol_table[object_class_symbol] else {
             panic!("class wasn't a class");
         };
-        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
-            panic!("method wasn't a string");
-        };
-
-        let Ok(string_table) = STRING_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-
-        let name = &string_table[method_name_index];
 
         let class = &class_table[object_class_index];
         let vtable_index = if source_class.is_some() {
@@ -813,15 +751,6 @@ impl Runtime {
         let SymbolEntry::ClassRef(object_class_index) = symbol_table[object_class_symbol] else {
             panic!("class wasn't a class");
         };
-        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
-            panic!("method wasn't a string");
-        };
-
-        let Ok(string_table) = STRING_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-
-        let name = &string_table[method_name_index];
 
         let class = &class_table[object_class_index];
         let vtable_index = if source_class.is_some() {
@@ -857,7 +786,7 @@ impl Runtime {
                     panic!("Lock poisoned");
                 };
 
-                compiler.compile(function, &mut jit_controller.module, name).unwrap();
+                compiler.compile(function, &mut jit_controller.module).unwrap();
             }
             _ => {}
         };
@@ -878,16 +807,6 @@ impl Runtime {
         let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol] else {
             panic!("class wasn't a class");
         };
-        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
-            panic!("method wasn't a string");
-        };
-
-        let Ok(string_table) = STRING_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-
-        let name = &string_table[method_name_index];
-
 
         let class = &class_table[class_index];
 
@@ -909,7 +828,7 @@ impl Runtime {
                     unreachable!("Lock poisoned");
                 };
 
-                match compiler.compile(function, &mut jit_controller.module, name) {
+                match compiler.compile(function, &mut jit_controller.module) {
                     Ok(_) => {}
                     Err(e) => panic!("Compilation error:\n{}", e)
                 }
@@ -1165,7 +1084,7 @@ impl Runtime {
     }
 
     pub fn get_class_symbol(class_name: &str) -> Symbol {
-        let Ok(mut class_map) = CLASS_MAPPER.read() else {
+        let Ok(class_map) = CLASS_MAPPER.read() else {
             panic!("Lock poisoned");
         };
         class_map[class_name]
@@ -1383,10 +1302,10 @@ impl Runtime {
     }
 
     pub fn get_static_method_name(class: &str, method_name: &str) -> Option<(Symbol, Symbol)> {
-        let Ok(mut class_map) = CLASS_MAPPER.write() else {
+        let Ok(class_map) = CLASS_MAPPER.write() else {
             panic!("Lock poisoned");
         };
-        let Ok(mut string_map) = STRING_MAP.write() else {
+        let Ok(string_map) = STRING_MAP.write() else {
             panic!("Lock poisoned");
         };
 
