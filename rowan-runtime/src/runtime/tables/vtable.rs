@@ -93,7 +93,7 @@ impl Function {
 
         // Tell the JIT Thread to compile this Function after 1000 accesses
         // TODO: make this configurable
-        if times_called > 1000 && !self.value.lock().unwrap().is_compiled() {
+        if times_called == 1000 && !self.value.lock().unwrap().is_compiled() {
             //println!("Requesting JIT");
             request_to_jit_method((name))
         }

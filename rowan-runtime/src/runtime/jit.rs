@@ -27,9 +27,9 @@ pub fn set_jit_sender(sender: Sender<MethodName>) {
 }
 
 pub fn request_to_jit_method(name: MethodName) {
-    JIT_SENDER.read()
+    /*JIT_SENDER.read()
         .as_ref()
-        .map(|sender| sender.send(name));
+        .map(|sender| sender.send(name));*/
 }
 
 pub struct JITController {
