@@ -421,7 +421,11 @@ impl MakeObject<Symbol> for RuntimeHelper {
             panic!("Lock poisoned");
         };
         let class = &class_table[class_ref];
-        let parent_object = Runtime::new_object(class.parent);
+        let parent_object = if class.parent != 0 {
+            Runtime::new_object(class.parent)
+        } else {
+            std::ptr::null_mut()
+        };
 
         let data_size = class.get_member_size();
         let object = Object::new(class_symbol, parent_object, data_size, class.drop_function);

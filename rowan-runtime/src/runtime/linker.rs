@@ -1132,23 +1132,27 @@ pub fn link_vm_classes(
             }
         };
         
-        let parent_symbol = if let Some(symbol) = class_map.get(parent) {
-            *symbol
+        let parent_symbol = if parent == "" {
+            0
         } else {
-            let index = string_table.add_static_string(parent);
-            let symbol = symbol_table.add_string(index);
-
-            string_map.insert(String::from(parent), symbol);
-
             if let Some(symbol) = class_map.get(parent) {
                 *symbol
             } else {
-                let index = class_table.len();
-                class_table.push(TableEntry::Hole);
-                let symbol = symbol_table.add_class(index);
-                class_map.insert(String::from(parent), symbol);
+                let index = string_table.add_static_string(parent);
+                let symbol = symbol_table.add_string(index);
 
-                symbol
+                string_map.insert(String::from(parent), symbol);
+
+                if let Some(symbol) = class_map.get(parent) {
+                    *symbol
+                } else {
+                    let index = class_table.len();
+                    class_table.push(TableEntry::Hole);
+                    let symbol = symbol_table.add_class(index);
+                    class_map.insert(String::from(parent), symbol);
+
+                    symbol
+                }
             }
         };
 
@@ -1420,7 +1424,7 @@ fn add_parent_vtables(
     symbol_table: &SymbolTable,
     seen_classes: &mut HashSet<Symbol>,
 ) -> Result<(), ()> {
-    if seen_classes.contains(&parent) {
+    if seen_classes.contains(&parent) || parent == 0 {
         return Ok(());
     }
     seen_classes.insert(parent);
