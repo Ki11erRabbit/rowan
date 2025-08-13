@@ -55,49 +55,49 @@ pub fn call_function_pointer(
         types.push(&raw mut ffi_type_pointer);
     }
     values.push(&mut context as *mut _ as *mut c_void);
-    for call_arg in call_args {
-        match call_arg {
-            &mut StackValue::Int8(mut value) => {
+    for i in 0..call_args.len() {
+        match &mut call_args[i] {
+            &mut StackValue::Int8(ref mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_uint8 as *mut _);
                 }
-                values.push(&mut value as *mut _ as *mut c_void);
+                values.push(value as *mut _ as *mut c_void);
             }
-            &mut StackValue::Int16(mut value) => {
+            &mut StackValue::Int16(ref mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_uint16 as *mut _);
                 }
-                values.push(&mut value as *mut _ as *mut c_void);
+                values.push(value as *mut _ as *mut c_void);
             }
-            &mut StackValue::Int32(mut value) => {
+            &mut StackValue::Int32(ref mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_uint32 as *mut _);
                 }
-                values.push(&mut value as *mut _ as *mut c_void);
+                values.push(value as *mut _ as *mut c_void);
             }
-            &mut StackValue::Int64(mut value) => {
+            &mut StackValue::Int64(ref mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_uint64 as *mut _);
                 }
-                values.push(&mut value as *mut _ as *mut c_void);
+                values.push(value as *mut _ as *mut c_void);
             }
-            &mut StackValue::Reference(mut value) => {
+            &mut StackValue::Reference(ref mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_pointer as *mut _);
                 }
-                values.push(&mut value as *mut _ as *mut c_void);
+                values.push(value as *mut _ as *mut c_void);
             }
-            &mut StackValue::Float32(mut value) => {
+            &mut StackValue::Float32(ref mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_float as *mut _);
                 }
-                values.push(&mut value as *mut _ as *mut c_void);
+                values.push(value as *mut _ as *mut c_void);
             }
-            &mut StackValue::Float64(mut value) => {
+            &mut StackValue::Float64(ref mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_double as *mut _);
                 }
-                values.push(&mut value as *mut _ as *mut c_void);
+                values.push(value as *mut _ as *mut c_void);
             }
             _ => unreachable!("argument conversion")
         }
