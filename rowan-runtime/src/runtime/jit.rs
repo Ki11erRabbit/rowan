@@ -1,6 +1,8 @@
-
-use std::collections::HashMap;
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
 use std::ffi::CStr;
+use std::sync::LazyLock;
+use std::sync::mpsc::{Receiver, Sender};
 use codegen::{ir::self, CodegenError};
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
@@ -12,7 +14,23 @@ use super::{tables::vtable::{Function, FunctionValue}, Runtime, Symbol};
 use cranelift::codegen::ir::BlockArg;
 use cranelift_codegen::isa::unwind::UnwindInfo;
 use log::trace;
+use crate::context::{BytecodeContext, MethodName};
+use crate::fake_lock::FakeLock;
 use crate::runtime;
+
+static JIT_SENDER: LazyLock<FakeLock<Option<Sender<MethodName>>>> = LazyLock::new(|| {
+    FakeLock::new(None)
+});
+
+pub fn set_jit_sender(sender: Sender<MethodName>) {
+    JIT_SENDER.write().replace(sender);
+}
+
+pub fn request_to_jit_method(name: MethodName) {
+    JIT_SENDER.read()
+        .as_ref()
+        .map(|sender| sender.send(name));
+}
 
 pub struct JITController {
     builder_context: FunctionBuilderContext,
@@ -35,6 +53,7 @@ impl Default for JITController {
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
         builder.symbol("call_virtual_function", super::call_virtual_function as *const u8);
         builder.symbol("call_static_function", super::call_static_function as *const u8);
+        builder.symbol("check_and_do_garbage_collection", Runtime::check_and_do_garbage_collection as *const u8);
         builder.symbol("new_object", super::new_object as *const u8);
         builder.symbol("array8_init", super::core::array8_init as *const u8);
         builder.symbol("array8_set", super::core::array8_set as *const u8);
@@ -86,6 +105,27 @@ impl Default for JITController {
         builder.symbol("static_memberf32_set", super::set_static_memberf32 as *const u8);
         builder.symbol("static_memberf64_set", super::set_static_memberf64 as *const u8);
         builder.symbol("static_memberobject_set", super::set_static_memberobject as *const u8);
+        builder.symbol("store_argument_int8", BytecodeContext::store_argument_int8 as *const u8);
+        builder.symbol("store_argument_int16", BytecodeContext::store_argument_int16 as *const u8);
+        builder.symbol("store_argument_int32", BytecodeContext::store_argument_int32 as *const u8);
+        builder.symbol("store_argument_int64", BytecodeContext::store_argument_int64 as *const u8);
+        builder.symbol("store_argument_object", BytecodeContext::store_argument_object as *const u8);
+        builder.symbol("store_argument_float32", BytecodeContext::store_argument_float32 as *const u8);
+        builder.symbol("store_argument_float64", BytecodeContext::store_argument_float64 as *const u8);
+        builder.symbol("fetch_argument_int8", BytecodeContext::fetch_argument_int8 as *const u8);
+        builder.symbol("fetch_argument_int16", BytecodeContext::fetch_argument_int16 as *const u8);
+        builder.symbol("fetch_argument_int32", BytecodeContext::fetch_argument_int32 as *const u8);
+        builder.symbol("fetch_argument_int64", BytecodeContext::fetch_argument_int64 as *const u8);
+        builder.symbol("fetch_argument_object", BytecodeContext::fetch_argument_object as *const u8);
+        builder.symbol("fetch_argument_float32", BytecodeContext::fetch_argument_float32 as *const u8);
+        builder.symbol("fetch_argument_float64", BytecodeContext::fetch_argument_float64 as *const u8);
+        builder.symbol("fetch_return_int8", BytecodeContext::fetch_return_int8 as *const u8);
+        builder.symbol("fetch_return_int16", BytecodeContext::fetch_return_int16 as *const u8);
+        builder.symbol("fetch_return_int32", BytecodeContext::fetch_return_int32 as *const u8);
+        builder.symbol("fetch_return_int64", BytecodeContext::fetch_return_int64 as *const u8);
+        builder.symbol("fetch_return_object", BytecodeContext::fetch_return_object as *const u8);
+        builder.symbol("fetch_return_float32", BytecodeContext::fetch_return_float32 as *const u8);
+        builder.symbol("fetch_return_float64", BytecodeContext::fetch_return_float64 as *const u8);
         let mut module = JITModule::new(builder);
 
         let mut context = module.make_context();
@@ -119,6 +159,31 @@ impl Default for JITController {
 }
 
 impl JITController {
+
+    pub fn jit_thread(recv: Receiver<MethodName>) {
+        loop {
+            let result = match recv.recv() {
+                Ok(method) => method,
+                Err(_) => break,
+            };
+            //println!("doing jit");
+
+            match result {
+                MethodName::StaticMethod { class_symbol, method_name } => {
+                    Runtime::jit_static_method(class_symbol, method_name);
+                }
+                MethodName::VirtualMethod {
+                    object_class_symbol,
+                    class_symbol,
+                    source_class,
+                    method_name
+                } => {
+                    Runtime::jit_virtual_method(object_class_symbol, class_symbol, source_class, method_name);
+                }
+            }
+            //println!("done");
+        }
+    }
 
     pub fn create_signature(&self, args: &[TypeTag], return_type: &TypeTag) -> Signature {
         let mut signature = self.module.make_signature();
@@ -184,18 +249,21 @@ impl JITCompiler {
 
     pub fn compile(
         &mut self,
-        function: &mut Function,
+        function: &Function,
         module: &mut JITModule,
         name: &str,
     ) -> Result<(), String> {
 
 
         let bytecode = function.bytecode.as_ref();
-        let id = match &function.value {
-            FunctionValue::Bytecode(id) => {
-                id
+        let id = {
+            let value = &*function.value.lock().unwrap();
+            match value {
+                FunctionValue::Bytecode(id) => {
+                    *id
+                }
+                _ => unreachable!("can compile only bytecode functions"),
             }
-            _ => unreachable!("can compile only bytecode functions"),
         };
 
         trace!("[Translating]");
@@ -205,7 +273,7 @@ impl JITCompiler {
 
         //println!("[Defining]");
         module
-            .define_function(*id, &mut self.context)
+            .define_function(id, &mut self.context)
             .map_err(|e| {
                 match e {
                     ModuleError::Compilation(e) => {
@@ -239,7 +307,7 @@ impl JITCompiler {
 
         module.finalize_definitions().unwrap();
         
-        let code = module.get_finalized_function(*id) as *const ();
+        let code = module.get_finalized_function(id) as *const ();
         rowan_unwind::register(code, size as usize);
         //println!("code: {:x}", code as usize);
         let mut object_locations = HashMap::new();
@@ -253,8 +321,8 @@ impl JITCompiler {
 
         let new_function_value = FunctionValue::Compiled(code, object_locations);
 
-        function.value = new_function_value;
-        
+        *function.value.lock().unwrap() = new_function_value;
+
         Ok(())
     }
 
@@ -371,7 +439,7 @@ pub struct FunctionTranslator<'a> {
     return_type: runtime::class::TypeTag,
     builder: FunctionBuilder<'a>,
     context_var: Variable,
-    call_args: [Option<(Variable, ir::Type, bool)>; 256],
+    call_args: [Option<(ir::Type, bool)>; 256],
     variables: [Option<(Variable, ir::Type, bool)>; 256],
     current_variable: usize,
     stack: Vec<Option<(Value, ir::Type, bool)>>,
@@ -453,33 +521,43 @@ impl FunctionTranslator<'_> {
         self.blocks.push(self.builder.create_block());
     }
 
-    pub fn set_argument(&mut self, pos: u8, value: Value, ty: ir::Type, is_object: bool) {
+    pub fn set_argument(&mut self, module: &mut JITModule, pos: u8, value: Value, ty: ir::Type, is_object: bool) {
         // println!("setting argument");
-        if let Some((arg, arg_ty, arg_is_object)) = &mut self.call_args[pos as usize] {
-            if arg_ty != &ty {
-                self.current_variable += 1;
-                let new_arg = Variable::new(self.current_variable);
-                if is_object {
-                    self.builder.declare_var_needs_stack_map(new_arg);
+        if let Some((arg_ty, arg_is_object)) = &mut self.call_args[pos as usize] {
+            *arg_ty = ty;
+            *arg_is_object = is_object;
+
+            let name = match ty {
+                types::I8 => "store_argument_int8",
+                types::I16 => "store_argument_int16",
+                types::I32 => "store_argument_int32",
+                types::I64 if is_object => "store_argument_object",
+                types::I64 if !is_object => "store_argument_int64",
+                types::F32 => "store_argument_float32",
+                types::F64 => "store_argument_float64",
+                _ => unreachable!()
+            };
+
+            let store_argument = if let Some(id) = module.get_name(name) {
+                match id {
+                    FuncOrDataId::Func(id) => id,
+                    _ => unreachable!("cannot create array object from data id"),
                 }
-                self.builder.declare_var(new_arg, ty);
-                self.builder.def_var(new_arg, value);
-                *arg = new_arg;
-                *arg_ty = ty;
-                *arg_is_object = is_object;
             } else {
-                self.builder.def_var(*arg, value);
-            }
-        } else {
-            // println!("creating new call argument");
-            self.current_variable += 1;
-            let new_arg = Variable::new(self.current_variable);
-            self.builder.declare_var(new_arg, ty);
-            self.builder.def_var(new_arg, value);
-            if is_object {
-                self.builder.declare_var_needs_stack_map(new_arg);
-            }
-            self.call_args[pos as usize] = Some((new_arg, ty, is_object));
+                let mut store_argument = module.make_signature();
+                store_argument.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                store_argument.params.push(AbiParam::new(ty));
+
+                let fn_id = module.declare_function(name, Linkage::Import, &store_argument).unwrap();
+                fn_id
+            };
+
+            let store_argument = module.declare_func_in_func(store_argument, self.builder.func);
+
+            let context_value = self.builder.use_var(self.context_var);
+
+            let _ = self.builder.ins()
+                .call(store_argument, &[context_value, value]);
         }
     }
 
@@ -532,7 +610,7 @@ impl FunctionTranslator<'_> {
     }
 
     pub fn push(&mut self, value: Value, ty: ir::Type, is_object: bool) {
-        //println!("pushing");
+        //println!("\tpushing");
         self.stack.push(Some((value, ty, is_object)));
     }
 
@@ -552,26 +630,6 @@ impl FunctionTranslator<'_> {
         let bottom = self.stack.pop().flatten();
         self.stack.push(bottom);
         self.stack.push(top);
-    }
-
-    pub fn get_call_arguments_as_vec(&mut self) -> Vec<Value> {
-        // println!("getting call arguments");
-        let mut output = Vec::new();
-        let value = self.builder.use_var(self.context_var);
-        output.push(value);
-        for value in self.call_args.iter_mut() {
-            // println!("\t{:?}", value);
-            match value {
-                Some((v, _, _)) => {
-                    let value = self.builder.use_var(*v);
-                    output.push(value)
-                },
-                None => break,
-            }
-            *value = None;
-        }
-        // println!("\toutput: {:?}", output);
-        output
     }
 
     pub fn get_args_as_vec(&self) -> Vec<Value> {
@@ -679,7 +737,7 @@ impl FunctionTranslator<'_> {
                 }
                 Bytecode::StoreArgument(index) => {
                     let (value, ty, is_object) = self.pop();
-                    self.set_argument(*index, value, ty, is_object);
+                    self.set_argument(module, *index, value, ty, is_object);
                 }
                 Bytecode::AddInt => {
                     let (value_rhs, ty, _) = self.pop();
@@ -1316,17 +1374,57 @@ impl FunctionTranslator<'_> {
                         .ins()
                         .iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(method_name.to_le_bytes())));
 
-                    let method_args = self.get_call_arguments_as_vec();
-                    self.builder.declare_value_needs_stack_map(method_args[1]);
-                    let method_instructions = self.builder
+                    let context_value = self.builder.use_var(self.context_var);
+
+                    let _ = self.builder
                         .ins()
                         .call(call_virt_func_func, &[
-                            method_args[0],
-                            method_args[1],
+                            context_value,
                             class_name_value,
                             source_class_value,
                             method_name_value,
                         ]);
+
+
+                    let (sig, returns_object) = Runtime::get_virtual_method_signature(*class_name as Symbol, *method_name as Symbol);
+                    if !sig.returns.is_empty() {
+
+                        let name = match sig.returns[0].value_type {
+                            types::I8 => "fetch_return_int8",
+                            types::I16 => "fetch_return_int16",
+                            types::I32 => "fetch_return_int32",
+                            types::I64 if returns_object => "fetch_return_object",
+                            types::I64 if !returns_object => "fetch_return_int64",
+                            types::F32 => "fetch_return_float32",
+                            types::F64 => "fetch_return_float64",
+                            _ => unreachable!()
+                        };
+
+                        let fetch_return = if let Some(id) = module.get_name(name) {
+                            match id {
+                                FuncOrDataId::Func(id) => id,
+                                _ => unreachable!("cannot create array object from data id"),
+                            }
+                        } else {
+                            let mut fetch_return = module.make_signature();
+                            fetch_return.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                            fetch_return.returns.push(sig.returns[0]);
+
+                            let fn_id = module.declare_function(name, Linkage::Import, &fetch_return).unwrap();
+                            fn_id
+                        };
+
+                        let fetch_return = module.declare_func_in_func(fetch_return, self.builder.func);
+
+                        let context_value = self.builder.use_var(self.context_var);
+
+                        let results = self.builder.ins()
+                            .call(fetch_return, &[context_value]);
+
+                        let value = self.builder.inst_results(results)[0];
+                        self.push(value , sig.returns[0].value_type, returns_object)
+                    }
+
                     //let method_value = self.builder.inst_results(method_instructions)[0];
                     //self.create_bail_block(module, Some(types::I64), &[BlockArg::Value(method_value)]);
                 }
@@ -1350,14 +1448,54 @@ impl FunctionTranslator<'_> {
                         .ins()
                         .iconst(cranelift::codegen::ir::types::I64, i64::from(i64::from_le_bytes(method_name.to_le_bytes())));
 
-                    let method_args = self.get_call_arguments_as_vec();
-                    let method_instructions = self.builder
+
+                    let context_value = self.builder.use_var(self.context_var);
+                    let _ = self.builder
                         .ins()
                         .call(call_static_func_func, &[
-                            method_args[0],
+                            context_value,
                             class_name_value,
                             method_name_value,
                         ]);
+
+                    let (sig, returns_object) = Runtime::get_static_method_signature(*class_name as Symbol, *method_name as Symbol);
+                    if !sig.returns.is_empty() {
+
+                        let name = match sig.returns[0].value_type {
+                            types::I8 => "fetch_return_int8",
+                            types::I16 => "fetch_return_int16",
+                            types::I32 => "fetch_return_int32",
+                            types::I64 if returns_object => "fetch_return_object",
+                            types::I64 if !returns_object => "fetch_return_int64",
+                            types::F32 => "fetch_return_float32",
+                            types::F64 => "fetch_return_float64",
+                            _ => unreachable!()
+                        };
+
+                        let fetch_return = if let Some(id) = module.get_name(name) {
+                            match id {
+                                FuncOrDataId::Func(id) => id,
+                                _ => unreachable!("cannot create array object from data id"),
+                            }
+                        } else {
+                            let mut fetch_return = module.make_signature();
+                            fetch_return.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                            fetch_return.returns.push(sig.returns[0]);
+
+                            let fn_id = module.declare_function(name, Linkage::Import, &fetch_return).unwrap();
+                            fn_id
+                        };
+
+                        let fetch_return = module.declare_func_in_func(fetch_return, self.builder.func);
+
+                        let context_value = self.builder.use_var(self.context_var);
+
+                        let results = self.builder.ins()
+                            .call(fetch_return, &[context_value]);
+
+                        let value = self.builder.inst_results(results)[0];
+                        self.push(value , sig.returns[0].value_type, returns_object)
+                    }
                     //let method_value = self.builder.inst_results(method_instructions)[0];
                     //self.create_bail_block(module, Some(types::I64), &[BlockArg::Value(method_value)]);
                 }
@@ -1544,6 +1682,27 @@ impl FunctionTranslator<'_> {
                     self.restore_stack(*index as usize, &params);
                     self.builder.switch_to_block(block);
                     self.current_block = *index as usize;
+
+                    let check_gc = if let Some(id) = module.get_name("check_and_do_garbage_collection") {
+                        match id {
+                            FuncOrDataId::Func(id) => id,
+                            _ => unreachable!("cannot create array object from data id"),
+                        }
+                    } else {
+                        let mut check_gc = module.make_signature();
+                        check_gc.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+
+                        let fn_id = module.declare_function("check_and_do_garbage_collection", Linkage::Import, &check_gc).unwrap();
+                        fn_id
+                    };
+
+                    let check_gc = module.declare_func_in_func(check_gc, self.builder.func);
+
+                    let context_value = self.builder.use_var(self.context_var);
+
+                    let _ = self.builder.ins()
+                        .call(check_gc, &[context_value]);
+
                 }
                 Bytecode::Goto(offset) => {
                     let block = (self.current_block as i64 + *offset) as usize;

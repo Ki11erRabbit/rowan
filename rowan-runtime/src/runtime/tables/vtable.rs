@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ptr::NonNull;
-
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, RwLock};
 use cranelift::prelude::Signature;
 use cranelift_module::FuncId;
 use fxhash::FxHashMap;
 use rowan_shared::bytecode::linked::Bytecode;
-
+use crate::context::MethodName;
 use crate::runtime::{class::TypeTag, Index, Symbol, VTableIndex};
+use crate::runtime::jit::request_to_jit_method;
 
 pub struct FunctionDetails {
     pub bytecode: &'static [Bytecode],
@@ -52,15 +54,16 @@ impl VTable {
 }
 
 
-#[derive(Clone)]
+
 pub struct Function {
     pub name: Symbol,
     pub bytecode: Box<[Bytecode]>,
-    pub value: FunctionValue,
+    pub value: Mutex<FunctionValue>,
     pub arguments: Box<[TypeTag]>,
     pub return_type: TypeTag,
     pub signature: Signature,
     pub block_positions: Box<FxHashMap<usize, usize>>,
+    pub times_called: AtomicU64,
 }
 
 impl Function {
@@ -76,15 +79,25 @@ impl Function {
         Function {
             name,
             bytecode,
-            value,
+            value: Mutex::new(value),
             arguments,
             return_type,
             signature,
             block_positions,
+            times_called: AtomicU64::new(0),
         }
     }
 
-    pub fn create_details(&self) -> FunctionDetails {
+    pub fn create_details(&self, name: MethodName) -> FunctionDetails {
+        let times_called = self.times_called.fetch_add(1, Ordering::Relaxed) + 1;
+
+        // Tell the JIT Thread to compile this Function after 1000 accesses
+        // TODO: make this configurable
+        if times_called > 1000 && !self.value.lock().unwrap().is_compiled() {
+            //println!("Requesting JIT");
+            request_to_jit_method((name))
+        }
+
         let bytecode_ptr = self.bytecode.as_ptr();
         let bytecode_len = self.bytecode.len();
         let bytecode_ref = unsafe {
@@ -96,15 +109,15 @@ impl Function {
             std::slice::from_raw_parts(arguments_ptr, arguments_len)
         };
 
-        let fn_ptr = match self.value {
+        let fn_ptr = match &*self.value.lock().unwrap() {
             FunctionValue::Builtin(ptr) => {
-                NonNull::new(ptr as *mut ())
+                NonNull::new(*ptr as *mut ())
             }
             FunctionValue::Compiled(ptr, _) => {
-                NonNull::new(ptr as *mut ())
+                NonNull::new(*ptr as *mut ())
             }
             FunctionValue::Native(ptr) => {
-                NonNull::new(ptr as *mut ())
+                NonNull::new(*ptr as *mut ())
             }
             _ => None,
         };
@@ -146,6 +159,15 @@ impl FunctionValue {
     pub fn is_blank(&self) -> bool {
         match self {
             FunctionValue::Blank => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_compiled(&self) -> bool {
+        match self {
+            FunctionValue::Compiled(_, _) => true,
+            FunctionValue::Native(..) => true,
+            FunctionValue::Builtin(..) => true,
             _ => false,
         }
     }

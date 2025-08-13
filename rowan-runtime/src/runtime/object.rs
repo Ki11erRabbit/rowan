@@ -87,7 +87,7 @@ impl Object {
     
     pub unsafe fn set<T: Sized>(&mut self, offset: usize, value: T) {
         let mut pointer = self as *mut Self;
-        pointer = pointer.add(1);
+        pointer = unsafe { pointer.add(1) };
         let pointer = pointer.cast::<u8>();
         unsafe {
 

@@ -755,7 +755,12 @@ impl Runtime {
         let vtable = &vtables_table[vtable_index];
         let function = vtable.get_function(method_name).expect("unable to find function");
 
-        function.create_details()
+        function.create_details(MethodName::VirtualMethod {
+            object_class_symbol,
+            class_symbol,
+            source_class,
+            method_name,
+        })
     }
 
     pub fn get_static_method_details(
@@ -785,7 +790,132 @@ impl Runtime {
         let vtable = &vtables_table[vtable_index];
         let function = vtable.get_function(method_name).expect("unable to get function");
 
-        function.create_details()
+        function.create_details(MethodName::StaticMethod {
+            class_symbol,
+            method_name,
+        })
+    }
+
+    pub fn jit_virtual_method(
+        object_class_symbol: Symbol,
+        class_symbol: Symbol,
+        source_class: Option<Symbol>,
+        method_name: Symbol,
+    ) {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let SymbolEntry::ClassRef(object_class_index) = symbol_table[object_class_symbol] else {
+            panic!("class wasn't a class");
+        };
+        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
+            panic!("method wasn't a string");
+        };
+
+        let Ok(string_table) = STRING_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let name = &string_table[method_name_index];
+
+        let class = &class_table[object_class_index];
+        let vtable_index = if source_class.is_some() {
+            let key = (class_symbol, None);
+            if let Some(index) = class.get_vtable(&key) {
+                index
+            } else if let Some(index) = class.get_vtable(&(class_symbol, source_class)) {
+                index
+            } else {
+                panic!("unable to find vtable");
+            }
+        } else {
+            if let Some(index) = class.get_vtable(&(class_symbol, source_class)) {
+                index
+            } else {
+                panic!("unable to find vtable");
+            }
+        };
+
+        let Ok(vtables_table) = VTABLES.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let vtable = &vtables_table[vtable_index];
+        let function = vtable.get_function(method_name).unwrap();
+
+        let value = function.value.lock().unwrap();
+        match &*value {
+            FunctionValue::Bytecode(_) => {
+                drop(value);
+                let mut compiler = Runtime::create_jit_compiler();
+                let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
+                    panic!("Lock poisoned");
+                };
+
+                compiler.compile(function, &mut jit_controller.module, name).unwrap();
+            }
+            _ => {}
+        };
+    }
+
+    pub fn jit_static_method(
+        class_symbol: Symbol,
+        method_name: Symbol,
+    ) {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            unreachable!("Lock poisoned");
+        };
+
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            unreachable!("Lock poisoned");
+        };
+
+        let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol] else {
+            panic!("class wasn't a class");
+        };
+        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
+            panic!("method wasn't a string");
+        };
+
+        let Ok(string_table) = STRING_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let name = &string_table[method_name_index];
+
+
+        let class = &class_table[class_index];
+
+        let vtable_index = class.static_methods;
+        let Ok(vtables_table) = VTABLES.read() else {
+            unreachable!("Lock poisoned");
+        };
+        drop(class_table);
+
+        let vtable = &vtables_table[vtable_index];
+        let function = vtable.get_function(method_name).unwrap();
+
+        let value = function.value.lock().unwrap();
+        match &*value {
+            FunctionValue::Bytecode(_) => {
+                drop(value);
+                let mut compiler = Runtime::create_jit_compiler();
+                let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
+                    unreachable!("Lock poisoned");
+                };
+
+                match compiler.compile(function, &mut jit_controller.module, name) {
+                    Ok(_) => {}
+                    Err(e) => panic!("Compilation error:\n{}", e)
+                }
+            }
+            _ => {}
+        };
     }
 
     /*pub fn get_method(
@@ -863,7 +993,7 @@ impl Runtime {
                 let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
                     panic!("Lock poisoned");
                 };
-                
+
                 compiler.compile(&function, &mut jit_controller.module, name).unwrap();
 
                 match &*value {
@@ -960,7 +1090,7 @@ impl Runtime {
         JITCompiler::new(context)
     }
 
-    pub fn get_method_signature(class_symbol: Symbol, method_name: Symbol) -> (Signature, bool) {
+    pub fn get_virtual_method_signature(class_symbol: Symbol, method_name: Symbol) -> (Signature, bool) {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");
         };
@@ -1124,7 +1254,7 @@ impl Runtime {
                     let vtable_index = class.static_methods;
                     let vtable = &vtables_table[vtable_index];
                     let function = vtable.get_function(*method_name).expect("unable to get function");
-                    let value = &function.value;
+                    let value = function.value.lock().unwrap();
                     let FunctionValue::Compiled(_, map) = &*value else {
                         unreachable!("we are trying to access the stack of a non-compiled function");
                     };
@@ -1173,7 +1303,7 @@ impl Runtime {
                     let vtable = &vtables_table[vtable_index];
                     let function = vtable.get_function(*method_name).expect("unable to find function");
 
-                    let value = &function.value;
+                    let value = &*function.value.lock().unwrap();
                     let FunctionValue::Compiled(_, map) = value else {
                         let Ok(string_table) = STRING_TABLE.read() else {
                             unreachable!("we are trying to access the stack of a non-compiled function");
@@ -1227,6 +1357,11 @@ impl Runtime {
             object_table.free(reference, &symbol_table, &class_table);
         }
     }
+
+    pub fn check_and_do_garbage_collection(ctx: &mut BytecodeContext) {
+        ctx.check_and_do_garbage_collection();
+    }
+
 
     pub fn get_virtual_method_name<S: AsRef<str>>(class: &str, source_class: Option<S>, method_name: &str) -> Option<(Symbol, Option<Symbol>, Symbol)> {
         let Ok(mut class_map) = CLASS_MAPPER.write() else {

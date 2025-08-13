@@ -15,7 +15,7 @@ pub struct WrappedReference(pub Reference);
 unsafe impl Send for WrappedReference {}
 unsafe impl Sync for WrappedReference {}
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum MethodName {
     StaticMethod {
         class_symbol: Symbol,

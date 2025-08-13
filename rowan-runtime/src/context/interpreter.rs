@@ -259,6 +259,14 @@ impl BytecodeContext {
         self.call_args[index as usize] = value;
     }
 
+    pub fn store_argument_raw<V: Into<StackValue>>(&mut self, index: u8, value: V) {
+        self.store_argument(index, value.into());
+    }
+
+    pub fn fetch_argument(&mut self, index: u8) -> StackValue {
+        self.call_args[index as usize]
+    }
+
     pub fn get_args(&self) -> &[StackValue] {
         &self.call_args
     }
@@ -363,6 +371,7 @@ impl BytecodeContext {
         method_name: MethodName,
         return_slot: Option<&mut StackValue>
     ) -> CallContinueState {
+        println!("{:?}", details.fn_ptr);
         for pair in self.call_args.iter().zip(details.arguments.iter()) {
             match pair {
                 (StackValue::Int8(_), runtime::class::TypeTag::U8) |
@@ -386,6 +395,7 @@ impl BytecodeContext {
 
         match details.fn_ptr {
             Some(fn_ptr) => {
+                println!("calling function pointer");
                 let var_len = self.current_frame().vars_len();
                 let mut variables = self.current_frame()
                     .variables[..var_len]
@@ -401,9 +411,10 @@ impl BytecodeContext {
                 self.pop();
                 if let Some(return_slot) = return_slot {
                     *return_slot = return_value;
-                }
-                if !return_value.is_blank() {
-                    self.push_value(return_value);
+                } else {
+                    if !return_value.is_blank() {
+                        self.push_value(return_value);
+                    }
                 }
                 //self.handle_exception()
                 CallContinueState::Return
@@ -1787,7 +1798,6 @@ impl BytecodeContext {
                 }
             }
             Bytecode::CreateArray(tag) => {
-                self.check_and_do_garbage_collection();
                 let size = self.pop_value();
                 let size = match size {
                     StackValue::Int64(size) => size,
@@ -1967,7 +1977,6 @@ impl BytecodeContext {
                 }
             }
             Bytecode::NewObject(sym) => {
-                self.check_and_do_garbage_collection();
                 let object = Runtime::new_object(*sym as usize);
                 self.push_value(StackValue::from(object));
             }
@@ -2272,26 +2281,128 @@ impl BytecodeContext {
     }
 
     pub extern "C" fn store_argument_int8(&mut self, index: u8, value: u8) {
-        self.store_argument(index, value.into());
+        self.store_argument_raw(index, value);
     }
 
     pub extern "C" fn store_argument_int16(&mut self, index: u8, value: u16) {
-        self.store_argument(index, value.into());
+        self.store_argument_raw(index, value);
     }
 
     pub extern "C" fn store_argument_int32(&mut self, index: u8, value: u32) {
-        self.store_argument(index, value.into());
+        self.store_argument_raw(index, value);
     }
 
     pub extern "C" fn store_argument_int64(&mut self, index: u8, value: u64) {
-        self.store_argument(index, value.into());
+        self.store_argument_raw(index, value);
     }
 
     pub extern "C" fn store_argument_float32(&mut self, index: u8, value: f32) {
-        self.store_argument(index, value.into());
+        self.store_argument_raw(index, value);
     }
 
     pub extern "C" fn store_argument_float64(&mut self, index: u8, value: f64) {
-        self.store_argument(index, value.into());
+        self.store_argument_raw(index, value);
+    }
+
+    pub extern "C" fn store_argument_object(&mut self, index: u8, value: Reference) {
+        self.store_argument_raw(index, value);
+    }
+
+    pub extern "C" fn fetch_argument_int8(&mut self, index: u8) -> u8 {
+        match self.fetch_argument(index) {
+            StackValue::Int8(value) => value,
+            _ => panic!("invalid type")
+        }
+    }
+
+    pub extern "C" fn fetch_argument_int16(&mut self, index: u8) -> u16 {
+        match self.fetch_argument(index) {
+            StackValue::Int16(value) => value,
+            _ => panic!("invalid type")
+        }
+    }
+
+    pub extern "C" fn fetch_argument_int32(&mut self, index: u8) -> u32 {
+        match self.fetch_argument(index) {
+            StackValue::Int32(value) => value,
+            _ => panic!("invalid type")
+        }
+    }
+
+    pub extern "C" fn fetch_argument_int64(&mut self, index: u8) -> u64 {
+        match self.fetch_argument(index) {
+            StackValue::Int64(value) => value,
+            _ => panic!("invalid type")
+        }
+    }
+
+    pub extern "C" fn fetch_argument_object(&mut self, index: u8) -> Reference {
+        match self.fetch_argument(index) {
+            StackValue::Reference(value) => value,
+            _ => panic!("invalid type")
+        }
+    }
+
+    pub extern "C" fn fetch_argument_float32(&mut self, index: u8) -> f32 {
+        match self.fetch_argument(index) {
+            StackValue::Float32(value) => value,
+            _ => panic!("invalid type")
+        }
+    }
+
+    pub extern "C" fn fetch_argument_float64(&mut self, index: u8) -> f64 {
+        match self.fetch_argument(index) {
+            StackValue::Float64(value) => value,
+            _ => panic!("invalid type")
+        }
+    }
+
+    pub extern "C" fn fetch_return_int8(&mut self) -> u8 {
+        match self.pop_value() {
+            StackValue::Int8(value) => value,
+            _ => panic!("invalid type")
+        }
+    }
+
+    pub extern "C" fn fetch_return_int16(&mut self) -> u16 {
+        match self.pop_value() {
+            StackValue::Int16(value) => value,
+            _ => panic!("invalid type")
+        }
+    }
+
+    pub extern "C" fn fetch_return_int32(&mut self) -> u32 {
+        match self.pop_value() {
+            StackValue::Int32(value) => value,
+            _ => panic!("invalid type")
+        }
+    }
+
+    pub extern "C" fn fetch_return_int64(&mut self) -> u64 {
+        match self.pop_value() {
+            StackValue::Int64(value) => value,
+            _ => panic!("invalid type")
+        }
+    }
+
+    pub extern "C" fn fetch_return_object(&mut self) -> Reference {
+        match self.pop_value() {
+            StackValue::Reference(value) => value,
+            _ => panic!("invalid type")
+        }
+    }
+
+    pub extern "C" fn fetch_return_float32(&mut self) -> f32 {
+        match self.pop_value() {
+            StackValue::Float32(value) => value,
+            _ => panic!("invalid type")
+        }
+    }
+
+    pub extern "C" fn fetch_return_float64(&mut self) -> f64 {
+        match self.pop_value() {
+            StackValue::Float64(value) => value,
+            _ => panic!("invalid type")
+        }
     }
 }

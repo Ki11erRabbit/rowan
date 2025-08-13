@@ -6,6 +6,7 @@ use crate::context::BytecodeContext;
 use crate::runtime::Reference;
 use crate::runtime::core::exception_print_stack_trace;
 use crate::runtime::garbage_collection::{GarbageCollection, GC_SENDER};
+use crate::runtime::jit::{set_jit_sender, JITController};
 
 mod runtime;
 mod fake_lock;
@@ -69,6 +70,17 @@ pub extern "C" fn rowan_main() {
     //println!("String Map: {string_map:#?}");
 
     Runtime::finish_linking_classes(pre_class_table);
+
+    let (jit_sender, jit_receiver) = std::sync::mpsc::channel();
+
+    set_jit_sender(jit_sender);
+
+    std::thread::Builder::new().name("JIT".to_owned())
+        .spawn(move || {
+            JITController::jit_thread(jit_receiver);
+        }).expect("Thread 'new' panicked at 'Garbage Collection'");
+
+
     //println!("String Map: {string_map:#?}");
     let mut gc = GarbageCollection::new();
     std::thread::Builder::new().name("Garbage Collection".to_owned())
