@@ -526,39 +526,44 @@ impl FunctionTranslator<'_> {
         if let Some((arg_ty, arg_is_object)) = &mut self.call_args[pos as usize] {
             *arg_ty = ty;
             *arg_is_object = is_object;
-
-            let name = match ty {
-                types::I8 => "store_argument_int8",
-                types::I16 => "store_argument_int16",
-                types::I32 => "store_argument_int32",
-                types::I64 if is_object => "store_argument_object",
-                types::I64 if !is_object => "store_argument_int64",
-                types::F32 => "store_argument_float32",
-                types::F64 => "store_argument_float64",
-                _ => unreachable!()
-            };
-
-            let store_argument = if let Some(id) = module.get_name(name) {
-                match id {
-                    FuncOrDataId::Func(id) => id,
-                    _ => unreachable!("cannot create array object from data id"),
-                }
-            } else {
-                let mut store_argument = module.make_signature();
-                store_argument.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
-                store_argument.params.push(AbiParam::new(ty));
-
-                let fn_id = module.declare_function(name, Linkage::Import, &store_argument).unwrap();
-                fn_id
-            };
-
-            let store_argument = module.declare_func_in_func(store_argument, self.builder.func);
-
-            let context_value = self.builder.use_var(self.context_var);
-
-            let _ = self.builder.ins()
-                .call(store_argument, &[context_value, value]);
+        } else {
+            self.call_args[pos as usize] = Some((ty, is_object));
         }
+
+        let name = match ty {
+            types::I8 => "store_argument_int8",
+            types::I16 => "store_argument_int16",
+            types::I32 => "store_argument_int32",
+            types::I64 if is_object => "store_argument_object",
+            types::I64 if !is_object => "store_argument_int64",
+            types::F32 => "store_argument_float32",
+            types::F64 => "store_argument_float64",
+            _ => unreachable!()
+        };
+
+        let store_argument = if let Some(id) = module.get_name(name) {
+            match id {
+                FuncOrDataId::Func(id) => id,
+                _ => unreachable!("cannot create array object from data id"),
+            }
+        } else {
+            let mut store_argument = module.make_signature();
+            store_argument.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+            store_argument.params.push(AbiParam::new(cranelift::codegen::ir::types::I8));
+            store_argument.params.push(AbiParam::new(ty));
+
+            let fn_id = module.declare_function(name, Linkage::Import, &store_argument).unwrap();
+            fn_id
+        };
+
+        let store_argument = module.declare_func_in_func(store_argument, self.builder.func);
+
+        let context_value = self.builder.use_var(self.context_var);
+
+        let index_value = self.builder.ins().iconst(types::I8, i64::from(pos));
+
+        let _ = self.builder.ins()
+            .call(store_argument, &[context_value, index_value, value]);
     }
 
     pub fn set_var(&mut self, pos: u8, value: Value, ty: ir::Type, is_object: bool) {

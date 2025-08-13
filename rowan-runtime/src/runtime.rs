@@ -1421,7 +1421,6 @@ pub extern "C" fn call_virtual_function(context: &mut BytecodeContext, class_sym
     };
     let method_name = method_name as Symbol;
     context.invoke_virtual_extern(class_symbol, source_class, method_name, None);
-    todo!("split into multiple functions for each possible return size")
 }
 
 pub extern "C" fn new_object(class_symbol: u64) -> u64 {
@@ -1434,7 +1433,6 @@ pub extern "C" fn call_static_function(context: &mut BytecodeContext, class_symb
     let class_symbol = class_symbol as Symbol;
     let method_name = method_name as Symbol;
     context.invoke_static_extern(class_symbol, method_name, None);
-    todo!("split into multiple functions for each possible return size")
 }
 
 pub extern "C" fn get_static_member8(context: &mut BytecodeContext, class_symbol: u64, member_index: u64) -> u8 {

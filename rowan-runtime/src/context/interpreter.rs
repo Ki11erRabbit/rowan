@@ -371,7 +371,6 @@ impl BytecodeContext {
         method_name: MethodName,
         return_slot: Option<&mut StackValue>
     ) -> CallContinueState {
-        println!("{:?}", details.fn_ptr);
         for pair in self.call_args.iter().zip(details.arguments.iter()) {
             match pair {
                 (StackValue::Int8(_), runtime::class::TypeTag::U8) |
@@ -395,7 +394,7 @@ impl BytecodeContext {
 
         match details.fn_ptr {
             Some(fn_ptr) => {
-                println!("calling function pointer");
+                //println!("calling function pointer");
                 let var_len = self.current_frame().vars_len();
                 let mut variables = self.current_frame()
                     .variables[..var_len]
