@@ -50,7 +50,7 @@ const CALLING_CONVENTION: ffi_abi = libffi::raw::ffi_abi_FFI_UNIX64;
 const CALLING_CONVENTION: ffi_abi = libffi::raw::ffi_abi_FFI_WIN64;
 
 pub fn call_function_pointer(
-    context: &mut BytecodeContext,
+    mut context: &mut BytecodeContext,
     call_args: &mut [StackValue],
     fn_pointer: *const (),
     return_type: TypeTag
@@ -63,50 +63,50 @@ pub fn call_function_pointer(
     unsafe {
         types.push(&raw mut ffi_type_pointer);
     }
-    values.push(context as *mut _ as *mut c_void);
+    values.push(&mut context as *mut _ as *mut c_void);
     for call_arg in call_args {
         match call_arg {
-            StackValue::Int8(value) => {
+            &mut StackValue::Int8(mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_uint8 as *mut _);
                 }
-                values.push(value as *mut _ as *mut c_void);
+                values.push(&mut value as *mut _ as *mut c_void);
             }
-            StackValue::Int16(value) => {
+            &mut StackValue::Int16(mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_uint16 as *mut _);
                 }
-                values.push(value as *mut _ as *mut c_void);
+                values.push(&mut value as *mut _ as *mut c_void);
             }
-            StackValue::Int32(value) => {
+            &mut StackValue::Int32(mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_uint32 as *mut _);
                 }
-                values.push(value as *mut _ as *mut c_void);
+                values.push(&mut value as *mut _ as *mut c_void);
             }
-            StackValue::Int64(value) => {
+            &mut StackValue::Int64(mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_uint64 as *mut _);
                 }
-                values.push(value as *mut _ as *mut c_void);
+                values.push(&mut value as *mut _ as *mut c_void);
             }
-            StackValue::Reference(value) => {
+            &mut StackValue::Reference(mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_pointer as *mut _);
                 }
-                values.push(value as *mut _ as *mut c_void);
+                values.push(&mut value as *mut _ as *mut c_void);
             }
-            StackValue::Float32(value) => {
+            &mut StackValue::Float32(mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_float as *mut _);
                 }
-                values.push(value as *mut _ as *mut c_void);
+                values.push(&mut value as *mut _ as *mut c_void);
             }
-            StackValue::Float64(value) => {
+            &mut StackValue::Float64(mut value) => {
                 unsafe {
                     types.push(&raw mut ffi_type_double as *mut _);
                 }
-                values.push(value as *mut _ as *mut c_void);
+                values.push(&mut value as *mut _ as *mut c_void);
             }
             _ => unreachable!("argument conversion")
         }
