@@ -165,6 +165,8 @@ impl ClassFile {
         ]);
         index += std::mem::size_of::<StringIndex>();
 
+        index += 4; // 4 byte padding to align pointer
+
         let vtables_size = u64::from_le_bytes([
             binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
             binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
@@ -391,6 +393,8 @@ impl ClassFile {
         binary.push(self.patch_version);
         binary.extend_from_slice(&self.name.to_le_bytes());
         binary.extend_from_slice(&self.parent.to_le_bytes());
+
+        binary.extend_from_slice(&[0u8; 4]); // Padding of 4 Bytes
 
         binary.extend_from_slice(&self.vtables.len().to_le_bytes());
         for vtable in &self.vtables {

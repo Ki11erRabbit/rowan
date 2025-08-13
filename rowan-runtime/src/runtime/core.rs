@@ -245,7 +245,7 @@ macro_rules! array_create_class {
 macro_rules! array_create_init {
     ($variant:expr, $fn_name:ident, $ty:ty) => {
         paste! {
-            pub extern "C" fn $fn_name(context: &mut BytecodeContext, this: Reference, length: u64) {
+            pub extern "C" fn $fn_name(_: &mut BytecodeContext, this: Reference, length: u64) {
                 use std::alloc::*;
                 let object = this;
                 let object = object as *mut Array;

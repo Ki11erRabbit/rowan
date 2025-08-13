@@ -166,7 +166,7 @@ pub fn link_class_files(
         }
     }
 
-    let mut class_parts: Vec<(&str, PathBuf, Symbol, Symbol, Symbol, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, MethodLocation)>, &ClassFile, Vec<(Symbol, Option<Symbol>)>, Vec<ClassMember>, Vec<u8>)> = Vec::new();
+    let mut class_parts: Vec<(&str, PathBuf, Symbol, Symbol, Symbol, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, MethodLocation)>, &ClassFile, Vec<Symbol>, Vec<ClassMember>, Vec<u8>)> = Vec::new();
     for (class, mut location) in classes.iter().zip(class_locations.into_iter()) {
         let ClassFile { name, parent, members, static_methods, vtables, static_members, static_init, .. } = &class;
         let class_name_str = class.index_string_table(*name);
@@ -283,28 +283,8 @@ pub fn link_class_files(
                 class_map.insert(String::from(class_name_str), symbol);
                 symbol
             };
-            let (_sub_class_name_str, sub_class_name_symbol) = if *sub_class_name != 0 {
-                let sub_class_name_str = class.index_string_table(*sub_class_name);
-                let symbol = if let Some(symbol) = class_map.get(sub_class_name_str) {
-                    Some(*symbol)
-                } else {
-                    let string_table_index = string_table.add_string(sub_class_name_str);
-                    let symbol = symbol_table.add_string(string_table_index);
-                    string_map.insert(String::from(sub_class_name_str), symbol);
 
-                    let class_table_index = class_table.len();
-                    class_table.push(TableEntry::Hole);
-                    let symbol = symbol_table.add_class(class_table_index);
-
-                    class_map.insert(String::from(sub_class_name_str), symbol);
-                    Some(symbol)
-                };
-                (Some(sub_class_name_str), symbol)
-            } else {
-                (None, None)
-            };
-
-            vtables_to_link.push((class_name_symbol, sub_class_name_symbol));
+            vtables_to_link.push(class_name_symbol);
         }
 
         let static_members = static_members.iter()
@@ -353,46 +333,9 @@ pub fn link_class_files(
             // Source class is one of the parents of the derived class
             // This is used to disambiguate
             // So when this is some, we get the vtable from the class with the same symbol
-            for (class_name, source_class) in vtables.iter() {
+            for class_name in vtables.iter() {
 
-                if let Some(source_class) = source_class {
-                    // In this block, this means that we likely have a diamond inheritance situation
-                    // This means that we have 2 copies of the same vtable
-                    // We use the class name to get the base vtable
-                    // We then use the source class to look up the same vtable as class name but the implementation by source class
-                    let derived_functions = vtables_map.get(class_name).unwrap().get(source_class).unwrap();
-                    let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
-
-                    for (_,_,_,_,value, _) in base_functions {
-                        if value.is_blank() {
-                            // We bail if any of base has not yet been linked
-                            class_parts_to_try_again.push((class_name_str, location, class_symbol, class_name_symbol, parent, members, static_methods, class, vtables, static_members, static_init));
-                            continue 'outer;
-                        }
-                    }
-
-                    let mut functions_mapper = HashMap::new();
-                    let functions = base_functions.into_iter()
-                        .zip(derived_functions.into_iter())
-                        .enumerate()
-                        .map(|(i, (base, derived))| {
-                            let (_base_name_symbol,  base_signature, _base_bytecode, _, _base_value, sig) = base;
-                            let (derived_name_symbol,  _derived_signature, _derived_bytecode, _, derived_value, _) = derived;
-                            functions_mapper.insert(*derived_name_symbol, i);
-                            let return_type = convert_type(&base_signature[0]);
-                            let arguments = base_signature[1..]
-                                .iter()
-                                .map(convert_type)
-                                .collect::<Vec<_>>();
-
-                            // TODO: investigate if this is correct
-                            let bytecode = Box::new([]) as Box<[rowan_shared::bytecode::linked::Bytecode]>;
-
-                            Function::new(*derived_name_symbol, bytecode, derived_value.clone(), arguments.into(), return_type, sig.clone(), Box::new(FxHashMap::default()))
-                        })
-                        .collect::<Vec<_>>();
-                    vtables_to_add.push((*class_name, Some(*source_class), VTable::new(functions, functions_mapper)));
-                } else if *class_name == class_symbol {
+                if *class_name == class_symbol {
                     // Here we load in the current class' vtable
                     // Nothing fancy happens here other than that we link the bytecode
                     let functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
@@ -470,7 +413,7 @@ pub fn link_class_files(
                         })
                         .collect::<Vec<_>>();
 
-                    vtables_to_add.push((*class_name, None, VTable::new(functions, functions_mapper)));
+                    vtables_to_add.push((*class_name, VTable::new(functions, functions_mapper)));
                 } else if *class_name != class_symbol {
                     // Here we do something similar to if source class is some
                     // we get the base vtable by going class name -> class name
@@ -563,13 +506,13 @@ pub fn link_class_files(
                         })
                         .collect::<Vec<_>>();
 
-                    vtables_to_add.push((*class_name, None, VTable::new(functions, functions_mapper)));
+                    vtables_to_add.push((*class_name, VTable::new(functions, functions_mapper)));
                 }
             }
             let mut class_vtable_mapper = HashMap::new();
 
             // Loop through vtables to add and put them in the vtable_table
-            for (class_symbol, source_class, vtable) in vtables_to_add {
+            for (class_symbol, vtable) in vtables_to_add {
                 let index = vtables_table.add_vtable(vtable);
                 // store the position in class_vtable_mapper
                 class_vtable_mapper.insert(class_symbol, index);
@@ -1156,7 +1099,7 @@ pub fn link_vm_classes(
     class_map: &mut HashMap<String, Symbol>
 ) {
 
-    let mut class_parts: Vec<(Symbol, Symbol, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, FunctionValue, Signature)>, Vec<(Symbol, Option<Symbol>)>, Vec<ClassMember>)> = Vec::new();
+    let mut class_parts: Vec<(Symbol, Symbol, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, FunctionValue, Signature)>, Vec<Symbol>, Vec<ClassMember>)> = Vec::new();
     for class in classes {
         let VMClass {
             name,
@@ -1260,31 +1203,7 @@ pub fn link_vm_classes(
                     symbol
                 }
             };
-
-            let source_class_name = if let Some(source_class) = source_class {
-                if let Some(symbol) = class_map.get(source_class) {
-                    Some(*symbol)
-                } else {
-                    let index = string_table.add_static_string(source_class);
-                    let symbol = symbol_table.add_string(index);
-
-                    string_map.insert(String::from(source_class), symbol);
-
-                    if let Some(symbol) = class_map.get(source_class) {
-                        Some(*symbol)
-                    } else {
-                        let index = class_table.len();
-                        class_table.push(TableEntry::Hole);
-                        let symbol = symbol_table.add_class(index);
-                        class_map.insert(String::from(source_class), symbol);
-
-                        Some(symbol)
-                    }
-                }
-            } else {
-                None
-            };
-
+            
             let mut current_vtable = Vec::new();
             for method in methods {
                 let VMMethod { name, fn_pointer, signature } = method;
@@ -1314,7 +1233,7 @@ pub fn link_vm_classes(
                     map
                 });
 
-            vtables_to_link.push((vtable_class_name_symbol, source_class_name));
+            vtables_to_link.push(vtable_class_name_symbol);
         }
 
         let static_members = static_members.into_iter()
@@ -1356,34 +1275,8 @@ pub fn link_vm_classes(
             // Source class is one of the parents of the derived class
             // This is used to disambiguate
             // So when this is some, we get the vtable from the class with the same symbol
-            for (class_name, source_class) in vtables.iter() {
-                if let Some(source_class) = source_class {
-                    // In this block, this means that we likely have a diamond inheritance situation
-                    // This means that we have 2 copies of the same vtable
-                    // We use the class name to get the base vtable
-                    // We then use the source class to lookup the same vtable as class name but the implementation by source class
-                    let derived_functions = vtables_map.get(class_name).unwrap().get(source_class).unwrap();
-                    let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
-
-                    let mut functions_mapper = HashMap::new();
-                    let functions = base_functions.into_iter()
-                        .zip(derived_functions.into_iter())
-                        .enumerate()
-                        .map(|(i, (base, _derived))| {
-                            let (_base_name_symbol,  base_signature, _base_bytecode, _, _base_value, sig) = base;
-                            let (derived_name_symbol,  _derived_signature, _derived_bytecode, _, derived_value, _) = base;
-                            functions_mapper.insert(*derived_name_symbol, i);
-                            let return_type = convert_type(&base_signature[0]);
-                            let arguments = base_signature[1..]
-                                .iter()
-                                .map(convert_type)
-                                .collect::<Vec<_>>();
-
-                            Function::new(*derived_name_symbol, Box::new([]) as Box<[rowan_shared::bytecode::linked::Bytecode]>, derived_value.clone(), arguments.into(), return_type, sig.clone(), Box::new(FxHashMap::default()))
-                        })
-                        .collect::<Vec<_>>();
-                    vtables_to_add.push((*class_name, Some(*source_class), VTable::new(functions, functions_mapper)));
-                } else if *class_name == class_symbol {
+            for class_name in vtables.iter() {
+                if *class_name == class_symbol {
                     // Here we load in the current class' vtable
                     // Nothing fancy happens here other than that we link the bytecode
                     let functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
@@ -1411,7 +1304,7 @@ pub fn link_vm_classes(
                         })
                         .collect::<Vec<_>>();
 
-                    vtables_to_add.push((*class_name, None, VTable::new(functions, functions_mapper)));
+                    vtables_to_add.push((*class_name, VTable::new(functions, functions_mapper)));
                 } else if *class_name != class_symbol {
                     // Here we do something similar to if source class is some
                     // we get the base vtable by going class name -> class name
@@ -1464,13 +1357,13 @@ pub fn link_vm_classes(
                         })
                         .collect::<Vec<_>>();
 
-                    vtables_to_add.push((*class_name, None, VTable::new(functions, functions_mapper)));
+                    vtables_to_add.push((*class_name, VTable::new(functions, functions_mapper)));
                 }
             }
             let mut class_vtable_mapper = HashMap::new();
 
             // Loop through vtables to add and put them in the vtable_table
-            for (class_symbol, source_class, vtable) in vtables_to_add {
+            for (class_symbol, vtable) in vtables_to_add {
                 let index = vtables_table.add_vtable(vtable);
                 // store the position in class_vtable_mapper
                 class_vtable_mapper.insert(class_symbol, index);

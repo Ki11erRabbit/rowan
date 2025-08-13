@@ -68,6 +68,7 @@ pub extern "C" fn rowan_main() {
     //println!("String Map: {string_map:#?}");
 
     Runtime::finish_linking_classes(pre_class_table);
+    println!("finished linking");
 
     let (jit_sender, jit_receiver) = std::sync::mpsc::channel();
 
