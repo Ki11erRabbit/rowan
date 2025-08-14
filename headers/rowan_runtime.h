@@ -22,6 +22,8 @@ typedef void* rowan_context_t;
 
 typedef void* context_t;
 
+void rowan_block_collection(object_t*);
+void rowan_allow_collection(object_t*);
 object_t* rowan_create_object(unsigned char* class_name);
 object_t* rowan_create_string(unsigned char* string_contents);
 object_t* rowan_create_empty_string();

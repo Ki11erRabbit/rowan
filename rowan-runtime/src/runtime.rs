@@ -1113,6 +1113,20 @@ impl Runtime {
     pub fn check_and_do_garbage_collection(ctx: &mut BytecodeContext) {
         ctx.check_and_do_garbage_collection();
     }
+    
+    pub fn block_collection(object: Reference) {
+        let Ok(object_table) = OBJECT_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+        object_table.block_collection(object);
+    }
+    
+    pub fn allow_collection(object: Reference) {
+        let Ok(object_table) = OBJECT_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+        object_table.allow_collection(object);
+    }
 
 
     pub fn get_virtual_method_name(class: &str, method_name: &str) -> Option<(Symbol, Symbol)> {

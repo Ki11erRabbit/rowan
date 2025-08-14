@@ -9,6 +9,7 @@ use super::{class_table::ClassTable, symbol_table::{SymbolEntry, SymbolTable}};
 pub struct ObjectTable {
     /// This is a hashset for ease of freeing up references
     table: HashSet<*mut Object>,
+    do_not_collect: HashSet<*mut Object>,
 
 }
 
@@ -16,6 +17,7 @@ impl ObjectTable {
     pub fn new() -> Self {
         ObjectTable {
             table: HashSet::new(),
+            do_not_collect: HashSet::new(),
         }
     }
 
@@ -30,7 +32,13 @@ impl ObjectTable {
     pub fn free(&mut self, reference: Reference, symbol_table: &SymbolTable, class_table: &ClassTable) {
         let pointer = reference;
 
-        if pointer.is_null() || !self.table.contains(&pointer) {// We have already handled this object or it isn't collectable
+        if pointer.is_null() || !self.table.contains(&pointer) {
+            // We have already handled this object or it isn't collectable
+            return;
+        }
+        if self.do_not_collect.contains(&pointer) {
+            // We shouldn't collect objects that have been marked for no collection
+            // This is for FFI interface reasons and not available in the language itself
             return;
         }
         //println!("Freeing: {reference}");
@@ -56,6 +64,28 @@ impl ObjectTable {
 
     pub fn iter(&self) -> impl Iterator<Item = &*mut Object> {
         self.table.iter()
+    }
+
+    pub fn block_collection(&mut self, mut reference: Reference) {
+        while !reference.is_null() {
+            self.do_not_collect.insert(reference);
+            let object_ref = unsafe { reference.as_ref().unwrap() };
+            reference = object_ref.parent_object;
+        }
+    }
+
+    pub fn allow_collection(&mut self, reference: Reference) {
+        let object_set = {
+            let mut set = HashSet::new();
+            let mut reference = reference;
+            while !reference.is_null() {
+                set.insert(reference);
+                let object_ref = unsafe { reference.as_ref().unwrap() };
+                reference = object_ref.parent_object;
+            }
+            set
+        };
+        self.do_not_collect = self.do_not_collect.difference(&object_set).cloned().collect();
     }
 }
 

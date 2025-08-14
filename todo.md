@@ -23,20 +23,20 @@ can be implemented.
   * [x] Generate C Header File
   * [x] Generate Function that gives a function pointer for cleaning up native members
   * [x] Runtime Code that can handle the loading of dlls/so files during the link phase
-* [ ] Garbage Collection
+* [x] Garbage Collection
   * [x] Garbage Collection doesn't collect too much 
   * [x] Garbage Collection is triggered when we are out of memory
   * [x] Garbage Collection is cross-platform
     * [x] Garbage Collection works on Unix
     * [x] Garbage Collection works on Windows
   * [x] Garbage collection doesn't collect static class fields
-  * [ ] There is a way to pass objects to FFI and mark that memory as uncollectable
+  * [x] There is a way to pass objects to FFI and mark that memory as uncollectable
   * [x] Garbage collection operation skips over native methods if they call Rowan code
 * [ ] Closure Expressions
   * [ ] Captured Primitives (ints, floats) are boxed if they are mutated in closures
   * [ ] Construction of Objects that are the closure
-* [ ] Safepoint markers in loops
-  * [ ] GC checks in loops
+* [x] Safepoint markers in loops
+  * [x] GC checks in loops
 * [ ] loop expressions
   * [ ] continue
   * [ ] break can return from loop

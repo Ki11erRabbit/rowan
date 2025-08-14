@@ -13,6 +13,21 @@ pub extern "C" fn rowan_create_object(class_name: *const c_char) -> Reference {
     Runtime::new_object(name.as_ref())
 }
 
+/// This function will mark an object and its parent objects to be uncollectable.
+/// This is to allow for the passing of objects into FFI boundaries where a GC might
+/// not be able to find the memory, especially if the object is used for a callback.
+#[unsafe(no_mangle)]
+pub extern "C" fn rowan_block_collection(object: Reference) {
+    Runtime::block_collection(object);
+}
+
+/// This function will mark an object and its parents as being collectable again.
+/// This is so that there are no leaks across an FFI boundary.
+#[unsafe(no_mangle)]
+pub extern "C" fn rowan_allow_collection(object: Reference) {
+    Runtime::allow_collection(object);
+}
+
 /// This function is a convenience function to allow for quickly making strings from a CStr.
 /// The CStr should be valid utf-8.
 /// Returns a valid reference to a string object
