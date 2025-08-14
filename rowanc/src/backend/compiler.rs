@@ -182,7 +182,209 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     interned_string.make_not_printable();
     classes.insert(vec![String::from("InternedString")], interned_string);
 
-    
+    let mut u8_box = PartialClass::new();
+    let functions = vec![
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::U8::new",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::U8]),
+    ];
+    let static_methods = StaticMethods::new(functions);
+
+    u8_box.add_static_methods(&vec![String::from("core"), String::from("U8")], static_methods, &names, &signatures);
+    u8_box.add_member(Member {
+        name: 0,
+        type_tag: TypeTag::U8,
+    }, "core::U8::value");
+    u8_box.make_not_printable();
+    classes.insert(vec![String::from("U8")], u8_box);
+
+    let mut u16_box = PartialClass::new();
+    let functions = vec![
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::U16::new",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::U16]),
+    ];
+    let static_methods = StaticMethods::new(functions);
+
+    u16_box.add_static_methods(&vec![String::from("core"), String::from("U16")], static_methods, &names, &signatures);
+    u16_box.add_member(Member {
+        name: 0,
+        type_tag: TypeTag::U16,
+    }, "core::U16::value");
+    u16_box.make_not_printable();
+    classes.insert(vec![String::from("U16")], u16_box);
+
+    let mut u32_box = PartialClass::new();
+    let functions = vec![
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::U32::new",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::U32]),
+    ];
+    let static_methods = StaticMethods::new(functions);
+
+    u32_box.add_static_methods(&vec![String::from("core"), String::from("U32")], static_methods, &names, &signatures);
+    u32_box.add_member(Member {
+        name: 0,
+        type_tag: TypeTag::U32,
+    }, "core::U32::value");
+    u32_box.make_not_printable();
+    classes.insert(vec![String::from("U32")], u32_box);
+
+    let mut u64_box = PartialClass::new();
+    let functions = vec![
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::U64::new",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::U64]),
+    ];
+    let static_methods = StaticMethods::new(functions);
+
+    u64_box.add_static_methods(&vec![String::from("core"), String::from("U64")], static_methods, &names, &signatures);
+    u64_box.add_member(Member {
+        name: 0,
+        type_tag: TypeTag::U64,
+    }, "core::U64::value");
+    u64_box.make_not_printable();
+    classes.insert(vec![String::from("U64")], u64_box);
+
+
+
+    let mut i8_box = PartialClass::new();
+    let functions = vec![
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::I8::new",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::I8]),
+    ];
+    let static_methods = StaticMethods::new(functions);
+
+    i8_box.add_static_methods(&vec![String::from("core"), String::from("I8")], static_methods, &names, &signatures);
+    i8_box.add_member(Member {
+        name: 0,
+        type_tag: TypeTag::I8,
+    }, "core::I8::value");
+    i8_box.make_not_printable();
+    classes.insert(vec![String::from("I8")], i8_box);
+
+    let mut i16_box = PartialClass::new();
+    let functions = vec![
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::I16::new",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::I16]),
+    ];
+    let static_methods = StaticMethods::new(functions);
+
+    i16_box.add_static_methods(&vec![String::from("core"), String::from("I16")], static_methods, &names, &signatures);
+    i16_box.add_member(Member {
+        name: 0,
+        type_tag: TypeTag::I16,
+    }, "core::I16::value");
+    i16_box.make_not_printable();
+    classes.insert(vec![String::from("I16")], i16_box);
+
+    let mut i32_box = PartialClass::new();
+    let functions = vec![
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::I32::new",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::I32]),
+    ];
+    let static_methods = StaticMethods::new(functions);
+
+    i32_box.add_static_methods(&vec![String::from("core"), String::from("I32")], static_methods, &names, &signatures);
+    i32_box.add_member(Member {
+        name: 0,
+        type_tag: TypeTag::I32,
+    }, "core::I32::value");
+    i32_box.make_not_printable();
+    classes.insert(vec![String::from("I32")], i32_box);
+
+    let mut i64_box = PartialClass::new();
+    let functions = vec![
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::I64::new",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::I64]),
+    ];
+    let static_methods = StaticMethods::new(functions);
+
+    i64_box.add_static_methods(&vec![String::from("core"), String::from("I64")], static_methods, &names, &signatures);
+    i64_box.add_member(Member {
+        name: 0,
+        type_tag: TypeTag::I64,
+    }, "core::I64::value");
+    i64_box.make_not_printable();
+    classes.insert(vec![String::from("I64")], i64_box);
+
+    let mut f32_box = PartialClass::new();
+    let functions = vec![
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::F32::new",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::F32]),
+    ];
+    let static_methods = StaticMethods::new(functions);
+
+    f32_box.add_static_methods(&vec![String::from("core"), String::from("F32")], static_methods, &names, &signatures);
+    f32_box.add_member(Member {
+        name: 0,
+        type_tag: TypeTag::F32,
+    }, "core::F32::value");
+    f32_box.make_not_printable();
+    classes.insert(vec![String::from("F32")], f32_box);
+
+    let mut f64_box = PartialClass::new();
+    let functions = vec![
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::F64::new",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::F64]),
+    ];
+    let static_methods = StaticMethods::new(functions);
+
+    f64_box.add_static_methods(&vec![String::from("core"), String::from("F64")], static_methods, &names, &signatures);
+    f64_box.add_member(Member {
+        name: 0,
+        type_tag: TypeTag::F64,
+    }, "core::F64::value");
+    f64_box.make_not_printable();
+    classes.insert(vec![String::from("F64")], f64_box);
+
+
     let mut array = PartialClass::new();
     array.set_name("core::Array8");
     let functions = vec![

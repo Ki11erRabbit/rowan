@@ -1115,14 +1115,14 @@ impl Runtime {
     }
     
     pub fn block_collection(object: Reference) {
-        let Ok(object_table) = OBJECT_TABLE.write() else {
+        let Ok(mut object_table) = OBJECT_TABLE.write() else {
             panic!("Lock poisoned");
         };
         object_table.block_collection(object);
     }
     
     pub fn allow_collection(object: Reference) {
-        let Ok(object_table) = OBJECT_TABLE.write() else {
+        let Ok(mut object_table) = OBJECT_TABLE.write() else {
             panic!("Lock poisoned");
         };
         object_table.allow_collection(object);
