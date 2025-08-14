@@ -1,7 +1,7 @@
 use std::ffi::{c_char, CStr};
 use crate::context::{BytecodeContext, StackValue};
 use crate::runtime::{Runtime, Reference};
-use crate::runtime::core::{string_from_str, string_initialize};
+use crate::runtime::core::{string_buffer_from_str, InternedString, StringBuffer};
 
 /// This function constructs an object from a given class name from a CStr.
 /// The CStr should be valid utf-8 as to prevent misses.
@@ -17,21 +17,37 @@ pub extern "C" fn rowan_create_object(class_name: *const c_char) -> Reference {
 /// The CStr should be valid utf-8.
 /// Returns a valid reference to a string object
 #[unsafe(no_mangle)]
-pub extern "C" fn rowan_create_string(string_contents: *const c_char) -> Reference {
-    let string = Runtime::new_object("core::String");
+pub extern "C" fn rowan_create_string_buffer(string_contents: *const c_char) -> *mut StringBuffer {
+    let string = Runtime::new_object("core::StringBuffer");
+    let string = string as *mut StringBuffer;
     let string_contents = unsafe { CStr::from_ptr(string_contents) };
     let contents = string_contents.to_string_lossy();
-    string_from_str(string, contents.as_ref());
+    string_buffer_from_str(string, contents.as_ref());
     string
 }
 
 /// This function is a convenience function to allow for quickly making empty strings.
 /// Returns a valid reference to a string object
 #[unsafe(no_mangle)]
-pub extern "C" fn rowan_create_empty_string() -> Reference {
-    let string = Runtime::new_object("core::String");
-    string_initialize(string);
+pub extern "C" fn rowan_create_empty_string_buffer() -> *mut StringBuffer {
+    let string = Runtime::new_object("core::StringBuffer");
+    let string = string as *mut StringBuffer;
+    let string = unsafe { string.as_mut().unwrap() };
+    string.initialize(std::ptr::null_mut(), 0, 0);
     string
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rowan_get_string_buffer(string: Reference, buf: &mut *const, length: &mut u64) {
+    let string = unsafe { string.as_mut().unwrap() };
+    let (class_symbol, method_symbol) = Runtime::get_virtual_method_name("core::String", "core::String::get-buffer");
+    let get_buffer_details = Runtime::get_virtual_method_details(string.class, class_symbol, method_symbol);
+    let get_buffer = get_buffer_details.fn_ptr.unwrap();
+    let get_buffer = unsafe {
+        std::mem::transmute::<_, extern "C" fn(Reference, &mut *const u8, &mut u64)>(get_buffer)
+    };
+    
+    rowan_get_string_buffer(string, buf, length);
 }
 
 /// This function retrieves the function pointer for a virtual function for a given object.

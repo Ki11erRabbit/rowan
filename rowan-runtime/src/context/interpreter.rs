@@ -12,6 +12,7 @@ use crate::runtime::{FunctionDetails, Reference, Runtime, DO_GARBAGE_COLLECTION}
 use crate::runtime::object::Object;
 use paste::paste;
 use crate::context::interpreter::stackframe::{StackFrame};
+use crate::runtime::core::interned_string_init;
 
 #[derive(Debug, Copy, Clone)]
 pub enum CallContinueState {
@@ -2219,7 +2220,9 @@ impl BytecodeContext {
                 }
             }
             Bytecode::GetStrRef(sym) => {
-                self.push_value(StackValue::from(*sym));
+                let interned_string = interned_string_init(*sym) as Reference;
+                
+                self.push_value(StackValue::from(interned_string));
             }
             Bytecode::Return => {
                 self.check_and_do_garbage_collection();

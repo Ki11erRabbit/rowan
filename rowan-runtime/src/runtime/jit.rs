@@ -120,6 +120,7 @@ impl Default for JITController {
         builder.symbol("fetch_return_object", BytecodeContext::fetch_return_object as *const u8);
         builder.symbol("fetch_return_float32", BytecodeContext::fetch_return_float32 as *const u8);
         builder.symbol("fetch_return_float64", BytecodeContext::fetch_return_float64 as *const u8);
+        builder.symbol("interned_string_init", super::core::interned_string_init as *const u8);
         let module = JITModule::new(builder);
 
         Self {
@@ -1531,7 +1532,29 @@ impl FunctionTranslator<'_> {
                 Bytecode::GetStrRef(string_symbol) => {
                     let symbol_value = self.builder.ins().iconst(cranelift::codegen::ir::types::I64, i64::from_le_bytes(string_symbol.to_le_bytes()));
 
-                    self.push(symbol_value, ir::types::I64, false);
+                    let interned_string_init = if let Some(id) = module.get_name("interned_string_init") {
+                        match id {
+                            FuncOrDataId::Func(id) => id,
+                            _ => unreachable!("cannot create array object from data id"),
+                        }
+                    } else {
+                        let mut interned_string_init = module.make_signature();
+                        interned_string_init.params.push(AbiParam::new(cranelift::codegen::ir::types::I64));
+                        interned_string_init.returns.push(AbiParam::new(types::I64));
+
+                        let fn_id = module.declare_function("interned_string_init", Linkage::Import, &interned_string_init).unwrap();
+                        fn_id
+                    };
+
+                    let interned_string_init = module.declare_func_in_func(interned_string_init, self.builder.func);
+
+                    let result = self.builder.ins()
+                        .call(interned_string_init, &[symbol_value]);
+                    
+                    let value = self.builder.inst_results(result)[0];
+                    self.builder.declare_value_needs_stack_map(value);
+
+                    self.push(value, ir::types::I64, true);
                 }
                 Bytecode::Return => {
                     let (return_value, _, _) = self.pop();

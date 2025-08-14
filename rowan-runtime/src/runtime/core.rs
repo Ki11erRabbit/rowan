@@ -1,3 +1,7 @@
+mod strings;
+
+pub use strings::*;
+
 use std::ptr::slice_from_raw_parts;
 use paste::paste;
 use super::{object::Object, Runtime, Reference, Symbol};
@@ -444,21 +448,21 @@ struct Exception {
 
 pub fn generate_exception_class() -> VMClass {
     let vtable = VMVTable::new(
-        "Exception",
+        "core::Exception",
         None,
         vec![
             VMMethod::new(
-                "init",
+                "core::Exception::init",
                 exception_init as *const (),
                 vec![TypeTag::Void, TypeTag::Object, TypeTag::Object]
             ),
             VMMethod::new(
-                "fill-in-stack-trace",
+                "core::Exception::fill-in-stack-trace",
                 exception_fill_in_stack_trace as *const (),
                 vec![TypeTag::Void, TypeTag::Object]
             ),
             VMMethod::new(
-                "print-stack-trace",
+                "core::Exception::print-stack-trace",
                 exception_print_stack_trace as *const (),
                 vec![TypeTag::Void, TypeTag::Object]
             ),
@@ -472,7 +476,7 @@ pub fn generate_exception_class() -> VMClass {
         VMMember::new("stack-trace-pointer", TypeTag::U64),
     ];
 
-    VMClass::new("Exception", "core::Object", vec![vtable], elements, Vec::new(), Vec::new())
+    VMClass::new("core::Exception", "core::Object", vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 extern "C" fn exception_init(_: &BytecodeContext, this: Reference, message: Reference) {
@@ -564,16 +568,16 @@ struct Backtrace {
 
 pub fn generate_backtrace_class() -> VMClass {
     let vtable = VMVTable::new(
-        "Backtrace",
+        "core::Backtrace",
         None,
         vec![
             VMMethod::new(
-                "init",
+                "core::Backtrace::init",
                 backtrace_init as *const (),
                 vec![TypeTag::Void, TypeTag::Object, TypeTag::Object, TypeTag::U64, TypeTag::U64]
             ),
             VMMethod::new(
-                "display",
+                "core::Backtrace::display",
                 backtrace_display as *const (),
                 vec![TypeTag::Void, TypeTag::Object]
             ),
@@ -586,7 +590,7 @@ pub fn generate_backtrace_class() -> VMClass {
         VMMember::new("column-number", TypeTag::Object),
     ];
 
-    VMClass::new("Backtrace", "core::Object", vec![vtable], elements, Vec::new(), Vec::new())
+    VMClass::new("core::Backtrace", "core::Object", vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 extern "C" fn backtrace_init(_context: &mut Runtime, this: Reference, function_name: Reference, line: u64, column: u64) {
@@ -607,7 +611,7 @@ extern "C" fn backtrace_display(_context: &mut Runtime, this: Reference) {
     let column = object.column_number;
 
     let string = function_name;
-    let string = string as *mut StringObject;
+    let string = string as *mut StringBuffer;
     let string = unsafe { string.as_ref().unwrap() };
     let string_length = string.length;
     let string_pointer = string.buffer;
@@ -619,11 +623,11 @@ extern "C" fn backtrace_display(_context: &mut Runtime, this: Reference) {
 
 pub fn generate_index_out_of_bounds_class() -> VMClass {
     let vtable = VMVTable::new(
-        "IndexOutOfBounds",
+        "core::IndexOutOfBounds",
         None,
         vec![
             VMMethod::new(
-                "init",
+                "core::IndexOutOfBounds::init",
                 out_of_bounds_init as *const (),
                 vec![TypeTag::Void, TypeTag::Object, TypeTag::U64, TypeTag::U64]
             ),
@@ -633,28 +637,29 @@ pub fn generate_index_out_of_bounds_class() -> VMClass {
     let elements = vec![
     ];
 
-    VMClass::new("IndexOutOfBounds", "Exception", vec![vtable], elements, Vec::new(), Vec::new())
+    VMClass::new("core::IndexOutOfBounds", "core::Exception", vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 extern "C" fn out_of_bounds_init(context: &mut BytecodeContext, this: Reference, bounds: u64, index: u64) {
     let object = this;
     let object = unsafe { object.as_mut().unwrap() };
 
-    let message = Runtime::new_object("String"); // String Class Symbol
+    let message = Runtime::new_object("core::StringBuffer"); // String Class Symbol
+    let message = message as *mut StringBuffer;
 
-    string_from_str(message, &format!("Index was {index} but length was {bounds}"));
+    string_buffer_from_str(message, &format!("Index was {index} but length was {bounds}"));
 
     let base_exception = object.parent_object;
-    exception_init(context, base_exception, message);
+    exception_init(context, base_exception, message as Reference);
 }
 
 pub fn generate_null_pointer_class() -> VMClass {
     let vtable = VMVTable::new(
-        "NullPointerException",
+        "core::NullPointerException",
         None,
         vec![
             VMMethod::new(
-                "init",
+                "core::NullPointerException::init",
                 null_pointer_init as *const (),
                 vec![TypeTag::Void, TypeTag::Object]
             ),
@@ -664,251 +669,19 @@ pub fn generate_null_pointer_class() -> VMClass {
     let elements = vec![
     ];
 
-    VMClass::new("NullPointerException", "Exception", vec![vtable], elements, Vec::new(), Vec::new())
+    VMClass::new("core::NullPointerException", "core::Exception", vec![vtable], elements, Vec::new(), Vec::new())
 }
 
 pub extern "C" fn null_pointer_init(context: &BytecodeContext, this: Reference) {
     let object = this;
     let object = unsafe { object.as_mut().unwrap() };
 
-    let message = Runtime::new_object("String"); // String Class Symbol
+    let message = Runtime::new_object("core::StringBuffer"); // String Class Symbol
+    let message = message as *mut StringBuffer;
 
-    string_from_str(message, "NullPointerException");
+    string_buffer_from_str(message, "NullPointerException");
 
     let base_exception = object.parent_object;
-    exception_init(context, base_exception, message);
+    exception_init(context, base_exception, message as Reference);
 }
 
-#[repr(C)]
-pub struct StringObject {
-    pub class: Symbol,
-    pub parent_objects: Box<[Reference]>,
-    pub custom_drop: Option<fn(&mut Object)>,
-    pub length: u64,
-    pub capacity: u64,
-    pub buffer: *mut u8,
-}
-
-impl StringObject {
-    fn resize_if_needed(&mut self, needed_size: usize) {
-        use std::alloc::*;
-        if needed_size <= (self.capacity - self.length) as usize {
-            // We have enough space to just add the data needed
-            return;
-        }
-        let new_capacity = self.capacity as f64 * 1.6;
-        let mut new_capacity = new_capacity.ceil() as usize;
-        if new_capacity == 0 {
-            new_capacity = 1;
-        }
-        if new_capacity < needed_size {
-            new_capacity += needed_size;
-        }
-        let layout = Layout::array::<u8>(new_capacity).expect("string layout is wrong or too big");
-        let pointer = unsafe { alloc(layout) };
-        if pointer.is_null() {
-            eprintln!("Out of memory");
-            handle_alloc_error(layout);
-        }
-        unsafe {
-            std::ptr::copy_nonoverlapping(self.buffer, pointer, self.length as usize);
-        }
-        if !self.buffer.is_null() {
-            let old_layout = Layout::array::<u8>(self.capacity as usize).expect("string layout is wrong or too big");
-            unsafe {
-                dealloc(self.buffer, old_layout);
-            }
-        }
-        self.buffer = pointer;
-        self.capacity = new_capacity as u64;
-    }
-
-    fn push_char(&mut self, c: char) {
-        let size = c.len_utf8();
-        self.resize_if_needed(size);
-        let mut char_buffer = [0; 4];
-        let bytes = c.encode_utf8(&mut char_buffer).as_bytes();
-
-        unsafe {
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.buffer.add(self.length as usize), bytes.len());
-        }
-
-        self.length += size as u64;
-    }
-}
-
-pub fn generate_string_class() -> VMClass {
-    let vtable = VMVTable::new(
-        "core::String",
-        None,
-        vec![
-            VMMethod::new(
-                "core::String::load-str",
-                string_load_str as *const (),
-                vec![TypeTag::Void, TypeTag::Object, TypeTag::U64]
-                ),
-            VMMethod::new(
-                "core::String::init",
-                string_init as *const (),
-                vec![TypeTag::Void, TypeTag::Object]
-                ),
-            VMMethod::new(
-                "core::String::len",
-                string_len as *const (),
-                vec![TypeTag::U64, TypeTag::Object]
-                ),
-            VMMethod::new(
-                "core::String::is-char-boundary",
-                string_is_char_boundary as *const (),
-                vec![TypeTag::U8, TypeTag::Object, TypeTag::U64]
-            ),
-            VMMethod::new(
-                "core::String::as-bytes",
-                string_as_bytes as *const (),
-                vec![TypeTag::Object, TypeTag::Object]
-            ),
-            VMMethod::new(
-                "core::String::push",
-                string_push as *const (),
-                vec![TypeTag::Void, TypeTag::U32]
-            ),
-        ]
-    );
-
-    let elements = vec![
-        VMMember::new("core::String::length", TypeTag::U64),
-        VMMember::new("core::String::capacity", TypeTag::U64),
-        VMMember::new("core::String::pointer", TypeTag::U64)
-    ];
-
-    VMClass::new("core::String", "core::Object", vec![vtable], elements, Vec::new(), Vec::new())
-}
-
-extern "C" fn string_len(context: &mut BytecodeContext, this: Reference) -> u64 {
-    let object = this;
-    let object = object as *mut StringObject;
-    let object = unsafe { object.as_ref().unwrap() };
-    object.length
-}
-
-extern "C" fn string_load_str(context: &mut BytecodeContext, this: Reference, string_ref: Reference) {
-    //println!("got: {this:p} {string_ref:p}");
-    let string = Runtime::get_string(string_ref as Symbol);
-    let bytes = string.as_bytes();
-    let object = this;
-    let object = object as *mut StringObject;
-    let object = unsafe { object.as_mut().unwrap() };
-    object.buffer = std::ptr::null_mut();
-    object.capacity = 0;
-    object.length = 0;
-    object.resize_if_needed(bytes.len());
-    object.length = bytes.len() as u64;
-    unsafe {
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), object.buffer, bytes.len())
-    }
-    object.custom_drop = Some(unsafe {
-        std::mem::transmute::<_, fn(&mut Object)>(string_drop as *const ())
-    });
-}
-
-extern "C" fn string_init(_: &mut BytecodeContext, this: Reference) {
-    string_initialize(this);
-}
-
-pub fn string_initialize(this: Reference) {
-    let object = this;
-    let object = object as *mut StringObject;
-    let object = unsafe { object.as_mut().unwrap() };
-    object.length = 0;
-    object.capacity = 0;
-    object.buffer = std::ptr::null_mut();
-    object.custom_drop = Some(unsafe {
-        std::mem::transmute::<_, fn(&mut Object)>(string_drop as *const ())
-    });
-}
-
-pub fn string_from_str(this: Reference, string: &str) {
-    let object = this;
-    let object = object as *mut StringObject;
-    let object = unsafe { object.as_mut().unwrap() };
-    object.buffer = std::ptr::null_mut();
-    object.capacity = 0;
-    object.length = 0;
-    let bytes = string.as_bytes();
-    object.resize_if_needed(bytes.len());
-    object.length = bytes.len() as u64;
-    unsafe {
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), object.buffer, bytes.len())
-    }
-    object.custom_drop = Some(unsafe {
-        std::mem::transmute::<_, fn(&mut Object)>(string_drop as *const ())
-    });
-}
-
-pub fn string_drop(object: &mut StringObject) {
-    use std::alloc::*;
-    let capacity = object.capacity;
-    let pointer = object.buffer;
-    unsafe {
-        let layout = Layout::array::<u8>(capacity as usize).expect("Wrong layout or too big");
-        dealloc(pointer, layout);
-    }
-}
-
-extern "C" fn string_is_char_boundary(_: &mut BytecodeContext, this: Reference, index: u64) -> u8 {
-    let object = this;
-    let object = object as *mut StringObject;
-    let object = unsafe { object.as_ref().unwrap() };
-    let length = object.length;
-    let pointer = object.buffer;
-
-    if index > length {
-        return 0;
-    }
-
-    unsafe {
-        if *pointer.add(index as usize) ^ 0b10000000 == 0b10000000 {
-            1
-        } else if (*pointer.add(index as usize) ^ 0b11100000) & 0b100000 == 0b100000 {
-            1
-        } else if (*pointer.add(index as usize) ^ 0b11110000) & 0b10000 == 0b10000 {
-            1
-        } else if (*pointer.add(index as usize) ^ 0b11111000) & 0b1000 == 0b1000 {
-            1
-        } else {
-            0
-        }
-    }
-}
-
-extern "C" fn string_as_bytes(context: &mut BytecodeContext, this: Reference) -> Reference {
-    let object = this;
-    let object = object as *mut StringObject;
-    let object = unsafe { object.as_ref().unwrap() };
-    let length = object.length;
-    let pointer = object.buffer;
-
-    let byte_array = Runtime::new_object("Array8");
-
-    array8_init(context, byte_array, length);
-    let array = byte_array;
-    let array = array as *mut Array;
-    let array = unsafe { array.as_ref().unwrap() };
-    let array_pointer = array.buffer;
-
-    unsafe {
-        for i in 0..length {
-            array_pointer.add(i as usize).write(*pointer.add(i as usize))
-        }
-    }
-    byte_array
-}
-
-extern "C" fn string_push(context: &mut BytecodeContext, this: Reference, character: u32) {
-    let object = this;
-    let object = object as *mut StringObject;
-    let object = unsafe { object.as_mut().unwrap() };
-    object.push_char(unsafe {
-        char::from_u32_unchecked(character)
-    })
-}

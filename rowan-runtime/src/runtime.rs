@@ -28,7 +28,7 @@ pub mod linker;
 pub mod jit;
 pub mod garbage_collection;
 pub use tables::FunctionDetails;
-
+use crate::runtime::core::StringBuffer;
 use crate::runtime::tables::native_object_table::NativeObjectTable;
 
 pub type Symbol = usize;
@@ -804,169 +804,6 @@ impl Runtime {
         };
     }
 
-    /*pub fn get_method(
-        &mut self,
-        object_class_symbol: Symbol,
-        class_symbol: Symbol,
-        source_class: Option<Symbol>,
-        method_name: Symbol,
-    ) -> *const () {
-        self.push_backtrace(MethodName::VirtualMethod {
-            object_class_symbol,
-            class_symbol,
-            source_class,
-            method_name,
-        });
-
-        if let Some(method) = self.virtual_memo.get(&(object_class_symbol, class_symbol, source_class, method_name)) {
-            return *method;
-        }
-
-        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-
-
-        let Ok(class_table) = CLASS_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-
-        let SymbolEntry::ClassRef(object_class_index) = symbol_table[object_class_symbol] else {
-            panic!("class wasn't a class");
-        };
-        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
-            panic!("method wasn't a string");
-        };
-
-        let Ok(string_table) = STRING_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-
-        let name = &string_table[method_name_index];
-
-        let class = &class_table[object_class_index];
-        let vtable_index = if source_class.is_some() {
-            let key = (class_symbol, None);
-            if let Some(index) = class.get_vtable(&key) {
-                index
-            } else if let Some(index) = class.get_vtable(&(class_symbol, source_class)) {
-                index
-            } else {
-                panic!("unable to find vtable");
-            }
-        } else {
-            if let Some(index) = class.get_vtable(&(class_symbol, source_class)) {
-                index
-            } else {
-                panic!("unable to find vtable");
-            }
-        };
-
-        let Ok(vtables_table) = VTABLES.read() else {
-            panic!("Lock poisoned");
-        };
-
-        let vtable = &mut vtables_table[vtable_index];
-        let function = vtable.get_function_mut(method_name);
-
-        let value = &function.value;
-        let value = match &*value {
-            FunctionValue::Builtin(ptr) => *ptr,
-            FunctionValue::Compiled(ptr, _) => *ptr,
-            FunctionValue::Native(ptr) => *ptr,
-            _ => {
-                let mut compiler = Runtime::create_jit_compiler();
-                let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
-                    panic!("Lock poisoned");
-                };
-
-                compiler.compile(&function, &mut jit_controller.module, name).unwrap();
-
-                match &*value {
-                    FunctionValue::Compiled(ptr,_ ) => *ptr,
-                    _ => panic!("Function wasn't compiled")
-                }
-            }
-        };
-
-        self.virtual_memo.insert((object_class_symbol, object_class_symbol, source_class, method_name), value);
-        value
-    }
-
-    pub fn get_static_method(
-        &mut self,
-        class_symbol: Symbol,
-        method_name: Symbol,
-    ) -> *const () {
-        self.push_backtrace(MethodName::StaticMethod {
-            class_symbol,
-            method_name,
-        });
-
-        if let Some(method) = self.static_memo.get(&(class_symbol, method_name)) {
-            return *method;
-        }
-
-        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
-            unreachable!("Lock poisoned");
-        };
-
-        let Ok(class_table) = CLASS_TABLE.read() else {
-            unreachable!("Lock poisoned");
-        };
-
-        let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol] else {
-            panic!("class wasn't a class");
-        };
-        let SymbolEntry::StringRef(method_name_index) = symbol_table[method_name] else {
-            panic!("method wasn't a string");
-        };
-
-        let Ok(string_table) = STRING_TABLE.read() else {
-            panic!("Lock poisoned");
-        };
-
-        let name = &string_table[method_name_index];
-
-
-        let class = &class_table[class_index];
-
-        let vtable_index = class.static_methods;
-        let Ok(vtables_table) = VTABLES.read() else {
-            unreachable!("Lock poisoned");
-        };
-        drop(class_table);
-
-        let vtable = &vtables_table[vtable_index];
-        let mut function = vtable.get_function_mut(method_name);
-
-        let value = &function.value;
-        let value = match &*value {
-            FunctionValue::Builtin(ptr) => *ptr,
-            FunctionValue::Native(ptr) => *ptr,
-            FunctionValue::Compiled(ptr, _) => *ptr,
-            _ => {
-                let mut compiler = Runtime::create_jit_compiler();
-                let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
-                    unreachable!("Lock poisoned");
-                };
-
-                match compiler.compile(&function, &mut jit_controller.module, name) {
-                    Ok(_) => {}
-                    Err(e) => panic!("Compilation error:\n{}", e)
-                }
-
-                match &*value {
-                    FunctionValue::Compiled(ptr, _) => *ptr,
-                    _ => panic!("Function wasn't compiled")
-                }
-            }
-        };
-
-        self.static_memo.insert((class_symbol, method_name), value);
-        value
-    }*/
-
     pub fn create_jit_compiler() -> JITCompiler {
         let Ok(jit_controller) = JIT_CONTROLLER.write() else {
             panic!("Lock poisoned");
@@ -1102,6 +939,39 @@ impl Runtime {
             panic!("string symbol wasn't a string");
         }; 
         string_table.get_string(string_index)
+    }
+
+    pub fn intern_string(string_buffer: *mut StringBuffer) -> Symbol {
+        let string_buffer = unsafe { string_buffer.as_ref().unwrap() };
+        let pointer = string_buffer.buffer;
+        let length = string_buffer.length;
+        let slice = unsafe {
+            std::slice::from_raw_parts(pointer, length as usize)
+        };
+        let string = std::str::from_utf8(slice).unwrap();
+
+
+
+        let Ok(string_map) = STRING_MAP.read() else {
+            panic!("Lock poisoned");
+        };
+
+        if let Some(symbol) = string_map.get(string) {
+            return *symbol;
+        }
+
+
+        let Ok(mut symbol_table) = SYMBOL_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut string_table) = STRING_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+
+
+        let index = string_table.add_string(string);
+
+        symbol_table.add_string(index)
     }
 
 

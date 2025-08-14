@@ -20,21 +20,15 @@ typedef struct object {
 
 typedef void* rowan_context_t;
 
-typedef struct string_object {
-    object_t object;
-    uint64_t length;
-    uint64_t capacity;
-    uint8_t* buffer;
-} string_t;
-
 typedef void* context_t;
 
 object_t* rowan_create_object(unsigned char* class_name);
-string_t* rowan_create_string(unsigned char* string_contents);
-string_t* rowan_create_empty_string();
+object_t* rowan_create_string(unsigned char* string_contents);
+object_t* rowan_create_empty_string();
+void rowan_get_string_buffer(object_t* string, uint8_t** buf, uint64_t* len);
 
-void* rowan_get_virtual_function(context_t ctx, object_t* object, unsigned char* class_name, unsigned char* source_class_name, unsigned char* method_name);
-void* rowan_get_static_function(context_t ctx, unsigned char* class_name, unsigned char* method_name);
+void* rowan_call_virtual_function(context_t ctx, object_t* object, unsigned char* class_name, unsigned char* method_name);
+void* rowan_call_static_function(context_t ctx, unsigned char* class_name, unsigned char* method_name);
 
 void rowan_set_exception(context_t ctx, object_t* exception);
 #endif

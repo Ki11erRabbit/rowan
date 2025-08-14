@@ -52,6 +52,8 @@ pub extern "C" fn rowan_main() {
         core::generate_exception_class(),
         core::generate_backtrace_class(),
         core::generate_string_class(),
+        core::generate_string_buffer_class(),
+        core::generate_interned_string_class(),
         core::generate_index_out_of_bounds_class(),
         core::generate_null_pointer_class(),
     ];
