@@ -64,10 +64,7 @@ pub extern "C" fn rowan_main() {
 
     Runtime::link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map);
 
-
     let (main_symbol, main_method_symbol) = Runtime::link_classes(classes, paths, &mut pre_class_table, &mut vtables_map);
-
-    //println!("String Map: {string_map:#?}");
 
     Runtime::finish_linking_classes(pre_class_table);
 

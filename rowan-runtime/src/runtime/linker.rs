@@ -1188,23 +1188,45 @@ pub fn link_vm_classes(
         for vtable in vtables {
             let VMVTable { class, source_class, methods } = vtable;
 
-            let vtable_class_name_symbol = if let Some(symbol) = class_map.get(class) {
-                *symbol
+            let vtable_class_name_symbol = if let Some(source_class) = source_class {
+                if let Some(symbol) = class_map.get(source_class) {
+                    *symbol
+                } else {
+                    let index = string_table.add_static_string(source_class);
+                    let symbol = symbol_table.add_string(index);
+
+                    string_map.insert(String::from(class), symbol);
+
+                    if let Some(symbol) = class_map.get(class) {
+                        *symbol
+                    } else {
+                        let index = class_table.len();
+                        class_table.push(TableEntry::Hole);
+                        let symbol = symbol_table.add_class(index);
+                        class_map.insert(String::from(source_class), symbol);
+
+                        symbol
+                    }
+                }
             } else {
-                let index = string_table.add_static_string(class);
-                let symbol = symbol_table.add_string(index);
-
-                string_map.insert(String::from(class), symbol);
-
                 if let Some(symbol) = class_map.get(class) {
                     *symbol
                 } else {
-                    let index = class_table.len();
-                    class_table.push(TableEntry::Hole);
-                    let symbol = symbol_table.add_class(index);
-                    class_map.insert(String::from(class), symbol);
+                    let index = string_table.add_static_string(class);
+                    let symbol = symbol_table.add_string(index);
 
-                    symbol
+                    string_map.insert(String::from(class), symbol);
+
+                    if let Some(symbol) = class_map.get(class) {
+                        *symbol
+                    } else {
+                        let index = class_table.len();
+                        class_table.push(TableEntry::Hole);
+                        let symbol = symbol_table.add_class(index);
+                        class_map.insert(String::from(class), symbol);
+
+                        symbol
+                    }
                 }
             };
             
