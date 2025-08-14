@@ -660,6 +660,8 @@ impl Runtime {
         };
 
         let class = &class_table[object_class_index];
+        println!("class symbol: {}", class_symbol);
+        println!("{:#?}", class.vtables);
         let vtable_index = if let Some(index) = class.get_vtable(&class_symbol) {
             index
         } else {

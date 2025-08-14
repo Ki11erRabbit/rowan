@@ -7,10 +7,8 @@ class Main {
     static thing: u64 = 66666666666;
 
     fn main(args: [String]) {
-        let printer: Printer = new Printer();
-        let n: u64 = 40;
-        let a: u64 = Main::fib(n);
-        printer.println-int(a);
+        let hello: String = "Hello, World!";
+        Console::println(hello);
     }
 
     fn fib(n: u64) -> u64 {

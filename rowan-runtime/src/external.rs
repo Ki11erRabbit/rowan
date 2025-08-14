@@ -38,16 +38,19 @@ pub extern "C" fn rowan_create_empty_string_buffer() -> *mut StringBuffer {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn rowan_get_string_buffer(string: Reference, buf: &mut *const, length: &mut u64) {
+pub extern "C" fn rowan_get_string_buffer(string: Reference, buf: &mut *const u8, length: &mut u64) {
     let string = unsafe { string.as_mut().unwrap() };
-    let (class_symbol, method_symbol) = Runtime::get_virtual_method_name("core::String", "core::String::get-buffer");
+    let (class_symbol, method_symbol) = Runtime::get_virtual_method_name(
+        "core::String", 
+        "core::String::get-buffer"
+    ).unwrap();
     let get_buffer_details = Runtime::get_virtual_method_details(string.class, class_symbol, method_symbol);
     let get_buffer = get_buffer_details.fn_ptr.unwrap();
     let get_buffer = unsafe {
         std::mem::transmute::<_, extern "C" fn(Reference, &mut *const u8, &mut u64)>(get_buffer)
     };
     
-    rowan_get_string_buffer(string, buf, length);
+    get_buffer(string, buf, length);
 }
 
 /// This function retrieves the function pointer for a virtual function for a given object.
