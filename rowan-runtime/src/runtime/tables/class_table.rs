@@ -18,6 +18,10 @@ impl ClassTable {
         self.table.push(class);
         out
     }
+    
+    pub fn iter(&self) -> impl Iterator<Item=&Class> {
+        self.table.iter()
+    }
 }
 
 impl std::ops::Index<usize> for ClassTable {

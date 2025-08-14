@@ -1,5 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use rowan_shared::bytecode::linked::Bytecode;
+use crate::context::WrappedReference;
 use crate::runtime::object::Object;
 use super::{Reference, Symbol, VTableIndex};
 
@@ -171,6 +172,17 @@ impl Class {
             }
         }
         output
+    }
+    
+    pub fn collect_members(&self, live_memory: &mut HashSet<Reference>) {
+        for member in &self.class_members {
+            match member {
+                ClassMember { data: ClassMemberData::Object(object), ..} => {
+                    live_memory.insert(*object);
+                }
+                _ => {}
+            }
+        }
     }
 }
 

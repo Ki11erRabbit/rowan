@@ -34,7 +34,7 @@ impl GarbageCollection {
             let now = std::time::Instant::now();
             let duration = now.duration_since(start);
 
-            if duration.as_secs() >= 2 {// TODO: make this 5 mins configurable
+            if duration.as_secs() >= 300 {// TODO: make this 5 mins configurable
                 let mut thread_count = {
                     THREAD_COUNT.read().load(std::sync::atomic::Ordering::Relaxed)
                 };
@@ -59,6 +59,12 @@ impl GarbageCollection {
                         }
                         Err(_) => panic!("GarbageCollection sender closed"),
                     }
+                }
+                let mut static_objects = HashSet::new();
+                Runtime::collect_static_members(&mut static_objects);
+                for live_object in static_objects.into_iter() {
+                    Runtime::gc_explore_object(live_object, &mut self.live_objects);
+                    self.live_objects.insert(live_object);
                 }
 
                 Runtime::gc_collect_garbage(&self.live_objects);

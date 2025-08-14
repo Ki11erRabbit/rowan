@@ -1101,6 +1101,15 @@ impl Runtime {
             object_table.free(reference, &symbol_table, &class_table);
         }
     }
+    
+    pub fn collect_static_members(live_objects: &mut HashSet<Reference>) {
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        for class in class_table.iter() {
+            class.collect_members(live_objects);
+        }
+    }
 
     pub fn check_and_do_garbage_collection(ctx: &mut BytecodeContext) {
         ctx.check_and_do_garbage_collection();
