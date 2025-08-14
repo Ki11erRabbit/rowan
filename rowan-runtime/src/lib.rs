@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use rowan_shared::classfile::ClassFile;
 use runtime::{core, Runtime};
 use crate::context::BytecodeContext;
-use crate::runtime::garbage_collection::{GarbageCollection, GC_SENDER};
+use crate::runtime::garbage_collection::{GarbageCollection};
 use crate::runtime::jit::{set_jit_sender, JITController};
 
 mod runtime;
@@ -79,14 +79,9 @@ pub extern "C" fn rowan_main() {
 
 
     //println!("String Map: {string_map:#?}");
-    let mut gc = GarbageCollection::new();
-    std::thread::Builder::new().name("Garbage Collection".to_owned())
-        .spawn(move || {
-            gc.main_loop()
-        }).expect("Thread 'new' panicked at 'Garbage Collection'");
+    GarbageCollection::initialize(None);
 
-    let sender = GC_SENDER.read().clone().unwrap();
-    let mut context = BytecodeContext::new(sender);
+    let mut context = BytecodeContext::new();
 
     //println!("main_symbol: {}, main_method_symbol: {}", main_symbol, main_method_symbol);
     context.call_main(main_symbol, main_method_symbol);

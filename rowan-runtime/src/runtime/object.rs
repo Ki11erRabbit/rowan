@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use crate::context::BytecodeContext;
 use crate::runtime::core::Array;
+use crate::runtime::garbage_collection::GarbageCollection;
 use super::{Runtime, Reference, Symbol};
 
 
@@ -52,6 +53,7 @@ impl Object {
             });
 
         }
+        GarbageCollection::update_heap_size((size_of::<Object>() + data_size) as i64);
         pointer
     }
 
@@ -69,6 +71,7 @@ impl Object {
 
         let (whole_layout, _) = layout.extend(data_layout).expect("Wrong layout or too big");
 
+        GarbageCollection::update_heap_size(-((size_of::<Object>() + data_size) as i64));
         unsafe {
             dealloc(ptr as *mut u8, whole_layout);
         }

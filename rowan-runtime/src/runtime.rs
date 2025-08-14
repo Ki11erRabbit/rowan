@@ -627,8 +627,7 @@ impl Runtime {
             }
         }
         drop(class_table);
-        let (sender, _) = std::sync::mpsc::channel();
-        let mut context = BytecodeContext::new(sender);
+        let mut context = BytecodeContext::new();
         let block_positions = Box::new(FxHashMap::default());
         let block_positions = &*block_positions as *const FxHashMap<_, _>;
         let block_positions = unsafe { block_positions.as_ref().unwrap() };
@@ -1101,7 +1100,7 @@ impl Runtime {
             object_table.free(reference, &symbol_table, &class_table);
         }
     }
-    
+
     pub fn collect_static_members(live_objects: &mut HashSet<Reference>) {
         let Ok(class_table) = CLASS_TABLE.read() else {
             panic!("Lock poisoned");

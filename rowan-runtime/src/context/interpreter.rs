@@ -1,7 +1,6 @@
 mod stackframe;
 
 use std::collections::HashSet;
-use std::sync::mpsc::Sender;
 use std::sync::TryLockError;
 use fxhash::FxHashMap;
 use rowan_shared::bytecode::linked::Bytecode;
@@ -13,6 +12,7 @@ use crate::runtime::object::Object;
 use paste::paste;
 use crate::context::interpreter::stackframe::{StackFrame};
 use crate::runtime::core::interned_string_init;
+use crate::runtime::garbage_collection::GarbageCollection;
 
 #[derive(Debug, Copy, Clone)]
 pub enum CallContinueState {
@@ -208,20 +208,18 @@ pub struct BytecodeContext {
     active_bytecodes: Vec<&'static [Bytecode]>,
     active_frames: Vec<StackFrame>,
     current_exception: Reference,
-    sender: Sender<HashSet<WrappedReference>>,
     call_args: [StackValue; 256],
 }
 
 
 impl BytecodeContext {
-    pub fn new(sender: Sender<HashSet<WrappedReference>>) -> Self {
+    pub fn new() -> Self {
         BytecodeContext {
             operand_stack: Vec::with_capacity(10),
             active_bytecodes: Vec::new(),
             active_frames: Vec::new(),
             current_exception: std::ptr::null_mut(),
             call_args: [StackValue::Blank; 256],
-            sender,
         }
     }
     
@@ -533,7 +531,7 @@ impl BytecodeContext {
         self.collect_jit_references(&mut references);
 
 
-        self.sender.send(references).unwrap();
+        GarbageCollection::send_references(references);
         loop {
             //println!("spinlock");
             if self.check_for_garbage_collection() {

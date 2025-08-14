@@ -25,10 +25,10 @@ can be implemented.
   * [x] Runtime Code that can handle the loading of dlls/so files during the link phase
 * [ ] Garbage Collection
   * [x] Garbage Collection doesn't collect too much 
-  * [ ] Garbage Collection is triggered when we are out of memory
-  * [ ] Garbage Collection is cross-platform
+  * [x] Garbage Collection is triggered when we are out of memory
+  * [x] Garbage Collection is cross-platform
     * [x] Garbage Collection works on Unix
-    * [ ] Garbage Collection works on Windows
+    * [x] Garbage Collection works on Windows
   * [x] Garbage collection doesn't collect static class fields
   * [ ] There is a way to pass objects to FFI and mark that memory as uncollectable
   * [x] Garbage collection operation skips over native methods if they call Rowan code
