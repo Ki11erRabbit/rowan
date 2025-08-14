@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use either::Either;
 use itertools::Itertools;
 use rowan_shared::{bytecode::compiled::Bytecode, classfile::{Member, SignatureEntry, VTable, VTableEntry}, TypeTag};
-use rowan_shared::classfile::SignatureIndex;
+use rowan_shared::classfile::{SignatureIndex, StaticMethods};
 use crate::{ast, ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator, Text}, backend::compiler_utils::Frame};
 use crate::ast::{IfExpression, ParentDec, PathName};
 use super::compiler_utils::{PartialClass, StaticMember};
@@ -64,20 +64,123 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         VTableEntry::default(),
     ];
     let names = vec![
-        "core::String::load-str",
-        "core::String::init",
+        "core::String::is-char-boundary",
+        "core::String::as-bytes",
         "core::String::len",
     ];
     let signatures = vec![
-        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Str]),
-        SignatureEntry::new(vec![TypeTag::Void]),
-        SignatureEntry::new(vec![TypeTag::U64]),
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::U64]),
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
+        SignatureEntry::new(vec![TypeTag::U64, TypeTag::Object]),
     ];
     let vtable = VTable::new(functions);
     
     string.add_vtable(&vec![String::from("core"), String::from("String")], vtable, &names, &signatures);
     string.make_not_printable();
     classes.insert(vec![String::from("String")], string);
+
+    let mut string_buffer = PartialClass::new();
+    string_buffer.set_name("core::StringBuffer");
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::String::is-char-boundary",
+        "core::String::as-bytes",
+        "core::String::len",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::U64]),
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
+        SignatureEntry::new(vec![TypeTag::U64, TypeTag::Object]),
+    ];
+    let vtable = VTable::new(functions);
+
+    string_buffer.add_vtable(&vec![String::from("core"), String::from("String")], vtable, &names, &signatures);
+
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::StringBuffer::push",
+        "core::StringBuffer::intern",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::U32]),
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
+    ];
+    let vtable = VTable::new(functions);
+    string_buffer.add_vtable(&vec![String::from("core"), String::from("StringBuffer")], vtable, &names, &signatures);
+
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::StringBuffer::from-interned",
+        "core::StringBuffer::new",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
+        SignatureEntry::new(vec![TypeTag::Object]),
+    ];
+    let static_methods = StaticMethods::new(functions);
+    
+    string_buffer.add_static_methods(&vec![String::from("core"), String::from("StringBuffer")], static_methods, &names, &signatures);
+    string_buffer.make_not_printable();
+    classes.insert(vec![String::from("StringBuffer")], string_buffer);
+
+
+    let mut interned_string = PartialClass::new();
+    interned_string.set_name("core::InternedString");
+    let functions = vec![
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::String::is-char-boundary",
+        "core::String::as-bytes",
+        "core::String::len",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::U64]),
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
+        SignatureEntry::new(vec![TypeTag::U64, TypeTag::Object]),
+    ];
+    let vtable = VTable::new(functions);
+
+    interned_string.add_vtable(&vec![String::from("core"), String::from("String")], vtable, &names, &signatures);
+
+    let functions = vec![
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::InternedString::to-buffer",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
+    ];
+    let vtable = VTable::new(functions);
+    interned_string.add_vtable(&vec![String::from("core"), String::from("InternedString")], vtable, &names, &signatures);
+
+    let functions = vec![
+        VTableEntry::default(),
+    ];
+    let names = vec![
+        "core::InternedString::from-buffer",
+    ];
+    let signatures = vec![
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
+    ];
+    let static_methods = StaticMethods::new(functions);
+
+    interned_string.add_static_methods(&vec![String::from("core"), String::from("InternedString")], static_methods, &names, &signatures);
+    interned_string.make_not_printable();
+    classes.insert(vec![String::from("InternedString")], interned_string);
 
     
     let mut array = PartialClass::new();

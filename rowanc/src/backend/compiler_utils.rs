@@ -277,6 +277,34 @@ impl PartialClass {
         self.vtables.push(vtable);
     }
 
+    pub fn add_static_methods(
+        &mut self,
+        class_name: &Vec<String>,
+        mut static_methods: StaticMethods,
+        names: &Vec<impl AsRef<str>>,
+        signatures: &Vec<SignatureEntry>,
+    ) {
+        //println!("add_vtable1 {} {}", self.index_string_table(self.name), class_name.as_ref());
+        
+        for (i, function) in static_methods.functions.iter_mut().enumerate() {
+            function.name = self.add_string(names[i].as_ref());
+            function.signature = self.signature_table.len() as u64;
+            self.signature_table.push(signatures[i].clone());
+
+            self.method_to_class.entry(String::from(names[i].as_ref()))
+                .and_modify(|v| v.push(class_name.clone()))
+                .or_insert(vec![class_name.clone()]);
+
+            self.method_to_function.entry(String::from(names[i].as_ref()))
+                .and_modify(|v| v.push((self.vtables.len(), i)))
+                .or_insert(vec![(self.vtables.len(), i)]);
+        }
+        self.class_to_vtable.entry(class_name.clone())
+            .and_modify(|v| v.push(self.vtables.len()))
+            .or_insert(vec![self.vtables.len()]);
+        self.static_methods.extend_from_slice(&static_methods.functions);
+    }
+
     pub fn add_static_method<B: AsRef<[u8]>>(
         &mut self,
         method_name: impl AsRef<str>,
