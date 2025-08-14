@@ -35,34 +35,41 @@ void rowan_flush(int fd) {
 
 
 void std__console__Console__print_dash_internal(context_t context, object_t* text) {
-    string_t* str = (string_t*)text;
-    rowan_print_internal(1, str->buffer, str->length);
+    uint64_t length = 0;
+    uint8_t* buf = NULL;
+
+    rowan_get_string_buffer(text, &buf, &length);
+
+    rowan_print_internal(1, buf, length);
 }
 
 void std__console__Console__println_dash_internal(context_t context, object_t* text) {
-    string_t* str = (string_t*) text;
-    uint8_t* buff = NULL;
-    ssize_t length = str->length;
-    buff = (uint8_t*)malloc(length + 1);
-    memcpy(buff, str->buffer, str->length);
-    buff[str->length] = '\n';
-    rowan_print_internal(1, buff, str->length + 1);
+    uint64_t length = 0;
+    uint8_t* buf = NULL;
+
+    rowan_get_string_buffer(text, &buf, &length);
+
+    rowan_print_internal(1, buf, length);
+    rowan_print_internal(1, "\n", 1);
     rowan_flush(1);
-    free(buff);
-    buff = NULL;
 }
 
 void std__console__Console__eprint_dash_internal(context_t context, object_t* text) {
-    string_t* str = (string_t*)text;
-    rowan_print_internal(2, str->buffer, str->length);
+    uint64_t length = 0;
+    uint8_t* buf = NULL;
+
+    rowan_get_string_buffer(text, &buf, &length);
+
+    rowan_print_internal(2, buf, length);
+    rowan_print_internal(2, "\n", 1);
 }
 
 void std__console__Console__eprintln_dash_internal(context_t context, object_t* text) {
-    string_t* str = (string_t*) text;
-    uint8_t* buff = (uint8_t*)malloc(str->length + 1);
-    memcpy(buff, str->buffer, str->length);
-    buff[str->length] = '\n';
-    rowan_print_internal(2, buff, str->length + 1);
-    free(buff);
-    buff = NULL;
+    uint64_t length = 0;
+    uint8_t* buf = NULL;
+
+    rowan_get_string_buffer(text, &buf, &length);
+
+    rowan_print_internal(2, buf, length);
+    rowan_print_internal(2, "\n", 1);
 }

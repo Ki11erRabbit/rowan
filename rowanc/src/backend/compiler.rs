@@ -1085,18 +1085,6 @@ impl Compiler {
 
                                 let string_ref = partial_class.add_string(string);
                                 output.push(Bytecode::GetStrRef(string_ref));
-                                output.push(Bytecode::StoreArgument(1));
-
-                                // Code for constructing a new String object and setting its value to the str ref
-                                let string_path = partial_class.add_string("core::String");
-                                output.push(Bytecode::NewObject(string_path));
-                                output.push(Bytecode::Dup);
-                                output.push(Bytecode::StoreArgument(0));
-
-                                let class_name = partial_class.add_string("core::String");
-                                let method_name = partial_class.add_string("core::String::load-str");
-
-                                output.push(Bytecode::InvokeVirt(class_name, method_name));
                             }
                             Constant::Float(value, ty, _) => {
                                 match ty {
