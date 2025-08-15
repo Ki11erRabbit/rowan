@@ -408,7 +408,7 @@ impl Expression<'_> {
     }
 
     pub fn new_member_access<'a>(
-        object: Box<Expression<'a>>, 
+        object: Box<Expression<'a>>,
         field: PathName<'a>,
         annotation: Type<'a>,
         span: Span

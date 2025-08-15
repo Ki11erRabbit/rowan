@@ -1525,7 +1525,7 @@ impl Compiler {
             Expression::Call { .. } => {
                 self.compile_call_expression(class_name, partial_class, expr, output, lhs)?;
             }
-            Expression::StaticCall { name, type_args, args, annotation, .. } => {
+            Expression::StaticCall { name, type_args, args, .. } => {
 
                 for (i, arg) in args.iter().enumerate() {
                     self.compile_expression(class_name, partial_class, arg, output, lhs)?;
@@ -1539,43 +1539,7 @@ impl Compiler {
 
                 let method_name = name.segments.last().unwrap();
                 let method_class = name.segments.iter().rev().skip(1).next().unwrap();
-                let method_class = match annotation {
-                    Type::TypeArg(_, args, _) => {
-                        let mut string = method_class.to_string();
-                        for arg in args {
-                            let name_mod = match arg {
-                                Type::I8 | Type::U8 => "8",
-                                Type::I16 | Type::U16 => "16",
-                                Type::I32 | Type::U32 => "32",
-                                Type::I64 | Type::U64 => "64",
-                                Type::F32 => "f32",
-                                Type::F64 => "f64",
-                                Type::Object(ty, _) => {
-                                    let path = self.add_path_if_needed(ty.to_string());
-                                    if self.classes.contains_key(&path) {
-                                        "object"
-                                    } else {
-                                        match self.current_type_args.get(ty.as_str()).unwrap() {
-                                            TypeTag::I8 | TypeTag::U8 => "8",
-                                            TypeTag::I16 | TypeTag::U16 => "16",
-                                            TypeTag::I32 | TypeTag::U32 => "32",
-                                            TypeTag::I64 | TypeTag::U64 => "64",
-                                            TypeTag::F32 => "f32",
-                                            TypeTag::F64 => "f64",
-                                            _ => "object",
-                                        }
-                                    }
-                                }
-                                _ => "object",
-                            };
-                            string.push_str(name_mod);
-                        }
-                        string
-                    }
-                    _ => {
-                        method_class.to_string()
-                    }
-                };
+                let method_class = method_class.to_string();
 
                 let mut path = self.add_path_if_needed(method_class);
                 let method_class = partial_class.add_string(path.join("::"));

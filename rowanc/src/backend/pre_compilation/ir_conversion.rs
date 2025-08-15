@@ -230,7 +230,7 @@ impl<'convert> IRConverter {
     fn convert_constant(&mut self, constant: ast::Constant<'convert>) -> Result<ir::Constant<'convert>, ()> {
         match constant {
             ast::Constant::Integer(value, ty, span) => {
-                Ok(ir::Constant::Integer(value, ty.expect("TODO: handle missing type"), span))
+                Ok(ir::Constant::Integer(value, ty.expect(&format!("TODO: handle missing type {span:?}")), span))
             }
             ast::Constant::Float(value, ty, span) => {
                 Ok(ir::Constant::Float(value, ty.expect("TODO: handle missing type"), span))
@@ -319,10 +319,11 @@ impl<'convert> IRConverter {
     }
 
     fn convert_expression(&mut self, expr: ast::Expression<'convert>) -> Result<ir::Expression<'convert>, ()> {
+        //println!("expr: {:?}", expr);
         match expr {
             ast::Expression::Variable(name, ty, span) => {
                 Ok(ir::Expression::Variable(name.clone(),
-                ty.expect(&format!("TODO: handle missing type of variable: {}", name)), span))
+                ty.expect(&format!("TODO: handle missing type of variable: {} {:?}", name, span)), span))
             }
             ast::Expression::Literal(literal) => {
                 Ok(ir::Expression::Literal(self.convert_literal(literal)?))

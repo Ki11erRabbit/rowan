@@ -495,22 +495,25 @@ impl TypeChecker {
 
     fn check_statement<'a>(&mut self, return_type: &TypeCheckerType, statement: &mut Statement<'a>) -> Result<(), TypeCheckerError> {
         use crate::trees::ast::Statement;
-
         match statement {
             Statement::Const { bindings, ty, value, .. } => {
                 self.annotate_expr(ty, value)?;
                 self.bind_pattern(bindings, ty);
             }
             Statement::Let { bindings, ty, value, .. } => {
+                self.check_expr(return_type, value)?;
                 self.annotate_expr(ty, value)?;
                 self.bind_pattern(bindings, ty);
             }
             Statement::Assignment { target, value, .. } => {
                 let lhs = self.get_type(target)?;
+                self.annotate_expr(&lhs, target)?;
+                self.check_expr(return_type, value)?;
                 self.annotate_expr(&lhs, value)?;
             }
             Statement::Expression(expr, _) => {
                 self.check_expr(return_type, expr)?;
+                self.annotate_expr(&Type::Void, expr)?;
             }
             Statement::While { test, body, ..} => {
                 self.check_expr(return_type, test)?;
@@ -612,6 +615,7 @@ impl TypeChecker {
                     _ => todo!("add support for non-array objects with indexing"),
                 }
                 self.annotate_expr(&Type::U64, right.as_mut())?;
+                //println!("right: {:?}", right);
                 let rhs = self.get_type(right)?;
                 match rhs {
                     Type::U64 => {}
@@ -646,7 +650,7 @@ impl TypeChecker {
                     }
                 }
             }
-            Expression::Call { name, type_args: _, args, .. } => {
+            Expression::Call { name, type_args: _, args, annotation, .. } => {
                 self.check_expr(return_type, name)?;
                 let method = self.get_type(name)?;
 
@@ -662,6 +666,8 @@ impl TypeChecker {
                                 if !self.compare_types(&TypeCheckerType::from(&arg_ty), &TypeCheckerType::from(expected_ty)) {
                                     todo!("report type mismatch for argument {} in method call {:?} ({:?}, {:?})", i, name, arg_ty, expected_ty);
                                 }
+                                self.annotate_expr(expected_ty, arg)?;
+                                *annotation = Some(return_type.clone().into());
                             } else {
                                 todo!("report too many arguments in method call");
                             }
@@ -671,7 +677,7 @@ impl TypeChecker {
                     }
                 }
             }
-            Expression::StaticCall { name, type_args: _, args, .. } => {
+            Expression::StaticCall { name, type_args: _, args, annotation, .. } => {
                 let class_name = if self.active_paths.contains_key(name.segments[0].as_str()) {
                     let mut active_path = self.active_paths.get(name.segments[0].as_str()).unwrap().clone();
                     active_path.extend(
@@ -703,18 +709,22 @@ impl TypeChecker {
                 let method = method.clone();
 
                 for (i, arg) in args.iter_mut().enumerate() {
+                    //println!("i: {i} arg: {arg:?}");
                     // check each argument in the call
                     self.check_expr(return_type, arg)?;
                     let arg_ty = self.get_type(arg)?;
                     match &method {
-                        TypeCheckerType::Function(arg_types, _) => {
+                        TypeCheckerType::Function(arg_types, return_type) => {
                             if i < arg_types.len() {
                                 let expected_ty = &arg_types[i];
-                                //println!("left: {:?}\nright: {:?}", arg_ty, expected_ty);
-                                self.annotate_expr(&arg_ty, arg)?;
+                                //("\tleft: {:?}\n\tright: {:?}", arg_ty, expected_ty);
                                 if !self.compare_types(&TypeCheckerType::from(&arg_ty), expected_ty) {
                                     todo!("report type mismatch for argument {} in method call {:?} ({:?}, {:?})", i, name, arg_ty, expected_ty);
                                 }
+                                self.check_expr(return_type, arg)?;
+                                //println!("arg: {arg:?}");
+                                self.annotate_expr(&expected_ty.into(), arg)?;
+                                *annotation = Some((*return_type.clone()).into());
                             } else {
                                 todo!("report too many arguments in method call");
                             }
@@ -786,8 +796,7 @@ impl TypeChecker {
             }
             Expression::New(_, arr_size, _) => {
                 if let Some(arr_size) = arr_size {
-                    let _ty = self.get_type(arr_size.as_mut())?;
-
+                    self.annotate_expr(&Type::U64, arr_size.as_mut())?;
                 }
             }
             Expression::ClassAccess {
@@ -1040,6 +1049,9 @@ impl TypeChecker {
                 let last = class_name.segments.last().unwrap();
                 Ok(Type::Object(last.clone(), *span))
             }
+            Expression::Parenthesized(expr, _) => {
+                self.get_type(expr.as_mut())
+            }
             x => todo!("finish get_type: {:?}", x),
         }
     }
@@ -1277,8 +1289,10 @@ impl TypeChecker {
                     if self.compare_types(var_ty, &TypeCheckerType::from(ty)) {
                         *annotation = Some(ty.clone());
                     } else {
-                        todo!("report type mismatch");
+                        todo!("report type mismatch {:?} vs {:?}", ty, var_ty);
                     }
+                } else {
+                    *annotation = Some(ty.clone());
                 }
             }
             (Type::Tuple(tys, _), Expression::Literal(Literal::Tuple(exprs, annotation, _))) => {
@@ -1380,6 +1394,7 @@ impl TypeChecker {
             (_, Expression::New(_, arr_size, _)) => {
                 if let Some(arr_size) = arr_size {
                     self.annotate_expr(&Type::U64, arr_size.as_mut())?;
+                    //println!("arr_size: {:?}", arr_size);
                 }
             }
             _ => {}
