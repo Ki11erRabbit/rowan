@@ -1,0 +1,1 @@
+mod box_closure_captures;

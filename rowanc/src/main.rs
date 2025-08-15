@@ -3,13 +3,13 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use clap::Parser;
 use petgraph::graph::UnGraph;
-use crate::ast::TopLevelStatement;
+use crate::trees::ast::TopLevelStatement;
 
 pub mod backend;
 pub mod parser;
-pub mod ast;
 pub mod typechecker;
 mod native;
+mod trees;
 
 #[derive(Parser, Debug)]
 pub struct Args {

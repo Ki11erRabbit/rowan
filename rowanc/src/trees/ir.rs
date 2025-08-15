@@ -1,128 +1,7 @@
-use std::fmt::format;
 use either::Either;
-use rowan_shared::TypeTag;
+use crate::trees::{BinaryOperator, PathName, Text, Type, UnaryOperator};
+use crate::trees::{Span, Visibility};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Text<'a> {
-    Borrowed(&'a str),
-    Owned(String),
-}
-
-impl Text<'_> {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Text::Borrowed(s) => s,
-            Text::Owned(s) => s,
-        }
-    }
-}
-
-impl std::ops::Deref for Text<'_> {
-    type Target = str;
-    fn deref(&self) -> &str {
-        match self {
-            Text::Borrowed(s) => s,
-            Text::Owned(s) => s,
-        }
-    }
-}
-
-impl<'a> From<&'a str> for Text<'a> {
-    fn from(s: &'a str) -> Text<'a> {
-        Text::Borrowed(s)
-    }
-}
-
-impl From<String> for Text<'_> {
-    fn from(s: String) -> Text<'static> {
-        Text::Owned(s)
-    }
-}
-
-impl std::fmt::Display for Text<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Text::Borrowed(s) => write!(f, "{}", s),
-            Text::Owned(s) => write!(f, "{}", s),
-        }
-    }
-}
-
-impl AsRef<str> for Text<'_> {
-    fn as_ref(&self) -> &str {
-        match self {
-            Text::Borrowed(s) => s,
-            Text::Owned(s) => s,
-        }
-    }
-}
-
-impl std::cmp::PartialEq<str> for Text<'_> {
-    fn eq(&self, other: &str) -> bool {
-        self.as_ref() == other
-    }
-}
-
-impl std::cmp::PartialEq<Text<'_>> for str {
-    fn eq(&self, other: &Text<'_>) -> bool {
-        self == other.as_ref()
-    }
-}
-
-impl std::cmp::PartialEq<&str> for Text<'_> {
-    fn eq(&self, other: &&str) -> bool {
-        self.as_ref() == *other
-    }
-}
-
-impl std::cmp::PartialEq<Text<'_>> for &str {
-    fn eq(&self, other: &Text<'_>) -> bool {
-        *self == other.as_ref()
-    }
-}
-
-impl std::cmp::PartialEq<String> for Text<'_> {
-    fn eq(&self, other: &String) -> bool {
-        self.as_ref() == other.as_str()
-    }
-}
-
-impl std::cmp::PartialEq<Text<'_>> for String {
-    fn eq(&self, other: &Text<'_>) -> bool {
-        self.as_str() == other.as_ref()
-    }
-}
-
-impl std::borrow::Borrow<str> for Text<'_> {
-    fn borrow(&self) -> &str {
-        self.as_ref()
-    }
-}
-
-
-
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Copy)]
-pub struct Span {
-    pub start: usize,
-    pub end: usize,
-}
-
-impl Span {
-    pub fn new(start: usize, end: usize) -> Self {
-        Span {
-            start,
-            end,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Copy)]
-pub enum Visibility {
-    Public,
-    Protected,
-    Private,
-}
 
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
@@ -144,30 +23,6 @@ impl File<'_> {
                 None
             }
         }).collect()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct PathName<'a> {
-    pub segments: Vec<Text<'a>>,
-    pub span: Span,
-}
-
-impl PathName<'_> {
-    pub fn new<'a>(segments: Vec<Text<'a>>, span: Span) -> PathName<'a> {
-        PathName { segments, span }
-    }
-}
-
-impl std::fmt::Display for PathName<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        for (i, segment) in self.segments.iter().enumerate() {
-            if i > 0 {
-                write!(f, "::")?;
-            }
-            write!(f, "{}", segment)?;
-        }
-        Ok(())
     }
 }
 
@@ -287,7 +142,7 @@ impl Parameter<'_> {
             ty,
             span,
         }
-            
+
     }
 }
 
@@ -301,61 +156,6 @@ pub struct StaticMember<'a> {
     pub span: Span,
 }
 
-
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum Type<'a> {
-    Void,
-    U8,
-    U16,
-    U32,
-    U64,
-    I8,
-    I16,
-    I32,
-    I64,
-    F32,
-    F64,
-    Char,
-    Str,
-    Native,
-    Array(Box<Type<'a>>, Span),
-    Object(Text<'a>, Span),
-    TypeArg(Box<Type<'a>>, Vec<Type<'a>>, Span),
-    Function(Vec<Type<'a>>, Box<Type<'a>>, Span),
-    Tuple(Vec<Type<'a>>, Span),
-}
-
-impl Type<'_> {
-    pub fn is_integer(&self) -> bool {
-        match self {
-            Type::U8 | Type::U16 | Type::U32 | Type::U64 => true,
-            Type::I8 | Type::I16 | Type::I32 | Type::I64 => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_float(&self) -> bool {
-        match self {
-            Type::F32 | Type::F64 => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_unsigned(&self) -> bool {
-        match self {
-            Type::U8 | Type::U16 | Type::U32 | Type::U64 => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_signed(&self) -> bool {
-        match self {
-            Type::I8 | Type::I16 | Type::I32 | Type::I64 => true,
-            _ => false,
-        }
-    }
-
-}
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct TypeParameter<'a> {
@@ -494,7 +294,7 @@ impl Statement<'_> {
             span
         }
     }
-        
+
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
@@ -507,8 +307,8 @@ pub enum Pattern<'a> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Constant<'a> {
-    Integer(Text<'a>, Option<Type<'a>>, Span),
-    Float(Text<'a>, Option<Type<'a>>, Span),
+    Integer(Text<'a>, Type<'a>, Span),
+    Float(Text<'a>, Type<'a>, Span),
     String(Text<'a>, Span),
     Character(Text<'a>, Span),
     Bool(bool, Span),
@@ -516,7 +316,7 @@ pub enum Constant<'a> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Expression<'a> {
-    Variable(Text<'a>, Option<Type<'a>>, Span),
+    Variable(Text<'a>, Type<'a>, Span),
     Literal(Literal<'a>),
     This(Span),
     Call {
@@ -524,20 +324,20 @@ pub enum Expression<'a> {
         type_args: Vec<Type<'a>>,
         args: Vec<Expression<'a>>,
         span: Span,
-        annotation: Option<Type<'a>>,
+        annotation: Type<'a>,
     },
     StaticCall {
         name: PathName<'a>,
         type_args: Vec<Type<'a>>,
         args: Vec<Expression<'a>>,
         span: Span,
-        annotation: Option<Type<'a>>,
+        annotation: Type<'a>,
     },
     MemberAccess {
         object: Box<Expression<'a>>,
         field: PathName<'a>,
         span: Span,
-        annotation: Option<Type<'a>>,
+        annotation: Type<'a>,
     },
     ClassAccess {
         class_name: PathName<'a>,
@@ -589,6 +389,7 @@ impl Expression<'_> {
         name: Box<Expression<'a>>,
         type_args: Vec<Type<'a>>,
         args: Vec<Expression<'a>>,
+        annotation: Type<'a>,
         span: Span
     ) -> Expression<'a> {
         Expression::Call {
@@ -596,7 +397,7 @@ impl Expression<'_> {
             type_args,
             args,
             span,
-            annotation: None,
+            annotation,
         }
     }
 
@@ -604,6 +405,7 @@ impl Expression<'_> {
         name: PathName<'a>,
         type_args: Vec<Type<'a>>,
         args: Vec<Expression<'a>>,
+        annotation: Type<'a>,
         span: Span
     ) -> Expression<'a> {
         Expression::StaticCall {
@@ -611,16 +413,21 @@ impl Expression<'_> {
             type_args,
             args,
             span,
-            annotation: None,
+            annotation,
         }
     }
 
-    pub fn new_member_access<'a>(object: Box<Expression<'a>>, field: PathName<'a>, span: Span) -> Expression<'a> {
+    pub fn new_member_access<'a>(
+        object: Box<Expression<'a>>, 
+        field: PathName<'a>,
+        annotation: Type<'a>,
+        span: Span
+    ) -> Expression<'a> {
         Expression::MemberAccess {
             object,
             field,
             span,
-            annotation: None,
+            annotation,
         }
     }
 
@@ -675,7 +482,7 @@ impl Expression<'_> {
             span,
         }
     }
-        
+
     pub fn new_as_expression<'a>(
         source: Box<Expression<'a>>,
         typ: Type<'a>,
@@ -700,36 +507,36 @@ impl Expression<'_> {
         }
     }
 
-    pub fn get_type(&self) -> Option<Either<Type, ()>> {
+    pub fn get_type(&self) -> Either<Type, ()> {
         match self {
-            Expression::As {typ, ..} => Some(Either::Left(typ.clone())),
-            Expression::Into {typ, ..} => Some(Either::Left(typ.clone())),
+            Expression::As {typ, ..} => Either::Left(typ.clone()),
+            Expression::Into {typ, ..} => Either::Left(typ.clone()),
             Expression::Literal(Literal::Constant(Constant::Bool(_, _))) => {
-                Some(Either::Left(Type::U8))
+                Either::Left(Type::U8)
             }
             Expression::Literal(Literal::Constant(Constant::Character(_, _))) => {
-                Some(Either::Left(Type::U32))
+                Either::Left(Type::U32)
             }
             Expression::Literal(Literal::Constant(Constant::Integer(_, ty, _))) => {
-                ty.clone().map(|t| Either::Left(t))
+                Either::Left(ty.clone())
             }
             Expression::Literal(Literal::Constant(Constant::Float(_, ty, _))) => {
-                ty.clone().map(|t| Either::Left(t))
+                Either::Left(ty.clone())
             }
             Expression::Literal(Literal::Constant(Constant::String(_, _))) => {
-                Some(Either::Left(Type::Str))
+                Either::Left(Type::Str)
             }
             Expression::Literal(Literal::Void(_)) => {
-                Some(Either::Left(Type::Void))
+                Either::Left(Type::Void)
             }
             Expression::Literal(Literal::Tuple(_, ty, _)) => {
-                ty.clone().map(|t| Either::Left(t))
+                Either::Left(ty.clone())
             }
             Expression::Literal(Literal::Array(_, ty, _)) => {
-                ty.clone().map(|t| Either::Left(t))
+                Either::Left(ty.clone())
             }
             Expression::Variable(_, ty, _) => {
-                ty.clone().map(|t| Either::Left(t))
+                Either::Left(ty.clone())
             }
             Expression::BinaryOperation { operator: BinaryOperator::Add, left,  .. } |
             Expression::BinaryOperation { operator: BinaryOperator::Sub, left,  .. } |
@@ -739,17 +546,17 @@ impl Expression<'_> {
                 left.get_type()
             }
             Expression::Call {annotation, ..} => {
-                annotation.clone().map(|t| Either::Left(t))
+                Either::Left(annotation.clone())
             }
-            Expression::This(_) => Some(Either::Right(())),
+            Expression::This(_) => Either::Right(()),
             Expression::MemberAccess {
                 annotation, ..
             } => {
-                annotation.clone().map(|t| Either::Left(t))
+                Either::Left(annotation.clone())
             }
             Expression::Parenthesized(expr, _) => expr.get_type(),
             Expression::StaticCall { annotation, ..} => {
-                annotation.clone().map(|t| Either::Left(t))
+                Either::Left(annotation.clone())
             }
             x => todo!("Expression::get_type {:?}", x),
         }
@@ -760,41 +567,16 @@ impl Expression<'_> {
 pub enum Literal<'a> {
     Constant(Constant<'a>),
     Void(Span),
-    Tuple(Vec<Expression<'a>>, Option<Type<'a>>, Span),
-    Array(Vec<Expression<'a>>, Option<Type<'a>>, Span),
+    Tuple(Vec<Expression<'a>>, Type<'a>, Span),
+    Array(Vec<Expression<'a>>, Type<'a>, Span),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum ClosureParameter<'a> {
-    Typed(Parameter<'a>),
-    Untyped(Pattern<'a>, Span),
+pub struct ClosureParameter<'a> {
+    parameter: Parameter<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum UnaryOperator {
-    Neg,
-    Not,
-    Try,
-}
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum BinaryOperator {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-    And,
-    Or,
-    Eq,
-    Ne,
-    Lt,
-    Le,
-    Gt,
-    Ge,
-    Concat,
-    Index,
-}
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct IfExpression<'a> {
     pub condition: Box<Expression<'a>>,

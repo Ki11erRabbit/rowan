@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::io::BufRead;
 use rowan_shared::{classfile::{BytecodeEntry, ClassFile, Member, SignatureEntry, SignatureIndex, StringEntry, StringIndex, VTable, VTableEntry}, TypeTag};
 use rowan_shared::classfile::{BytecodeIndex, StaticMethods};
-use crate::ast::Method;
 use crate::backend::Compiler;
 use crate::native::NativeAttributes;
 

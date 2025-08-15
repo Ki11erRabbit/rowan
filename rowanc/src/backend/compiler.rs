@@ -4,8 +4,9 @@ use either::Either;
 use itertools::Itertools;
 use rowan_shared::{bytecode::compiled::Bytecode, classfile::{Member, SignatureEntry, VTable, VTableEntry}, TypeTag};
 use rowan_shared::classfile::{SignatureIndex, StaticMethods};
-use crate::{ast, ast::{BinaryOperator, Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement, Type, UnaryOperator, Text}, backend::compiler_utils::Frame};
-use crate::ast::{IfExpression, ParentDec, PathName};
+use crate::{trees::ir, trees::ir::{Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement}, backend::compiler_utils::Frame};
+use crate::trees::ir::{IfExpression, ParentDec};
+use crate::trees::{BinaryOperator, PathName, Type, UnaryOperator, Text};
 use super::compiler_utils::{PartialClass, StaticMember};
 
 
@@ -830,8 +831,8 @@ impl Compiler {
         name: &Vec<String>,
         parent: &Option<ParentDec>,
         methods: &Vec<Method>,
-        members: &Vec<ast::Member>,
-        static_members: &Vec<ast::StaticMember>,
+        members: &Vec<ir::Member>,
+        static_members: &Vec<ir::StaticMember>,
     ) -> Result<(), CompilerError> {
         let mut partial_class = PartialClass::new();
         let path_name = name.join("::");
@@ -1290,11 +1291,11 @@ impl Compiler {
                             }
                             Constant::Float(value, ty, _) => {
                                 match ty {
-                                    Some(Type::F32) => {
+                                    Type::F32 => {
                                         let value = value.parse::<f32>().expect("malformed f32");
                                         output.push(Bytecode::LoadF32(value));
                                     }
-                                    Some(Type::F64) => {
+                                    Type::F64 => {
                                         let value = value.parse::<f64>().expect("malformed f64");
                                         output.push(Bytecode::LoadF64(value));
                                     }
@@ -1303,49 +1304,45 @@ impl Compiler {
                             }
                             Constant::Integer(value, ty, _) => {
                                 match ty {
-                                    Some(Type::F32) => {
+                                    Type::F32 => {
                                         let value = value.parse::<f32>().expect("malformed f32");
                                         output.push(Bytecode::LoadF32(value));
                                     }
-                                    Some(Type::F64) => {
+                                    Type::F64 => {
                                         let value = value.parse::<f64>().expect("malformed f64");
                                         output.push(Bytecode::LoadF64(value));
                                     }
-                                    Some(Type::U8) => {
+                                    Type::U8 => {
                                         let value = value.parse::<u8>().expect("malformed u8");
                                         output.push(Bytecode::LoadU8(value));
                                     }
-                                    Some(Type::U16) => {
+                                    Type::U16 => {
                                         let value = value.parse::<u16>().expect("malformed u16");
                                         output.push(Bytecode::LoadU16(value));
                                     }
-                                    Some(Type::U32) => {
+                                    Type::U32 => {
                                         let value = value.parse::<u32>().expect("malformed u32");
                                         output.push(Bytecode::LoadU32(value));
                                     }
-                                    Some(Type::U64) => {
+                                    Type::U64 => {
                                         let value = value.parse::<u64>().expect("malformed u64");
                                         output.push(Bytecode::LoadU64(value));
                                     }
-                                    Some(Type::I8) => {
+                                    Type::I8 => {
                                         let value = value.parse::<i8>().expect("malformed i8");
                                         output.push(Bytecode::LoadI8(value));
                                     }
-                                    Some(Type::I16) => {
+                                    Type::I16 => {
                                         let value = value.parse::<i16>().expect("malformed i16");
                                         output.push(Bytecode::LoadI16(value));
                                     }
-                                    Some(Type::I32) => {
+                                    Type::I32 => {
                                         let value = value.parse::<i32>().expect("malformed i32");
                                         output.push(Bytecode::LoadI32(value));
                                     }
-                                    Some(Type::I64) => {
+                                    Type::I64 => {
                                         let value = value.parse::<i64>().expect("malformed i64");
                                         output.push(Bytecode::LoadI64(value));
-                                    }
-                                    None => {
-                                        let value = value.parse::<i32>().expect("malformed i32");
-                                        output.push(Bytecode::LoadI32(value));
                                     }
                                     x => unreachable!("integer literal {:?}", x)
                                 }
@@ -1354,26 +1351,25 @@ impl Compiler {
                     }
                     Literal::Array(exprs, ty, _) => {
                         let type_tag = match ty {
-                            Some(Type::U8) => TypeTag::U8,
-                            Some(Type::I8) => TypeTag::I8,
-                            Some(Type::U16) => TypeTag::U16,
-                            Some(Type::I16) => TypeTag::I16,
-                            Some(Type::U32) => TypeTag::U32,
-                            Some(Type::I32) => TypeTag::I32,
-                            Some(Type::U64) => TypeTag::U64,
-                            Some(Type::F32) => TypeTag::F32,
-                            Some(Type::F64) => TypeTag::F64,
-                            Some(Type::I64) => TypeTag::I64,
-                            Some(Type::Array(_, _)) => TypeTag::Object,
-                            Some(Type::Tuple(_, _)) => TypeTag::Object,
-                            Some(Type::Char) => TypeTag::U32,
-                            Some(Type::Str) => TypeTag::Str,
-                            Some(Type::Object(_, _)) => TypeTag::Object,
-                            Some(Type::Void) => TypeTag::Void,
-                            Some(Type::TypeArg(_ ,_, _)) => TypeTag::Object,
-                            Some(Type::Function(_, _, _)) => TypeTag::Object,
-                            Some(Type::Native) => unreachable!("Native should not ever occur in here"),
-                            None => todo!("handle case where we don't know what the type is for the array")
+                            Type::U8 => TypeTag::U8,
+                            Type::I8 => TypeTag::I8,
+                            Type::U16 => TypeTag::U16,
+                            Type::I16 => TypeTag::I16,
+                            Type::U32 => TypeTag::U32,
+                            Type::I32 => TypeTag::I32,
+                            Type::U64 => TypeTag::U64,
+                            Type::F32 => TypeTag::F32,
+                            Type::F64 => TypeTag::F64,
+                            Type::I64 => TypeTag::I64,
+                            Type::Array(_, _) => TypeTag::Object,
+                            Type::Tuple(_, _) => TypeTag::Object,
+                            Type::Char => TypeTag::U32,
+                            Type::Str => TypeTag::Str,
+                            Type::Object(_, _) => TypeTag::Object,
+                            Type::Void => TypeTag::Void,
+                            Type::TypeArg(_ ,_, _) => TypeTag::Object,
+                            Type::Function(_, _, _) => TypeTag::Object,
+                            Type::Native => unreachable!("Native should not ever occur in here"),
                         };
                         output.push(Bytecode::LoadU64(exprs.len() as u64));
                         output.push(Bytecode::CreateArray(type_tag));
@@ -1395,85 +1391,85 @@ impl Compiler {
                 self.compile_expression(class_name, partial_class, right.as_ref(), output, lhs)?;
 
                 match (left.get_type(), operator, right.get_type()) {
-                    (Some(Either::Left(lhs)), BinaryOperator::Add, Some(Either::Left(rhs))) if lhs.is_integer() && rhs.is_integer() => {
+                    (Either::Left(lhs), BinaryOperator::Add, Either::Left(rhs)) if lhs.is_integer() && rhs.is_integer() => {
                         output.push(Bytecode::AddInt)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Sub, Some(Either::Left(rhs))) if lhs.is_integer() && rhs.is_integer() => {
+                    (Either::Left(lhs), BinaryOperator::Sub, Either::Left(rhs)) if lhs.is_integer() && rhs.is_integer() => {
                         output.push(Bytecode::SubInt)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Mul, Some(Either::Left(rhs))) if lhs.is_integer() && rhs.is_integer() => {
+                    (Either::Left(lhs), BinaryOperator::Mul, Either::Left(rhs)) if lhs.is_integer() && rhs.is_integer() => {
                         output.push(Bytecode::MulInt)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Div, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Either::Left(lhs), BinaryOperator::Div, Either::Left(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::DivUnsigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Div, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
+                    (Either::Left(lhs), BinaryOperator::Div, Either::Left(rhs)) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::DivSigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Mod, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Either::Left(lhs), BinaryOperator::Mod, Either::Left(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::ModUnsigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Mod, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
+                    (Either::Left(lhs), BinaryOperator::Mod, Either::Left(rhs)) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::ModSigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Add, Some(Either::Left(rhs))) if lhs.is_float() || rhs.is_float() => {
+                    (Either::Left(lhs), BinaryOperator::Add, Either::Left(rhs)) if lhs.is_float() || rhs.is_float() => {
                         output.push(Bytecode::AddFloat)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Sub, Some(Either::Left(rhs))) if lhs.is_float() || rhs.is_float() => {
+                    (Either::Left(lhs), BinaryOperator::Sub, Either::Left(rhs)) if lhs.is_float() || rhs.is_float() => {
                         output.push(Bytecode::SubFloat)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Mul, Some(Either::Left(rhs))) if lhs.is_float() || rhs.is_float() => {
+                    (Either::Left(lhs), BinaryOperator::Mul, Either::Left(rhs)) if lhs.is_float() || rhs.is_float() => {
                         output.push(Bytecode::MulFloat)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Div, Some(Either::Left(rhs))) if lhs.is_float() || rhs.is_float() => {
+                    (Either::Left(lhs), BinaryOperator::Div, Either::Left(rhs)) if lhs.is_float() || rhs.is_float() => {
                         output.push(Bytecode::DivFloat)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Mod, Some(Either::Left(rhs))) if lhs.is_float() || rhs.is_float() => {
+                    (Either::Left(lhs), BinaryOperator::Mod, Either::Left(rhs)) if lhs.is_float() || rhs.is_float() => {
                         output.push(Bytecode::ModFloat)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Eq, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Either::Left(lhs), BinaryOperator::Eq, Either::Left(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::EqualUnsigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Eq, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
+                    (Either::Left(lhs), BinaryOperator::Eq, Either::Left(rhs)) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::EqualSigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Ne, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Either::Left(lhs), BinaryOperator::Ne, Either::Left(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::NotEqualUnsigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Ne, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
+                    (Either::Left(lhs), BinaryOperator::Ne, Either::Left(rhs)) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::NotEqualSigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Lt, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Either::Left(lhs), BinaryOperator::Lt, Either::Left(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::LessUnsigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Lt, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
+                    (Either::Left(lhs), BinaryOperator::Lt, Either::Left(rhs)) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::LessSigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Le, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Either::Left(lhs), BinaryOperator::Le, Either::Left(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::LessOrEqualUnsigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Le, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
+                    (Either::Left(lhs), BinaryOperator::Le, Either::Left(rhs)) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::LessOrEqualSigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Gt, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Either::Left(lhs), BinaryOperator::Gt, Either::Left(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::GreaterUnsigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Gt, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
+                    (Either::Left(lhs), BinaryOperator::Gt, Either::Left(rhs)) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::GreaterSigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Ge, Some(Either::Left(rhs))) if lhs.is_unsigned() && rhs.is_unsigned() => {
+                    (Either::Left(lhs), BinaryOperator::Ge, Either::Left(rhs)) if lhs.is_unsigned() && rhs.is_unsigned() => {
                         output.push(Bytecode::GreaterOrEqualUnsigned)
                     }
-                    (Some(Either::Left(lhs)), BinaryOperator::Ge, Some(Either::Left(rhs))) if lhs.is_signed() && rhs.is_signed() => {
+                    (Either::Left(lhs), BinaryOperator::Ge, Either::Left(rhs)) if lhs.is_signed() && rhs.is_signed() => {
                         output.push(Bytecode::GreaterOrEqualSigned)
                     }
-                    (Some(Either::Left(Type::U8)), BinaryOperator::And, Some(Either::Left(Type::U8))) => {
+                    (Either::Left(Type::U8), BinaryOperator::And, Either::Left(Type::U8)) => {
                         output.push(Bytecode::And)
                     }
-                    (Some(Either::Left(Type::U8)), BinaryOperator::Or, Some(Either::Left(Type::U8))) => {
+                    (Either::Left(Type::U8), BinaryOperator::Or, Either::Left(Type::U8)) => {
                         output.push(Bytecode::Or)
                     }
-                    (Some(Either::Left(Type::Array(generic, _))), BinaryOperator::Index, _) => {
+                    (Either::Left(Type::Array(generic, _)), BinaryOperator::Index, _) => {
                         let type_tag = match generic.as_ref() {
                             Type::U8 => TypeTag::U8,
                             Type::I8 => TypeTag::I8,
@@ -1544,7 +1540,7 @@ impl Compiler {
                 let method_name = name.segments.last().unwrap();
                 let method_class = name.segments.iter().rev().skip(1).next().unwrap();
                 let method_class = match annotation {
-                    Some(Type::TypeArg(_, args, _)) => {
+                    Type::TypeArg(_, args, _) => {
                         let mut string = method_class.to_string();
                         for arg in args {
                             let name_mod = match arg {
@@ -1801,9 +1797,7 @@ impl Compiler {
 
         self.compile_expression(class_name, partial_class, object.as_ref(), output, false)?;
 
-        let Some(annotation) = object.get_type() else {
-            unreachable!("Expression should be annotated by this point");
-        };
+        let annotation = object.get_type();
 
         let name = match annotation  {
             Either::Left(Type::Object(name, _)) => self.add_path_if_needed(name.to_string()),
@@ -1882,9 +1876,7 @@ impl Compiler {
 
         self.compile_expression(class_name, partial_class, object.as_ref(), output, false)?;
 
-        let Some(annotation) = object.get_type() else {
-            unreachable!("Expression should be annotated by this point");
-        };
+        let annotation = object.get_type();
 
         let name = match annotation  {
             Either::Left(Type::Object(name, _)) => self.add_path_if_needed(name.to_string()),
@@ -1958,11 +1950,11 @@ impl Compiler {
             let (name, ty, var): (&PathName, Vec<String>, Text) = match name.as_ref() {
                 Expression::MemberAccess { object, field, .. } => {
                     match object.as_ref() {
-                        Expression::Variable(var, Some(Type::Object(ty, _)), _) => {
+                        Expression::Variable(var, Type::Object(ty, _), _) => {
                             let path = self.add_path_if_needed(ty.to_string());
                             (field, path, var.clone())
                         }
-                        Expression::Variable(var, Some(Type::Array(ty, _)), _) => {
+                        Expression::Variable(var, Type::Array(ty, _), _) => {
                             let ty = match ty.as_ref() {
                                 Type::U8 | Type::I8 => Text::Borrowed("Array8"),
                                 Type::U16 | Type::I16 => Text::Borrowed("Array16"),
@@ -1994,7 +1986,7 @@ impl Compiler {
                         Expression::This(_) => {
                             (field, class_name.clone(), Text::Borrowed("self"))
                         }
-                        Expression::Variable(var, Some(Type::TypeArg(obj, args, _)), _) => {
+                        Expression::Variable(var, Type::TypeArg(obj, args, _), _) => {
                             let Type::Object(ty, _) = obj.as_ref() else {
                                 unreachable!("type arg should contain an object");
                             };
@@ -2043,11 +2035,11 @@ impl Compiler {
 
                             output.push(Bytecode::StoreArgument(0));
 
-                            let annotation = match annotation.as_ref() {
-                                Some(Type::Object(name, _)) => {
+                            let annotation = match annotation {
+                                Type::Object(name, _) => {
                                     name.clone()
                                 }
-                                Some(Type::Array(ty, _)) => {
+                                Type::Array(ty, _) => {
                                     let ty = match ty.as_ref() {
                                         Type::U8 | Type::I8 => Text::Borrowed("Array8"),
                                         Type::U16 | Type::I16 => Text::Borrowed("Array16"),
@@ -2076,7 +2068,7 @@ impl Compiler {
                                     };
                                     ty
                                 }
-                                Some(Type::TypeArg(obj, args, _)) => {
+                                Type::TypeArg(obj, args, _) => {
                                     let Type::Object(ty, _) = obj.as_ref() else {
                                         unreachable!("type arg should contain an object");
                                     };

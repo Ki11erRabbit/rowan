@@ -1,6 +1,7 @@
 use crate::parser::lexer::{Token, TokenLexer, SpannedLexerError, LexerError};
 use either::Either;
-use crate::ast::*;
+use crate::trees::ast::*;
+use crate::trees::*;
 use lalrpop_util::ParseError;
 
 grammar<'a>(input: &'a str);

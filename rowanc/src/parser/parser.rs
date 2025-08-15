@@ -1,6 +1,6 @@
 use lalrpop_util::lalrpop_mod;
 
-use crate::ast;
+use crate::trees::ast;
 
 use super::lexer;
 

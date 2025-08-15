@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use crate::ast::Text;
+use crate::trees::Text;
 
 #[derive(Debug)]
 pub struct SpannedToken<'a> {

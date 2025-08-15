@@ -1,7 +1,8 @@
 use std::{borrow::BorrowMut, collections::HashMap};
 use std::cmp::Ordering;
 use either::Either;
-use crate::ast::{BinaryOperator, Expression, Literal, PathName, Span, Text, Type};
+use crate::trees::ast::{Class, Constant, Expression, File, IfExpression, Literal, Method, Parameter, Pattern, Statement, StaticMember, TopLevelStatement};
+use crate::trees::{BinaryOperator, PathName, Span, Text, Type, UnaryOperator};
 
 fn create_stdlib<'a>() -> HashMap<Vec<String>, (String, HashMap<String, ClassAttribute>)> {
     let mut info = HashMap::new();
@@ -139,16 +140,16 @@ impl<'a> Into<Type<'a>> for TypeCheckerType {
             TypeCheckerType::F64 => Type::F64,
             TypeCheckerType::Char => Type::Char,
             TypeCheckerType::Str => Type::Str,
-            TypeCheckerType::Array(ty) => Type::Array(Box::new((*ty).into()), crate::ast::Span::new(0, 0)),
-            TypeCheckerType::Object(name) => Type::Object(crate::ast::Text::Owned(name), crate::ast::Span::new(0, 0)),
+            TypeCheckerType::Array(ty) => Type::Array(Box::new((*ty).into()), Span::new(0, 0)),
+            TypeCheckerType::Object(name) => Type::Object(Text::Owned(name), Span::new(0, 0)),
             TypeCheckerType::TypeArg(name, constraint) => Type::TypeArg(
                 Box::new((*name).into()),
-                constraint.into_iter().map(|x| x.into()).collect(), crate::ast::Span::new(0, 0)),
+                constraint.into_iter().map(|x| x.into()).collect(), Span::new(0, 0)),
             TypeCheckerType::Function(args, ret) => Type::Function(
                 args.into_iter().map(|x| x.into()).collect(),
-                Box::new((*ret).into()), crate::ast::Span::new(0, 0)
+                Box::new((*ret).into()), Span::new(0, 0)
             ),
-            TypeCheckerType::Tuple(tys) => Type::Tuple(tys.into_iter().map(|x| x.into()).collect(), crate::ast::Span::new(0, 0)),
+            TypeCheckerType::Tuple(tys) => Type::Tuple(tys.into_iter().map(|x| x.into()).collect(), Span::new(0, 0)),
             TypeCheckerType::Native => Type::Native,
         }
     }
@@ -341,11 +342,11 @@ impl TypeChecker {
         }
     }
 
-    pub fn check<'a>(&mut self, files: Vec<crate::ast::File<'a>>) -> Result<Vec<crate::ast::File<'a>>, TypeCheckerError> {
+    pub fn check<'a>(&mut self, files: Vec<File<'a>>) -> Result<Vec<File<'a>>, TypeCheckerError> {
         self.check_files(files)
     }
 
-    fn check_files<'a>(&mut self, mut files: Vec<crate::ast::File<'a>>) -> Result<Vec<crate::ast::File<'a>>, TypeCheckerError> {
+    fn check_files<'a>(&mut self, mut files: Vec<File<'a>>) -> Result<Vec<File<'a>>, TypeCheckerError> {
         for file in files.iter_mut() {
             self.check_file(file)?;
             self.active_paths.clear();
@@ -353,14 +354,14 @@ impl TypeChecker {
         Ok(files)
     }
 
-    fn check_file<'a>(&mut self, file: &mut crate::ast::File<'a>) -> Result<(), TypeCheckerError> {
+    fn check_file<'a>(&mut self, file: &mut File<'a>) -> Result<(), TypeCheckerError> {
         let module: Vec<String> = file.path.segments.iter().map(ToString::to_string).collect();
         file.content.sort_by(|a, b| {
             match (a, b) {
-                (crate::ast::TopLevelStatement::Class(_), crate::ast::TopLevelStatement::Import(_)) => {
+                (TopLevelStatement::Class(_), TopLevelStatement::Import(_)) => {
                     Ordering::Greater
                 }
-                (crate::ast::TopLevelStatement::Import(_), crate::ast::TopLevelStatement::Class(_)) => {
+                (TopLevelStatement::Import(_), TopLevelStatement::Class(_)) => {
                     Ordering::Less
                 }
                 _ => Ordering::Equal,
@@ -369,14 +370,14 @@ impl TypeChecker {
         self.active_module = module.clone();
         for content in file.content.iter_mut() {
             match content {
-                crate::ast::TopLevelStatement::Class(class) => {
+                TopLevelStatement::Class(class) => {
                     let mut new_module = module.clone();
                     new_module.push(class.name.to_string());
                     self.active_paths.insert(class.name.to_string(), new_module);
                     self.check_class(class, &module)?;
                     self.active_paths.remove(class.name.as_str());
                 }
-                crate::ast::TopLevelStatement::Import(import) => {
+                TopLevelStatement::Import(import) => {
                     let path_terminator = import.path.segments.last().unwrap().to_string();
                     let path = import.path.segments.iter().map(ToString::to_string).collect::<Vec<_>>();
                     self.active_paths.insert(path_terminator, path);
@@ -386,8 +387,8 @@ impl TypeChecker {
         Ok(())
     }
 
-    fn check_class<'a>(&mut self, class: &mut crate::ast::Class<'a>, module: &Vec<String>) -> Result<(), TypeCheckerError> {
-        let crate::ast::Class {
+    fn check_class<'a>(&mut self, class: &mut Class<'a>, module: &Vec<String>) -> Result<(), TypeCheckerError> {
+        let Class {
             name,
             members,
             methods,
@@ -398,19 +399,19 @@ impl TypeChecker {
         let class_name = name;
         let mut class_attributes = HashMap::new();
         for member in members.iter() {
-            let crate::ast::Member { name, ty, .. } = member;
+            let crate::trees::ast::Member { name, ty, .. } = member;
             class_attributes.insert(name.to_string(), ClassAttribute::Member(TypeCheckerType::from(ty.clone())));
         }
 
         for method in methods.iter() {
-            let crate::ast::Method { name, parameters, return_type, .. } = method;
+            let crate::trees::ast::Method { name, parameters, return_type, .. } = method;
             let mut argument_types = Vec::new();
             for parameter in parameters {
                 match parameter {
-                    crate::ast::Parameter::This(_, _) => {
+                    Parameter::This(_, _) => {
                         //argument_types.push(TypeCheckerType::Object(class_name.to_string()));
                     }
-                    crate::ast::Parameter::Pattern { ty, .. } => {
+                    Parameter::Pattern { ty, .. } => {
                         argument_types.push(TypeCheckerType::from(ty.clone()));
                     }
                 }
@@ -420,7 +421,7 @@ impl TypeChecker {
         }
 
         for static_member in static_members.iter_mut() {
-            let crate::ast::StaticMember { name, ty, value, .. } = static_member;
+            let StaticMember { name, ty, value, .. } = static_member;
             if let Some(value) = value {
                 self.annotate_expr(ty, value)?;
             }
@@ -445,14 +446,14 @@ impl TypeChecker {
         Ok(())
     }
 
-    fn check_method<'a>(&mut self, method: &mut crate::ast::Method<'a>) -> Result<(), TypeCheckerError> {
-        let crate::ast::Method { parameters, return_type, body, .. } = method;
+    fn check_method<'a>(&mut self, method: &mut Method<'a>) -> Result<(), TypeCheckerError> {
+        let crate::trees::ast::Method { parameters, return_type, body, .. } = method;
         self.push_scope();
 
         for parameter in parameters {
             match parameter {
-                crate::ast::Parameter::This(_, _) => {}
-                crate::ast::Parameter::Pattern { name, ty, .. } => {
+                Parameter::This(_, _) => {}
+                Parameter::Pattern { name, ty, .. } => {
                     self.bind_pattern(name, ty);
                 }
             }
@@ -465,8 +466,8 @@ impl TypeChecker {
         Ok(())
     }
 
-    fn bind_pattern(&mut self, pattern: &crate::ast::Pattern, ty: &Type) {
-        use crate::ast::Pattern;
+    fn bind_pattern(&mut self, pattern: &Pattern, ty: &Type) {
+        use crate::trees::ast::Pattern;
         match (pattern, ty) {
             (Pattern::Variable(name, _,_), ty) => {
                 let ty = TypeCheckerType::from(ty);
@@ -481,7 +482,7 @@ impl TypeChecker {
         }
     }
 
-    fn check_body<'a>(&mut self, return_type: &TypeCheckerType, body: &mut Vec<crate::ast::Statement<'a>>) -> Result<(), TypeCheckerError> {
+    fn check_body<'a>(&mut self, return_type: &TypeCheckerType, body: &mut Vec<Statement<'a>>) -> Result<(), TypeCheckerError> {
 
         self.push_scope();
         for statement in body {
@@ -492,8 +493,8 @@ impl TypeChecker {
         Ok(())
     }
 
-    fn check_statement<'a>(&mut self, return_type: &TypeCheckerType, statement: &mut crate::ast::Statement<'a>) -> Result<(), TypeCheckerError> {
-        use crate::ast::Statement;
+    fn check_statement<'a>(&mut self, return_type: &TypeCheckerType, statement: &mut Statement<'a>) -> Result<(), TypeCheckerError> {
+        use crate::trees::ast::Statement;
 
         match statement {
             Statement::Const { bindings, ty, value, .. } => {
@@ -521,8 +522,8 @@ impl TypeChecker {
         Ok(())
     }
 
-    fn check_expr<'a>(&mut self, return_type: &TypeCheckerType, expr: &mut crate::ast::Expression<'a>) -> Result<(), TypeCheckerError> {
-        use crate::ast::{Expression, BinaryOperator, UnaryOperator};
+    fn check_expr<'a>(&mut self, return_type: &TypeCheckerType, expr: &mut Expression<'a>) -> Result<(), TypeCheckerError> {
+        use crate::trees::ast::{Expression};
         match expr {
             Expression::IfExpression(expr, _) => {
                 // TODO: check if if expression return values are the same
@@ -843,8 +844,7 @@ impl TypeChecker {
         Ok(())
     }
 
-    fn check_if_expr<'a>(&mut self, return_type: &TypeCheckerType, expr: &mut crate::ast::IfExpression<'a>) -> Result<(), TypeCheckerError> {
-        use crate::ast::IfExpression;
+    fn check_if_expr<'a>(&mut self, return_type: &TypeCheckerType, expr: &mut IfExpression<'a>) -> Result<(), TypeCheckerError> {
         let IfExpression { condition, then_branch, else_branch, .. } = expr;
 
         self.annotate_expr(&Type::U8, condition.as_mut())?;
@@ -868,8 +868,8 @@ impl TypeChecker {
         Ok(())
     }
 
-    fn get_type<'a>(&self, expr: &mut crate::ast::Expression<'a>) -> Result<Type<'a>, TypeCheckerError> {
-        use crate::ast::{Expression, Literal, Constant};
+    fn get_type<'a>(&self, expr: &mut Expression<'a>) -> Result<Type<'a>, TypeCheckerError> {
+        use crate::trees::ast::{Expression, Literal, Constant};
         //println!("Expression: {:#?}", expr);
         match expr {
             Expression::Literal(Literal::Constant(Constant::Bool(_, _))) => Ok(Type::U8),
@@ -1044,7 +1044,7 @@ impl TypeChecker {
         }
     }
 
-    fn get_type_member_access<'a>(&self, expr: &mut crate::ast::Expression<'a>) -> Result<Type<'a>, TypeCheckerError> {
+    fn get_type_member_access<'a>(&self, expr: &mut Expression<'a>) -> Result<Type<'a>, TypeCheckerError> {
         match expr {
             Expression::MemberAccess { object, field, annotation, .. } => {
                 match object.as_mut() {
@@ -1233,8 +1233,8 @@ impl TypeChecker {
     }
     
 
-    fn annotate_expr<'a, E: BorrowMut<crate::ast::Expression<'a>>>(&self, ty: &Type<'a>, mut value: E) -> Result<(), TypeCheckerError> {
-        use crate::ast::{Expression, Literal, Constant, BinaryOperator};
+    fn annotate_expr<'a, E: BorrowMut<Expression<'a>>>(&self, ty: &Type<'a>, mut value: E) -> Result<(), TypeCheckerError> {
+        use crate::trees::ast::{Expression, Literal, Constant};
         match (ty, value.borrow_mut()) {
             (Type::U8, Expression::Literal(Literal::Constant(Constant::Integer(_, annotation, _)))) => {
                 *annotation = Some(Type::U8);
