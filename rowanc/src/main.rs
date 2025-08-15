@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use clap::Parser;
 use petgraph::graph::UnGraph;
+use crate::backend::pre_compilation;
 use crate::trees::ast::TopLevelStatement;
 
 pub mod backend;
@@ -168,6 +169,10 @@ fn main() {
 
     let mut typechecker = typechecker::TypeChecker::new();
     let class_files = typechecker.check(class_files).unwrap();
+    
+    let class_files = class_files.into_iter()
+        .map(pre_compilation::ir_pass)
+        .collect::<Result<Vec<_>, ()>>().unwrap();
 
     let mut compiler = backend::Compiler::new();
     compiler.compile_files(class_files).unwrap();

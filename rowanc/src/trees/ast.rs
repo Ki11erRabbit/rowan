@@ -1,5 +1,5 @@
 use either::Either;
-use crate::trees::{BinaryOperator, PathName, Text, Type, UnaryOperator};
+use crate::trees::{Annotation, BinaryOperator, Constraint, PathName, Text, Type, UnaryOperator};
 use crate::trees::{Span, Visibility};
 
 
@@ -114,12 +114,6 @@ pub struct Method<'a> {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Annotation<'a> {
-    pub name: Text<'a>,
-    pub parameters: Vec<Text<'a>>,
-    pub span: Span,
-}
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Parameter<'a> {
@@ -174,11 +168,6 @@ impl TypeParameter<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum Constraint<'a> {
-    Extends(Vec<Type<'a>>, Span),
-    //TODO: add trait bounds
-}
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Statement<'a> {

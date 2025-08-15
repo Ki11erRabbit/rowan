@@ -1,5 +1,5 @@
 use either::Either;
-use crate::trees::{BinaryOperator, PathName, Text, Type, UnaryOperator};
+use crate::trees::{Annotation, BinaryOperator, Constraint, PathName, Text, Type, UnaryOperator};
 use crate::trees::{Span, Visibility};
 
 
@@ -114,12 +114,6 @@ pub struct Method<'a> {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub struct Annotation<'a> {
-    pub name: Text<'a>,
-    pub parameters: Vec<Text<'a>>,
-    pub span: Span,
-}
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Parameter<'a> {
@@ -174,11 +168,6 @@ impl TypeParameter<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
-pub enum Constraint<'a> {
-    Extends(Vec<Type<'a>>, Span),
-    //TODO: add trait bounds
-}
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Statement<'a> {
@@ -345,8 +334,9 @@ pub enum Expression<'a> {
     },
     Closure {
         params: Vec<ClosureParameter<'a>>,
-        return_type: Option<Type<'a>>,
+        return_type: Type<'a>,
         body: Vec<Statement<'a>>,
+        captures: Vec<Text<'a>>,
         span: Span,
     },
     Parenthesized(Box<Expression<'a>>, Span),
@@ -433,13 +423,14 @@ impl Expression<'_> {
 
     pub fn new_closure<'a>(
         params: Vec<ClosureParameter<'a>>,
-        return_type: Option<Type<'a>>,
+        return_type: Type<'a>,
         body: Vec<Statement<'a>>,
         span: Span
     ) -> Expression<'a> {
         Expression::Closure {
             params,
             return_type,
+            captures: Vec::new(),
             body,
             span
         }
@@ -573,7 +564,7 @@ pub enum Literal<'a> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct ClosureParameter<'a> {
-    parameter: Parameter<'a>,
+    pub parameter: Parameter<'a>
 }
 
 

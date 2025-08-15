@@ -199,6 +199,19 @@ impl Type<'_> {
 
 }
 
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub struct Annotation<'a> {
+    pub name: Text<'a>,
+    pub parameters: Vec<Text<'a>>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub enum Constraint<'a> {
+    Extends(Vec<Type<'a>>, Span),
+    //TODO: add trait bounds
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum UnaryOperator {
     Neg,
