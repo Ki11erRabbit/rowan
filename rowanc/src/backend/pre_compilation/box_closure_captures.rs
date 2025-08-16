@@ -103,6 +103,7 @@ impl<'boxing> BoxClosureCapture<> {
                 _ => todo!("finding closure for remaining statements")
             };
             if found_closure {
+                println!("found closure");
                 loop {
                     let mut stmts: Vec<Statement> = self.box_primitives(index, &mut body);
                     let is_stmts_empty = stmts.is_empty();
@@ -221,6 +222,7 @@ impl<'boxing> BoxClosureCapture<> {
         false
     }
 
+    /// TODO: fix this to handle nested closures
     fn box_primitives<'input>(&mut self, index: usize, stmts: &mut Vec<Statement<'boxing>>) -> Vec<Statement<'boxing>> {
         let mut prepend_statements = Vec::new();
         let mut indices = Vec::new();

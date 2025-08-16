@@ -144,7 +144,7 @@ impl std::fmt::Display for PathName<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+#[derive(Debug, Clone, Hash, PartialOrd)]
 pub enum Type<'a> {
     Void,
     U8,
@@ -196,7 +196,43 @@ impl Type<'_> {
             _ => false,
         }
     }
+}
 
+impl PartialEq for Type<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Type::Void, Type::Void) => true,
+            (Type::U8, Type::U8) => true,
+            (Type::U16, Type::U16) => true,
+            (Type::U32, Type::U32) => true,
+            (Type::U64, Type::U64) => true,
+            (Type::I8, Type::I8) => true,
+            (Type::I16, Type::I16) => true,
+            (Type::I32, Type::I32) => true,
+            (Type::I64, Type::I64) => true,
+            (Type::F32, Type::F32) => true,
+            (Type::F64, Type::F64) => true,
+            (Type::Char, Type::Char) => true,
+            (Type::Str, Type::Str) => true,
+            (Type::Native, Type::Native) => false,
+            (Type::Object(l_txt, ..), Type::Object(r_txt, ..)) => {
+                l_txt.as_str() == r_txt.as_str()
+            }
+            (Type::Array(l_array, ..), Type::Array(r_array, ..)) => {
+                **l_array == **r_array
+            }
+            (Type::Function(l_args, l_return_ty, _), Type::Function(r_args, r_return_ty, _)) => {
+                *l_args == *r_args && *l_return_ty == *r_return_ty
+            }
+            (Type::Tuple(l_ty, ..), Type::Tuple(r_ty, ..)) => {
+                **l_ty == **r_ty
+            }
+            (Type::TypeArg(l_base, l_args, ..), Type::TypeArg(r_base, r_args, ..)) => {
+                *l_base == *r_base && *l_args == *r_args
+            }
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]

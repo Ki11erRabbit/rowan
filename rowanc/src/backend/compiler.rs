@@ -188,7 +188,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         VTableEntry::default(),
     ];
     let names = vec![
-        "core::U8::new",
+        "core::U8::create",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::U8]),
@@ -199,7 +199,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     u8_box.add_member(Member {
         name: 0,
         type_tag: TypeTag::U8,
-    }, "core::U8::value");
+    }, "value");
     u8_box.make_not_printable();
     classes.insert(vec![String::from("U8")], u8_box);
 
@@ -219,7 +219,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     u16_box.add_member(Member {
         name: 0,
         type_tag: TypeTag::U16,
-    }, "core::U16::value");
+    }, "value");
     u16_box.make_not_printable();
     classes.insert(vec![String::from("U16")], u16_box);
 
@@ -239,7 +239,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     u32_box.add_member(Member {
         name: 0,
         type_tag: TypeTag::U32,
-    }, "core::U32::value");
+    }, "value");
     u32_box.make_not_printable();
     classes.insert(vec![String::from("U32")], u32_box);
 
@@ -259,7 +259,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     u64_box.add_member(Member {
         name: 0,
         type_tag: TypeTag::U64,
-    }, "core::U64::value");
+    }, "value");
     u64_box.make_not_printable();
     classes.insert(vec![String::from("U64")], u64_box);
 
@@ -281,7 +281,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     i8_box.add_member(Member {
         name: 0,
         type_tag: TypeTag::I8,
-    }, "core::I8::value");
+    }, "value");
     i8_box.make_not_printable();
     classes.insert(vec![String::from("I8")], i8_box);
 
@@ -301,7 +301,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     i16_box.add_member(Member {
         name: 0,
         type_tag: TypeTag::I16,
-    }, "core::I16::value");
+    }, "value");
     i16_box.make_not_printable();
     classes.insert(vec![String::from("I16")], i16_box);
 
@@ -321,7 +321,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     i32_box.add_member(Member {
         name: 0,
         type_tag: TypeTag::I32,
-    }, "core::I32::value");
+    }, "value");
     i32_box.make_not_printable();
     classes.insert(vec![String::from("I32")], i32_box);
 
@@ -341,7 +341,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     i64_box.add_member(Member {
         name: 0,
         type_tag: TypeTag::I64,
-    }, "core::I64::value");
+    }, "value");
     i64_box.make_not_printable();
     classes.insert(vec![String::from("I64")], i64_box);
 
@@ -361,7 +361,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     f32_box.add_member(Member {
         name: 0,
         type_tag: TypeTag::F32,
-    }, "core::F32::value");
+    }, "value");
     f32_box.make_not_printable();
     classes.insert(vec![String::from("F32")], f32_box);
 
@@ -381,7 +381,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     f64_box.add_member(Member {
         name: 0,
         type_tag: TypeTag::F64,
-    }, "core::F64::value");
+    }, "value");
     f64_box.make_not_printable();
     classes.insert(vec![String::from("F64")], f64_box);
 
@@ -1765,10 +1765,30 @@ impl Compiler {
 
         let name = match annotation  {
             Either::Left(Type::Object(name, _)) => self.add_path_if_needed(name.to_string()),
+            Either::Left(Type::TypeArg(name, args, _)) => {
+                let mut string_name = String::new();
+                let Type::Object(name, _) = name.as_ref() else {
+                    unreachable!("Type arg should always have an object type");
+                };
+                string_name.push_str(&name);
+                for arg in args {
+                    let mod_string = match arg {
+                        Type::I8 | Type::U8 => "8",
+                        Type::I16 | Type::U16 => "16",
+                        Type::I32 | Type::U32 => "32",
+                        Type::I64 | Type::U64 => "64",
+                        Type::F32 => "f32",
+                        Type::F64 => "f64",
+                        _ => "object",
+                    };
+                    string_name.push_str(mod_string);
+                }
+                self.add_path_if_needed(string_name)
+            }
             Either::Right(()) => {
                 class_name.clone()
             }
-            _ => todo!("report error about method output not being an object"),
+            _ => todo!("report error about method output not being an object {annotation:?}"),
         };
 
         let class = match self.classes.get(&name) {

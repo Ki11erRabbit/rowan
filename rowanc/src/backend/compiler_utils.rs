@@ -284,7 +284,7 @@ impl PartialClass {
         signatures: &Vec<SignatureEntry>,
     ) {
         //println!("add_vtable1 {} {}", self.index_string_table(self.name), class_name.as_ref());
-        
+
         for (i, function) in static_methods.functions.iter_mut().enumerate() {
             function.name = self.add_string(names[i].as_ref());
             function.signature = self.signature_table.len() as u64;
