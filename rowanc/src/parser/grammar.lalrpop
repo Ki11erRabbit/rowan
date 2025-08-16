@@ -965,7 +965,7 @@ Tuple: Literal<'a> = {
 };
 
 Closure: Expression<'a> = {
-    <start: @L> <params:ClosureParamList> <ret:ReturnType> Assign <body:Block> <end: @R> => Expression::new_closure(params, Some(ret), body, Span::new(start, end)),
+    <start: @L> <params:ClosureParamList> <ret:ReturnType> <body:Block> <end: @R> => Expression::new_closure(params, Some(ret), body, Span::new(start, end)),
     <start: @L> <body:Block> <end: @R> => Expression::new_closure(Vec::new(), None, body, Span::new(start, end)),
     //<start: @L> <params:ClosureParamList> <ret:ReturnType> <body:Expr> <end: @R> => Closure::new(params, ret, vec![Statement::Expression(body)], start, end),
 

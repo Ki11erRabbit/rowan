@@ -543,6 +543,13 @@ impl Expression<'_> {
             x => todo!("Expression::get_type {:?}", x),
         }
     }
+    
+    pub fn is_class_access(&self) -> bool {
+        match self {
+            Expression::ClassAccess { .. } => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]

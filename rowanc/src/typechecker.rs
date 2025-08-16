@@ -1,7 +1,7 @@
 use std::{borrow::BorrowMut, collections::HashMap};
 use std::cmp::Ordering;
 use either::Either;
-use crate::trees::ast::{Class, Constant, Expression, File, IfExpression, Literal, Method, Parameter, Pattern, Statement, StaticMember, TopLevelStatement};
+use crate::trees::ast::{Class, ClosureParameter, Constant, Expression, File, IfExpression, Literal, Method, Parameter, Pattern, Statement, StaticMember, TopLevelStatement};
 use crate::trees::{BinaryOperator, PathName, Span, Text, Type, UnaryOperator};
 
 fn create_stdlib<'a>() -> HashMap<Vec<String>, (String, HashMap<String, ClassAttribute>)> {
@@ -319,6 +319,16 @@ impl TypeChecker {
                     // Here the class doesn't exist. This means we are likely a generic type, and therefore always equal
                     true
                 }
+            }
+            (TypeCheckerType::Function(l_args, l_return), TypeCheckerType::Function(r_args, r_return)) => {
+                let mut result = true;
+                for (l_arg, r_arg) in l_args.iter().zip(r_args.iter()) {
+                    result &= self.compare_types(l_arg, r_arg);
+                    if !result {
+                        return false;
+                    }
+                }
+                result && self.compare_types(l_return, r_return)
             }
             _ => false,
         }
@@ -737,14 +747,21 @@ impl TypeChecker {
             }
             Expression::MemberAccess { object, field, annotation, .. } => {
                 self.check_expr(return_type, object)?;
-                let ty = match object.as_ref() {
-                    Expression::ClassAccess { .. } => {
-                        self.get_type(object.as_mut())?
+                let ty = match object.as_mut() {
+                    object if object.is_class_access() => {
+                        self.get_type(object)?
                     }
-                    _ => {
+                    object => {
+                        {
+                            if let Type::Function(args, ret, span) = self.get_type(object)? {
+                                *annotation = Some(Type::Function(args, ret, span));
+                                return Ok(())
+                            }
+                        }
+
                         match object.get_type() {
                             Some(Either::Left(ty)) => ty.clone(),
-                            _ => self.get_type(object.as_mut())?,
+                            _ => self.get_type(object)?,
                         }
                     }
                 };
@@ -782,7 +799,7 @@ impl TypeChecker {
                 };
 
                 *annotation = Some(member.into());
-
+                
             }
             Expression::Literal(Literal::Array(body, typ, _)) => {
                 for body in body {
@@ -1052,6 +1069,26 @@ impl TypeChecker {
             Expression::Parenthesized(expr, _) => {
                 self.get_type(expr.as_mut())
             }
+            Expression::Closure {
+                params, 
+                return_type, 
+                ..
+            } => {
+                let mut arg_types = Vec::new();
+                for param in params {
+                    match param {
+                        ClosureParameter::Typed(Parameter::Pattern { ty, ..}) => {
+                            arg_types.push(ty.clone());
+                        }
+                        _ => todo!("infer closure parameter type"),
+                    }
+                }
+                let return_type = return_type.as_ref()
+                    .map(Clone::clone)
+                    .expect("TODO: infer closure parameter type");
+                
+                Ok(Type::Function(arg_types, Box::new(return_type), Span::new(0, 0)))
+            }
             x => todo!("finish get_type: {:?}", x),
         }
     }
@@ -1138,6 +1175,10 @@ impl TypeChecker {
                                         todo!("report unknown member access")
                                     }
                                 }
+                            }
+                            TypeCheckerType::Function(..) => {
+                                *annotation = Some(var_ty.into());
+                                Ok(var_ty.clone().into())
                             }
                             _ => todo!("report member access on non-object type"),
                         }
@@ -1372,7 +1413,7 @@ impl TypeChecker {
                 match access_ty {
                     TypeCheckerType::Function(_, ret_ty) => {
                         if !self.compare_types(&TypeCheckerType::from(ty), ret_ty.as_ref()) {
-                            todo!("report type mismatch")
+                            
                         }
                     }
                     _ => todo!("report not a function")

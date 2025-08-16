@@ -7,10 +7,12 @@ class Main {
     static thing: u64 = 66666666666;
 
     fn main(args: [String]) {
-        let n: u64 = 40;
-        let result: u64 = Main::fib(n);
-        let printer: Printer = new Printer();
-        printer.println-int(result);
+        let arr: [u64] = [1, 2, 3];
+        Main::map(arr, |x: u64| -> u64 {
+            let printer: Printer = new Printer();
+            printer.println-int(x + 2);
+            return x + 2;
+        })
     }
 
     fn fib(n: u64) -> u64 {
@@ -26,6 +28,16 @@ class Main {
             let x: [u64] = new [u64; 1];
             i = i + 1;
         }
+    }
+
+    fn map(arr: [u64], f: fn(u64) -> u64) -> [u64] {
+        let i: u64 = 0;
+        let out: [u64] = new[u64; arr.len()];
+        while i < arr.len() {
+            out[i] = f.call(arr[i]);
+            i = i + 1;
+        }
+        return out;
     }
 
 }
