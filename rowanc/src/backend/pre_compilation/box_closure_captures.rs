@@ -236,7 +236,7 @@ impl<'boxing> BoxClosureCapture<> {
                          body,
                          ..
                      }) = the_closure else {
-                unreachable!("should have been a closure")
+                return Vec::new();
             };
             *processed_captures = true;
             let bound_vars = self.get_param_set(params);
@@ -795,7 +795,11 @@ impl<'boxing> BoxClosureCapture<> {
             Expression::Return(None, ..) => {
                 None
             }
-            _ => todo!("getting closure for remaining expressions"),
+            Expression::Variable(..) => None,
+            Expression::New(..) => None,
+            Expression::MemberAccess { .. } => None,
+            Expression::Literal(..) => None,
+            x => todo!("getting closure for remaining expression: {x:?}"),
         }
     }
 

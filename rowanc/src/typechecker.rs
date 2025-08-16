@@ -864,6 +864,21 @@ impl TypeChecker {
                 self.annotate_expr(&ty, right.as_mut())?;
                 self.check_expr(return_type, right)?;
             }
+            Expression::Closure { params, return_type, body, .. } => {
+                self.push_scope();
+                for param in params {
+                    match param {
+                        ClosureParameter::Typed(Parameter::Pattern { name, ty, ..}) => {
+                            self.bind_pattern(name, ty)
+                        }
+                        _ => todo!("handle type deduction of closures")
+                    }
+                }
+                let return_type: TypeCheckerType = return_type.as_ref().unwrap().into();
+                self.check_body(&return_type, body)?;
+                
+                self.pop_scope();
+            }
             _ => {}
         }
 
