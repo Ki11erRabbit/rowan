@@ -547,6 +547,7 @@ pub struct Compiler {
     active_imports: HashMap<String, Vec<String>>,
     imports_to_change: HashMap<String, Vec<String>>,
     current_block_returned: bool,
+    closures: HashMap<String, PartialClass>
 }
 
 
@@ -563,6 +564,7 @@ impl Compiler {
             active_imports: HashMap::new(),
             imports_to_change: HashMap::new(),
             current_block_returned: false,
+            closures: HashMap::new(),
         }
     }
 
@@ -1652,6 +1654,12 @@ impl Compiler {
                     output.push(Bytecode::ReturnVoid)
                 }
                 self.current_block_returned = true;
+            }
+            Expression::Closure { params, return_type, body, captures, .. } => {
+                // create closure class with matching types if it doesn't already exist
+                // create implementation closure from base closure class
+                // if captures is non-empty, call a static function that makes the closure with each of the captures
+                // if captures is empty, create the closure object
             }
             _ => todo!("add remaining expressions")
         }
