@@ -17,7 +17,7 @@ macro_rules! generate_box {
             pub fn [< generate_ $typ _box >]() -> VMClass {
                 let static_methods = vec![
                     VMMethod::new(
-                        concat!("core::", stringify!($name), "::new"),
+                        concat!("core::", stringify!($name), "::create"),
                          [< $typ _new >] as *const (),
                         vec![TypeTag::Object, TypeTag::$name]
                     )

@@ -208,7 +208,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         VTableEntry::default(),
     ];
     let names = vec![
-        "core::U16::new",
+        "core::U16::create",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::U16]),
@@ -228,7 +228,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         VTableEntry::default(),
     ];
     let names = vec![
-        "core::U32::new",
+        "core::U32::create",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::U32]),
@@ -248,7 +248,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         VTableEntry::default(),
     ];
     let names = vec![
-        "core::U64::new",
+        "core::U64::create",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::U64]),
@@ -270,7 +270,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         VTableEntry::default(),
     ];
     let names = vec![
-        "core::I8::new",
+        "core::I8::create",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::I8]),
@@ -290,7 +290,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         VTableEntry::default(),
     ];
     let names = vec![
-        "core::I16::new",
+        "core::I16::create",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::I16]),
@@ -310,7 +310,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         VTableEntry::default(),
     ];
     let names = vec![
-        "core::I32::new",
+        "core::I32::create",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::I32]),
@@ -330,7 +330,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         VTableEntry::default(),
     ];
     let names = vec![
-        "core::I64::new",
+        "core::I64::create",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::I64]),
@@ -350,7 +350,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         VTableEntry::default(),
     ];
     let names = vec![
-        "core::F32::new",
+        "core::F32::create",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::F32]),
@@ -370,7 +370,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         VTableEntry::default(),
     ];
     let names = vec![
-        "core::F64::new",
+        "core::F64::create",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::F64]),

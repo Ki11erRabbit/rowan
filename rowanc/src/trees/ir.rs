@@ -337,6 +337,7 @@ pub enum Expression<'a> {
         return_type: Type<'a>,
         body: Vec<Statement<'a>>,
         captures: Vec<Text<'a>>,
+        processed_captures: bool,
         span: Span,
     },
     Parenthesized(Box<Expression<'a>>, Span),
@@ -431,6 +432,7 @@ impl Expression<'_> {
             params,
             return_type,
             captures: Vec::new(),
+            processed_captures: false,
             body,
             span
         }
@@ -550,6 +552,22 @@ impl Expression<'_> {
                 Either::Left(annotation.clone())
             }
             x => todo!("Expression::get_type {:?}", x),
+        }
+    }
+    
+    pub fn is_closure(&self) -> bool {
+        match self {
+            Expression::Closure { .. } => true,
+            _ => false,
+        }
+    }
+    
+    pub fn processed_captures(&self) -> bool {
+        match self {
+            Expression::Closure { processed_captures, ..} => {
+                *processed_captures
+            },
+            _ => false,
         }
     }
 }
