@@ -653,6 +653,16 @@ impl Runtime {
         let Ok(class_table) = CLASS_TABLE.read() else {
             panic!("Lock poisoned");
         };
+        let Ok(string_table) = STRING_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        
+        let SymbolEntry::StringRef(index) = symbol_table[method_name] else {
+            panic!("method name was not a method");
+        };
+        
+        let method_name_str = &string_table[index];
+        println!("{method_name_str}");
 
         let SymbolEntry::ClassRef(object_class_index) = symbol_table[object_class_symbol] else {
             panic!("class wasn't a class");
