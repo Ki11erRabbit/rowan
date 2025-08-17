@@ -36,7 +36,7 @@ pub fn link_class_files(
     // The first hashmap is the class symbol which the vtable comes from.
     // The second hashmap is the class that has a custom version of the vtable
     // For example, two matching symbols means that that is the vtable of that particular class
-    vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<rowan_shared::TypeTag>, MethodLocation, Box<[rowan_shared::bytecode::linked::Bytecode]>, FunctionValue, Signature)>>>,
+    vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<TypeTag>, MethodLocation, Box<[bytecode::linked::Bytecode]>, FunctionValue, Signature)>>>,
     string_map: &mut HashMap<String, Symbol>,
     class_map: &mut HashMap<String, Symbol>,
     library_table: &mut NativeObjectTable,
@@ -139,6 +139,7 @@ pub fn link_class_files(
 
                 let signature = class.signature_table[*signature as usize].types.clone();
                 let bytecode = if *bytecode == 0 {
+                    println!("method has no bytecode: {name_str} {name_symbol}");
                     MethodLocation::Blank
                 } else if *bytecode < 0 {
                     let string = name_str.replace("::", "__")
@@ -253,6 +254,7 @@ pub fn link_class_files(
             let signature = class.signature_table[*signature as usize].types.clone();
             //println!("{}'s signature: {:?}", name_str, signature);
             let function = if *bytecode == 0 {
+                println!("no bytecode: {name_str}");
                 MethodLocation::Blank
             } else if *bytecode < 0 {
                 let string = name_str.replace("::", "__")
@@ -329,6 +331,7 @@ pub fn link_class_files(
         class_parts_to_try_again = Vec::new();
         'outer: for class_part in class_parts {
             let (class_name_str, mut location, class_symbol, class_name_symbol, parent, members, static_methods, class, vtables, static_members, static_init) = class_part;
+            println!("{class_name_str}");
             let mut vtables_to_add = Vec::new();
             // Source class is one of the parents of the derived class
             // This is used to disambiguate
@@ -343,7 +346,7 @@ pub fn link_class_files(
                     let mut functions_mapper = HashMap::new();
                     let functions = functions.into_iter()
                         .enumerate()
-                        .map(|(i, (name_symbol, signature, bytecode, _, _, sig))| {
+                        .map(|(i, (name_symbol, signature, method_location, _, _, sig))| {
                             functions_mapper.insert(*name_symbol, i);
 
 
@@ -355,7 +358,7 @@ pub fn link_class_files(
 
                             let func_id = jit_controller.declare_function(name, &sig).expect("Failed to declare function");
 
-                            let (bytecode, value, sig) = match bytecode {
+                            let (bytecode, value, sig) = match method_location {
                                 MethodLocation::Bytecode(bytecode) => {
                                     let bytecode = link_bytecode(class, &bytecode, string_map, class_map, string_table, symbol_table, class_table);
                                     let value = FunctionValue::Bytecode(func_id);
@@ -389,12 +392,19 @@ pub fn link_class_files(
                                     (Box::new([]) as Box<[rowan_shared::bytecode::linked::Bytecode]>, value, sig)
                                 }
                                 MethodLocation::Blank => {
+                                    println!("location: {:?}", location);
+                                    println!("method name: {name_symbol}");
+                                    let SymbolEntry::StringRef(index) = symbol_table[*name_symbol] else {
+                                        panic!("Expected name symbol to be a string reference");
+                                    };
+                                    let name = &string_table[index];
+                                    println!("{name}");
                                     unreachable!("method location was blank")
                                 }
                             };
 
                             let value = value;
-                            (*name_symbol, signature.clone(), MethodLocation::Blank, bytecode, value, sig.clone())
+                            (*name_symbol, signature.clone(), method_location.clone(), bytecode, value, sig.clone())
                         })
                         .collect::<Vec<_>>();
                     *vtables_map.get_mut(class_name).unwrap().get_mut(class_name).unwrap() = functions.clone();
@@ -422,7 +432,9 @@ pub fn link_class_files(
 
 
                     let derived_functions = vtables_map.get(class_name).unwrap().get(&class_symbol).unwrap();
-                    let base_functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
+                    //println!("\n\n\nclass_name: {class_name}");
+                    //println!("vtables map: {:#?}", vtables_map);
+                    let base_functions = vtables_map.get(class_name).unwrap().get(&class_symbol).unwrap();
 
                     for (_,_,_,_,value, _) in base_functions {
                         if value.is_blank() {
@@ -487,7 +499,7 @@ pub fn link_class_files(
 
                             functions_mapper.insert(*derived_name_symbol, i);
 
-                            (*derived_name_symbol, derived_signature.clone(), MethodLocation::Blank, bytecode, value, sig.clone())
+                            (*derived_name_symbol, derived_signature.clone(), derived_bytecode.clone(), bytecode, value, sig.clone())
                         })
                         .collect::<Vec<_>>();
                     *vtables_map.get_mut(class_name).unwrap().get_mut(class_name).unwrap() = functions.clone();

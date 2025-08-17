@@ -137,6 +137,10 @@ pub struct PartialClass {
 }
 
 impl PartialClass {
+    
+    pub fn is_printable(&self) -> bool {
+        !self.dont_print
+    }
 
     pub fn index_string_table(&self, index: StringIndex) -> &str {
         //println!("{}", index);

@@ -774,6 +774,20 @@ impl Compiler {
             String::from("closure"),
             closure_name.clone(),
         ];
+        
+        let closure_path = [
+            String::from("std"),
+            String::from("closure"),
+            closure_name.clone(),
+        ];
+        
+        partial_class.attach_bytecode(
+            &closure_path, 
+            format!("std::closure::{closure_name}::call"),
+            &[0],
+            false,
+        ).unwrap();
+        
         self.classes.insert(path.clone(), partial_class);
 
         self.closures.insert(closure_name.clone(), path);
@@ -820,6 +834,9 @@ impl Compiler {
         }
 
         for (path, file) in self.classes.into_iter() {
+            if file.is_printable() && file.get_class_name().contains(&String::from("IOLock")) {
+                println!("closure: {file:#?}");
+            }
             if let Some((file, native_definitions)) = file.create_class_file() {
                 if !native_definitions.is_empty() {
                     let path = format!("output/{}.h", path.join("/"));
@@ -1018,7 +1035,7 @@ impl Compiler {
             ]);
             let (vtable, names, signatures) = &vtables[0];
             let names = names.iter()
-                .map(|n| format!("core::Object::{n}"))
+                .map(|n| n.clone())
                 .collect::<Vec<String>>();
 
             partial_class.add_vtable(&vec![String::from("core"), String::from("Object")], vtable.clone(), &names, signatures);
@@ -1145,7 +1162,7 @@ impl Compiler {
                 static_method_to_signature.insert(name, signature_index as SignatureIndex);
                 static_signatures.push(SignatureEntry::new(signature));
             } else {
-                
+
                 let name = if name.contains("::") {
                     name.to_string()
                 } else {
@@ -1153,7 +1170,7 @@ impl Compiler {
                     class_name.push(name.to_string());
                     class_name.join("::")
                 };
-                
+
                 names.push(name);
                 entries.push(VTableEntry::default());
                 signatures.push(SignatureEntry::new(signature));
@@ -1241,7 +1258,7 @@ impl Compiler {
                     path_name.push(name.to_string());
                     path_name.join("::")
                 };
-                
+
                 let vtable = partial_class.get_vtable(&path_name).unwrap();
                 let method_class_name = partial_class.index_string_table(vtable.class_name).split("::")
                     .map(|name| name.to_string())
@@ -2263,9 +2280,9 @@ impl Compiler {
                             }
 
                             output.push(Bytecode::StoreArgument(0));
-                            
+
                             let mut closure_name = String::from("Closure");
-                            
+
                             for arg in function_args {
                                 match arg {
                                     Type::U8 => closure_name.push_str("u8"),
@@ -2296,13 +2313,13 @@ impl Compiler {
                                 Type::Void => closure_name.push_str("void"),
                                 _ => closure_name.push_str("object"),
                             }
-                            
+
                             let annotation = vec![
                                 String::from("std"),
                                 String::from("closure"),
                                 closure_name,
                             ];
-                            
+
                             break 'setup_args (field, annotation)
                         }
                         x => todo!("add additional sources to call from {:?}", x)
