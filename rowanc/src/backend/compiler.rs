@@ -626,6 +626,9 @@ impl Compiler {
     }
 
     fn add_path_if_needed(&self, class: String) -> Vec<String> {
+        if class.contains("::") {
+            return class.split("::").map(|s| s.to_string()).collect();
+        }
         let path = self.active_imports.get(&class);
         if let Some(path) = path {
             let module = path.clone();
@@ -655,8 +658,8 @@ impl Compiler {
             }
         }
     }
-    
-    fn create_closure_class(&mut self, args: &[ClosureParameter], return_type: &Type) -> String {        
+
+    fn create_closure_class(&mut self, args: &[ClosureParameter], return_type: &Type) -> String {
         let mut closure_name = String::from("Closure");
         let ret_type = match return_type {
             Type::I8 => TypeTag::I8,
@@ -676,7 +679,7 @@ impl Compiler {
         for param in args {
             match param {
                 ClosureParameter { parameter: Parameter::Pattern { ty, ..} } => {
-                    
+
                     match ty {
                         Type::I8 => {
                             types.push(TypeTag::I8);
@@ -741,7 +744,7 @@ impl Compiler {
             Type::Void => closure_name.push_str("void"),
             _ => closure_name.push_str("object"),
         }
-        
+
         if self.closures.contains_key(&closure_name) {
             return closure_name;
         }
@@ -750,7 +753,7 @@ impl Compiler {
             String::from("closure"),
             closure_name.clone()
         ]);
-        
+
         let mut partial_class = PartialClass::new();
         partial_class.set_name(&closure_name);
         partial_class.set_parent("core::Object");
@@ -765,16 +768,16 @@ impl Compiler {
         ];
         let vtable = VTable::new(functions);
 
-        partial_class.add_vtable(&vec![String::from("core"), String::from("closure"), closure_name.clone()], vtable, &names, &signatures);
+        partial_class.add_vtable(&vec![String::from("std"), String::from("closure"), closure_name.clone()], vtable, &names, &signatures);
         let path = vec![
             String::from("std"),
             String::from("closure"),
             closure_name.clone(),
         ];
         self.classes.insert(path.clone(), partial_class);
-        
+
         self.closures.insert(closure_name.clone(), path);
-        
+
         closure_name
     }
 
@@ -966,7 +969,6 @@ impl Compiler {
 
         let parent_vtables = parent.as_ref().map(|parent_name| {
             let path = self.add_path_if_needed(parent_name.name.clone().to_string());
-            println!("{path:?}");
             let partial_class = self.classes.get(&path).expect("Order of files is wrong");
             let vtables = partial_class.get_vtables(&path);
             vtables.into_iter().map(|(table, names, signatures)| {
@@ -994,12 +996,6 @@ impl Compiler {
             static_method_map,
             static_signatures,
         ) = self.construct_vtable(&name, &methods)?;
-
-        let names = names.into_iter()
-            .map(|name| {
-                name
-            })
-            .collect::<Vec<_>>();
 
         partial_class.add_signatures(static_signatures);
 
@@ -1149,9 +1145,15 @@ impl Compiler {
                 static_method_to_signature.insert(name, signature_index as SignatureIndex);
                 static_signatures.push(SignatureEntry::new(signature));
             } else {
-                let mut class_name = class_name.clone();
-                class_name.push(name.to_string());
-                let name = class_name.join("::");
+                
+                let name = if name.contains("::") {
+                    name.to_string()
+                } else {
+                    let mut class_name = class_name.clone();
+                    class_name.push(name.to_string());
+                    class_name.join("::")
+                };
+                
                 names.push(name);
                 entries.push(VTableEntry::default());
                 signatures.push(SignatureEntry::new(signature));
@@ -1232,18 +1234,27 @@ impl Compiler {
                 partial_class.add_static_method(name, bytecode, *is_native);
             } else {
                 //println!("{}", name);
-                let mut path_name = class_name.clone();
-                path_name.push(name.to_string());
-                let path_name = path_name.join("::");
+                let path_name = if name.contains("::") {
+                    name.to_string()
+                } else {
+                    let mut path_name = class_name.clone();
+                    path_name.push(name.to_string());
+                    path_name.join("::")
+                };
+                
                 let vtable = partial_class.get_vtable(&path_name).unwrap();
                 let method_class_name = partial_class.index_string_table(vtable.class_name).split("::")
                     .map(|name| name.to_string())
                     .collect::<Vec<String>>();
                 //println!("{}", method_class_name);
 
-                let mut method_name = method_class_name.clone();
-                method_name.push(name.to_string());
-                let method_name = method_name.join("::");
+                let method_name = if name.contains("::") {
+                    name.to_string()
+                } else {
+                    let mut method_name = method_class_name.clone();
+                    method_name.push(name.to_string());
+                    method_name.join("::")
+                };
 
                 partial_class.attach_bytecode(&method_class_name, method_name, bytecode, *is_native).expect("Handle partial class error");
             }
@@ -2353,15 +2364,15 @@ impl Compiler {
         }
         Ok(())
     }
-    
+
     fn compile_closure_expression<'a>(
         &mut self,
         class_name: &Vec<String>,
         partial_class: &mut PartialClass,
         closure_name: String,
-        params: &[ClosureParameter<'a>], 
-        return_type: &Type, 
-        body: &Vec<Statement<'a>>, 
+        params: &[ClosureParameter<'a>],
+        return_type: &Type,
+        body: &Vec<Statement<'a>>,
         captures: &[(Text<'a>, Type<'a>)],
         span: Span,
         output: &mut Vec<Bytecode>,
@@ -2370,20 +2381,20 @@ impl Compiler {
         let closure_number = *self.closures_under_path.entry(path.clone())
             .and_modify(|c| *c += 1)
             .or_insert(0);
-        
+
         /*let mut class_name = class_name[0..(class_name.len() - 1)].to_vec();
         class_name.push(format!("Closure{closure_number}"));*/
         let class_name = format!("Closure{closure_number}");
-        
+
         /*partial_class.set_name(&class_name.join("::"));*/
-        
+
         let mut method_params = Vec::with_capacity(params.len() + 1);
         method_params.push(Parameter::This(false, Span::new(0, 0)));
         for param in params {
             let ClosureParameter { parameter } = param;
             method_params.push(parameter.clone());
         }
-        
+
         let body = if captures.is_empty() {
             let mut new_body = Vec::new();
             for (capture, ty) in captures {
@@ -2394,7 +2405,7 @@ impl Compiler {
                     span: Span::new(0,0),
                     annotation: ty.clone(),
                 };
-                
+
                 new_body.push(Statement::Let {
                     bindings: Pattern::Variable(capture.clone(), false, Span::new(0, 0)),
                     ty: ty.clone(),
@@ -2407,10 +2418,10 @@ impl Compiler {
         } else {
             body.clone()
         };
-        
-        
+
+
         let call_method = Method {
-            name: Text::Owned(format!("std::closure::{closure_name}::call")),
+            name: Text::Owned(format!("std::closure::{}::call", closure_name.clone())),
             is_native: false,
             annotations: vec![Annotation::new(Text::Borrowed("Override"), Vec::new(), Span::new(0, 0))],
             visibility: Visibility::Public,
@@ -2420,9 +2431,9 @@ impl Compiler {
             body,
             span,
         };
-        
+
         let mut methods = vec![call_method];
-        
+
         let members = if captures.is_empty() {
             Vec::new()
         } else {
@@ -2436,16 +2447,16 @@ impl Compiler {
                 value: Expression::New(Type::Object(Text::Owned(class_name.clone()), Span::new(0,0)), None, Span::new(0,0)),
                 span: Span::new(0, 0),
             });
-            
+
             let mut members = Vec::with_capacity(captures.len());
             let mut params = Vec::with_capacity(captures.len());
             for (capture, ty) in captures {
-                params.push(Parameter::Pattern { 
-                    name: Pattern::Variable(capture.clone(), false, Span::new(0,0)), 
+                params.push(Parameter::Pattern {
+                    name: Pattern::Variable(capture.clone(), false, Span::new(0,0)),
                     ty: ty.clone(),
                     span: Span::new(0, 0),
                 });
-                
+
                 body.push(Statement::Assignment {
                     target: Expression::MemberAccess {
                         object: Box::new(Expression::This(Span::new(0,0))),
@@ -2456,7 +2467,7 @@ impl Compiler {
                     value: Expression::Variable(capture.clone(), ty.clone() ,Span::new(0,0)),
                     span: Span::new(0, 0),
                 });
-                
+
                 let member = ir::Member {
                     visibility: Visibility::Public,
                     name: capture.clone(),
@@ -2465,13 +2476,13 @@ impl Compiler {
                 };
                 members.push(member);
             }
-            
+
             body.push(Statement::Expression(
                 Expression::Return(
                     Some(Box::new(
                         Expression::Variable(
-                            Text::Borrowed("11037"), 
-                            Type::Object(Text::Owned(class_name.clone()), 
+                            Text::Borrowed("11037"),
+                            Type::Object(Text::Owned(class_name.clone()),
                                          Span::new(0,0)
                             ), Span::new(0,0)))
                     ),
@@ -2480,7 +2491,7 @@ impl Compiler {
                 Span::new(0, 0),
             ));
             let create_method = Method {
-                name: Text::Owned(format!("std::closure::{closure_name}::create")),
+                name: Text::Borrowed("create"),
                 is_native: false,
                 annotations: vec![],
                 visibility: Visibility::Public,
@@ -2490,14 +2501,14 @@ impl Compiler {
                 body,
                 span,
             };
-            
+
             methods.push(create_method);
-            
+
             members
         };
-        
-        
-        
+
+
+
         let class = Class {
             name: Text::Owned(format!("Closure{closure_number}")),
             parent: Some(ParentDec {
@@ -2512,11 +2523,11 @@ impl Compiler {
             type_params: vec![],
             span,
         };
-        
+
         self.compile_class(class)?;
-        
+
         let path = self.add_path_if_needed(format!("Closure{closure_number}"));
-        
+
         if captures.is_empty() {
             let index = partial_class.add_string(path.join("::"));
             output.push(
@@ -2531,8 +2542,8 @@ impl Compiler {
                 Bytecode::InvokeStatic(class_index, method_index)
             );
         }
-            
-        
+
+
         Ok(())
     }
 }

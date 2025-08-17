@@ -149,7 +149,10 @@ impl PartialClass {
 
     pub fn get_vtable(&self, method_name: impl AsRef<str>) -> Result<&VTable, PartialClassError> {
         //println!("{}: {:#?}", method_name.as_ref(), self.method_to_class);
+        println!("{:?}", self.get_class_name());
+        println!("{:#?}", self.method_to_class);
         let class_names = self.method_to_class.get(method_name.as_ref()).ok_or(PartialClassError::ClassNotNotFound(method_name.as_ref().to_string()))?;
+        println!("got_class_names");
         if class_names.len() > 1 {
             return Err(PartialClassError::Ambiguity);
         }
@@ -257,6 +260,9 @@ impl PartialClass {
         //println!("add_vtable1 {} {}", self.index_string_table(self.name), class_name.as_ref());
         vtable.class_name = self.add_string(class_name.join("::"));
         for (i, function) in vtable.functions.iter_mut().enumerate() {
+            if names[i].as_ref().contains("main::std") {
+                panic!("bad name");
+            }
             function.name = self.add_string(names[i].as_ref());
             function.signature = self.signature_table.len() as u64;
             self.signature_table.push(signatures[i].clone());
@@ -376,6 +382,7 @@ impl PartialClass {
         }
         let vtable_index = vtable_indices[0];
         let mut method_index = None;
+        println!("method_name: {}", method_name.as_ref());
         for (vtable, method) in self.method_to_function.get(method_name.as_ref()).unwrap() {
             //println!("{:?}", (vtable, method));
             if vtable_index == *vtable {
@@ -425,7 +432,10 @@ impl PartialClass {
         VTable,
         Vec<String>,
         Vec<SignatureEntry>)> {
-
+        
+        println!("{:#?}", self.class_to_vtable);
+        println!("{class_name:?}");
+        
         let vtable_indices = self.class_to_vtable.get(class_name).unwrap();
 
         let mut output = Vec::new();
