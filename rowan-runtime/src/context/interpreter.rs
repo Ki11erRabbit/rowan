@@ -352,6 +352,7 @@ impl BytecodeContext {
             class_name,
             method_name,
         );
+        println!("bytecode: {:#?}", details.bytecode);
 
         let method_name = MethodName::StaticMethod {
             class_symbol: class_name,
@@ -367,7 +368,8 @@ impl BytecodeContext {
         method_name: MethodName,
         return_slot: Option<&mut StackValue>
     ) -> CallContinueState {
-        for pair in self.call_args.iter().zip(details.arguments.iter()) {
+        for (i, pair) in self.call_args.iter().zip(details.arguments.iter()).enumerate() {
+            println!("call arg{i}: {pair:?}");
             match pair {
                 (StackValue::Int8(_), runtime::class::TypeTag::U8) |
                 (StackValue::Int8(_), runtime::class::TypeTag::I8) => {}
@@ -601,7 +603,7 @@ impl BytecodeContext {
 
     /// The bool return dictates whether execution should continue or not.
     pub fn interpret(&mut self, bytecode: &Bytecode) -> bool {
-        //println!("Bytecode: {bytecode:?}");
+        println!("Bytecode: {bytecode:?}");
         match bytecode {
             Bytecode::Nop => {}
             Bytecode::Breakpoint => {}
@@ -2219,7 +2221,7 @@ impl BytecodeContext {
             }
             Bytecode::GetStrRef(sym) => {
                 let interned_string = interned_string_init(*sym) as Reference;
-                
+
                 self.push_value(StackValue::from(interned_string));
             }
             Bytecode::Return => {

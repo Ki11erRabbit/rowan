@@ -68,26 +68,12 @@ pub fn link_class_files(
         }
 
         let name_str = class.index_string_table(*parent);
-        let _ = if let Some(symbol) = class_map.get(name_str) {
-            *symbol
-        } else {
-            let string_table_index = string_table.add_string(name_str);
-            let symbol = symbol_table.add_string(string_table_index);
-            string_map.insert(String::from(name_str), symbol);
-
-            let class_table_index = class_table.len();
-            class_table.push(TableEntry::Hole);
-            let symbol = symbol_table.add_class(class_table_index);
-
-            class_map.insert(String::from(name_str), symbol);
-            symbol
-        };
 
         for vtable in vtables {
             let classfile::VTable { class_name, sub_class_name, .. } = vtable;
 
             let mut current_vtable = Vec::new();
-            
+
             let class_name_str = class.index_string_table(*class_name);
             let vtable_class_name_symbol = if *sub_class_name != 0 {
                 let sub_class_str = class.index_string_table(*sub_class_name);
@@ -382,13 +368,13 @@ pub fn link_class_files(
                 if *class_name == class_symbol {
                     // Here we load in the current class' vtable
                     // Nothing fancy happens here other than that we link the bytecode
-                    
+
                     let Some(submap) = vtables_map.get(class_name) else {
                         println!("skipping over the vtable of: {class_name_str}");
                         panic!("missing map");
                         continue;
                     };
-                    
+
                     let functions = submap.get(class_name).unwrap();
 
                     let mut functions_mapper = HashMap::new();
@@ -1159,7 +1145,7 @@ pub fn link_vm_classes(
     class_map: &mut HashMap<String, Symbol>
 ) {
 
-    let mut class_parts: Vec<(Symbol, Symbol, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, FunctionValue, Signature)>, Vec<Symbol>, Vec<ClassMember>)> = Vec::new();
+    let mut class_parts: Vec<(&str, Symbol, Symbol, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, FunctionValue, Signature)>, Vec<Symbol>, Vec<ClassMember>)> = Vec::new();
     for class in classes {
         let VMClass {
             name,
@@ -1348,7 +1334,7 @@ pub fn link_vm_classes(
                 }
             }).collect::<Vec<_>>();
 
-        class_parts.push((class_symbol, parent_symbol, class_members, static_methods, vtables_to_link, static_members));
+        class_parts.push((name, class_symbol, parent_symbol, class_members, static_methods, vtables_to_link, static_members));
     }
 
     let mut class_parts_to_try_again;
@@ -1356,7 +1342,7 @@ pub fn link_vm_classes(
         class_parts_to_try_again = Vec::new();
 
         'outer: for class_part in class_parts {
-            let (class_symbol, parent, members, static_methods, vtables, static_members) = class_part;
+            let (name_string, class_symbol, parent, members, static_methods, vtables, static_members) = class_part;
             let mut vtables_to_add = Vec::new();
             // Source class is one of the parents of the derived class
             // This is used to disambiguate
@@ -1405,7 +1391,7 @@ pub fn link_vm_classes(
                     for (_,_,_,_,value, _) in base_functions {
                         if value.is_blank() {
                             // We bail if any of base has not yet been linked
-                            class_parts_to_try_again.push((class_symbol, parent, members, static_methods, vtables, static_members));
+                            class_parts_to_try_again.push((name_string, class_symbol, parent, members, static_methods, vtables, static_members));
                             continue 'outer;
                         }
                     }
@@ -1459,7 +1445,7 @@ pub fn link_vm_classes(
             match add_parent_vtables(&mut class_vtable_mapper, parent, class_table, symbol_table, &mut HashSet::new()) {
                 Err(_) => {
                     // We bail if any of base has not yet been linked
-                    class_parts_to_try_again.push((class_symbol, parent, members, static_methods, vtables, static_members));
+                    class_parts_to_try_again.push((name_string, class_symbol, parent, members, static_methods, vtables, static_members));
                     continue 'outer;
                 }
                 _ => {},
@@ -1482,9 +1468,19 @@ pub fn link_vm_classes(
 
             let vtable = VTable::new(functions, static_method_mapper);
             let vtable_index = vtables_table.add_vtable(vtable);
+            
+            let name_symbol = if let Some(symbol) = string_map.get(name_string) {
+                *symbol
+            } else {
+                let index = string_table.add_string(name_string);
+                let symbol = symbol_table.add_string(index);
+                string_map.insert(String::from(name_string), symbol);
+                
+                symbol
+            };
 
             // Create new class
-            let class = Class::new(class_symbol, parent, class_vtable_mapper, members, vtable_index, static_members, None, None);
+            let class = Class::new(name_symbol, parent, class_vtable_mapper, members, vtable_index, static_members, None, None);
 
             let SymbolEntry::ClassRef(class_index) = &symbol_table[class_symbol] else {
                 unreachable!("Class symbol should have been a symbol to a class");

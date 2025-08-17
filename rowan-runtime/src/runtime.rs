@@ -662,7 +662,13 @@ impl Runtime {
         };
         
         let method_name_str = &string_table[index];
-        println!("{method_name_str}");
+        println!("{method_name_str} object_class: {object_class_symbol} class_symbol: {class_symbol} method_name: {method_name}");
+        
+        if object_class_symbol == class_symbol {
+            println!("calling method from the same class");
+        } else {
+            println!("calling method from different class");
+        }
 
         let SymbolEntry::ClassRef(object_class_index) = symbol_table[object_class_symbol] else {
             panic!("class wasn't a class");

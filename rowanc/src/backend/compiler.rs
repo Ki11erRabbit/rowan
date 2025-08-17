@@ -675,7 +675,7 @@ impl Compiler {
             Type::Void => TypeTag::Void,
             _ => TypeTag::Object,
         };
-        let mut types = vec![ret_type];
+        let mut types = vec![ret_type, TypeTag::Object];
         for param in args {
             match param {
                 ClosureParameter { parameter: Parameter::Pattern { ty, ..} } => {
@@ -774,20 +774,20 @@ impl Compiler {
             String::from("closure"),
             closure_name.clone(),
         ];
-        
+
         let closure_path = [
             String::from("std"),
             String::from("closure"),
             closure_name.clone(),
         ];
-        
+
         partial_class.attach_bytecode(
-            &closure_path, 
+            &closure_path,
             format!("std::closure::{closure_name}::call"),
             &[0],
             false,
         ).unwrap();
-        
+
         self.classes.insert(path.clone(), partial_class);
 
         self.closures.insert(closure_name.clone(), path);
@@ -1037,7 +1037,7 @@ impl Compiler {
             let names = names.iter()
                 .map(|n| n.clone())
                 .collect::<Vec<String>>();
-            
+
             let vtable = vtable.clone();
 
             partial_class.add_vtable(&vec![String::from("core"), String::from("Object")], vtable, &names, signatures);
@@ -1690,7 +1690,7 @@ impl Compiler {
             }
             Expression::StaticCall { name, type_args, args, .. } => {
 
-                for (i, arg) in args.iter().enumerate() {
+                for (i, arg) in args.iter().enumerate().rev() {
                     self.compile_expression(class_name, partial_class, arg, output, lhs)?;
                     self.bind_variable(format!("arg{i}"));
                 }
