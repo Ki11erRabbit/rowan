@@ -331,6 +331,7 @@ impl BytecodeContext {
             specified,
             method_name,
         );
+        println!("bytecode: {:#?}", details.bytecode);
 
         let method_name = MethodName::VirtualMethod {
             object_class_symbol: object.class,
@@ -352,7 +353,6 @@ impl BytecodeContext {
             class_name,
             method_name,
         );
-        println!("bytecode: {:#?}", details.bytecode);
 
         let method_name = MethodName::StaticMethod {
             class_symbol: class_name,
@@ -2229,6 +2229,9 @@ impl BytecodeContext {
                 let value = self.pop_value();
                 self.pop();
                 self.push_value(value);
+                if self.active_frames.len() == 1 {
+                    return false;
+                }
             }
             Bytecode::ReturnVoid => {
                 self.check_and_do_garbage_collection();

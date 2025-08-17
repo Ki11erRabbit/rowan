@@ -16,6 +16,8 @@ pub enum PartialClassError {
 pub type PartialClassResult<T> = Result<T, PartialClassError>;
 
 pub type VarLocation = u8;
+
+#[derive(Clone)]
 pub struct Frame {
     bindings: HashMap<String, VarLocation>,
     current_location: u8,

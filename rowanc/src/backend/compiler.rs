@@ -590,6 +590,16 @@ impl Compiler {
             self.scopes.pop();
         }
     }
+    
+    fn store_scopes(&mut self) -> Vec<Frame> {
+        let frames = self.scopes.clone();
+        self.scopes.clear();
+        frames
+    }
+    
+    fn load_scopes(&mut self, frames: Vec<Frame>) {
+        self.scopes = frames;
+    }
 
     fn bind_variable(&mut self, name: impl AsRef<str>) -> u8 {
         
@@ -2602,8 +2612,11 @@ impl Compiler {
             type_params: vec![],
             span,
         };
+        
+        let frames = self.store_scopes();
 
         self.compile_class(class)?;
+        self.load_scopes(frames);
 
         let path = self.add_path_if_needed(format!("Closure{closure_number}"));
 
