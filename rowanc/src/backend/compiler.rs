@@ -2250,6 +2250,61 @@ impl Compiler {
 
                             break 'setup_args (field, annotation);
                         }
+                        Expression::Variable(value, Type::Function(function_args, return_ty, ..), ..) => {
+                            self.compile_expression(class_name, partial_class, object.as_ref(), output, lhs)?;
+                            for (i, arg) in args.iter().enumerate() {
+                                self.compile_expression(class_name, partial_class, arg, output, lhs)?;
+                                self.bind_variable(format!("arg{i}"));
+                            }
+
+                            for i in 1..=args.len() { // 1..len for leaving space for object
+                                self.get_variable(format!("arg{}", i - 1));
+                                output.push(Bytecode::StoreArgument(i as u8));
+                            }
+
+                            output.push(Bytecode::StoreArgument(0));
+                            
+                            let mut closure_name = String::from("Closure");
+                            
+                            for arg in function_args {
+                                match arg {
+                                    Type::U8 => closure_name.push_str("u8"),
+                                    Type::I8 => closure_name.push_str("i8"),
+                                    Type::U16 => closure_name.push_str("u16"),
+                                    Type::I16 => closure_name.push_str("i16"),
+                                    Type::U32 => closure_name.push_str("u32"),
+                                    Type::I32 => closure_name.push_str("i32"),
+                                    Type::U64 => closure_name.push_str("u64"),
+                                    Type::I64 => closure_name.push_str("i64"),
+                                    Type::F32 => closure_name.push_str("f32"),
+                                    Type::F64 => closure_name.push_str("f64"),
+                                    _ => closure_name.push_str("object"),
+                                }
+                            }
+
+                            match return_ty.as_ref() {
+                                Type::U8 => closure_name.push_str("u8"),
+                                Type::I8 => closure_name.push_str("i8"),
+                                Type::U16 => closure_name.push_str("u16"),
+                                Type::I16 => closure_name.push_str("i16"),
+                                Type::U32 => closure_name.push_str("u32"),
+                                Type::I32 => closure_name.push_str("i32"),
+                                Type::U64 => closure_name.push_str("u64"),
+                                Type::I64 => closure_name.push_str("i64"),
+                                Type::F32 => closure_name.push_str("f32"),
+                                Type::F64 => closure_name.push_str("f64"),
+                                Type::Void => closure_name.push_str("void"),
+                                _ => closure_name.push_str("object"),
+                            }
+                            
+                            let annotation = vec![
+                                String::from("std"),
+                                String::from("closure"),
+                                closure_name,
+                            ];
+                            
+                            break 'setup_args (field, annotation)
+                        }
                         x => todo!("add additional sources to call from {:?}", x)
                     }
                 }
@@ -2342,10 +2397,9 @@ impl Compiler {
         }
         else if let Some(class) = self.classes.get(&ty) {
             //println!("{:#?}", class);
-            let mut class_name_path = class.get_class_name();
-            let mut field_path = class_name_path.clone();
+            let class_name_path = class.get_class_name();
+            let mut field_path = self.add_path_if_needed(class_name_path.join("::"));
             field_path.push(name.to_string());
-            //println!("class name: {class_name}");
             let vtable = class.get_vtable(field_path.join("::")).expect("add proper handling of missing vtable");
             let method_entry = class.get_method_entry(field_path.join("::")).expect("add proper handling of missing method");
 

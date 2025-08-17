@@ -149,10 +149,7 @@ impl PartialClass {
 
     pub fn get_vtable(&self, method_name: impl AsRef<str>) -> Result<&VTable, PartialClassError> {
         //println!("{}: {:#?}", method_name.as_ref(), self.method_to_class);
-        println!("{:?}", self.get_class_name());
-        println!("{:#?}", self.method_to_class);
         let class_names = self.method_to_class.get(method_name.as_ref()).ok_or(PartialClassError::ClassNotNotFound(method_name.as_ref().to_string()))?;
-        println!("got_class_names");
         if class_names.len() > 1 {
             return Err(PartialClassError::Ambiguity);
         }
@@ -382,7 +379,6 @@ impl PartialClass {
         }
         let vtable_index = vtable_indices[0];
         let mut method_index = None;
-        println!("method_name: {}", method_name.as_ref());
         for (vtable, method) in self.method_to_function.get(method_name.as_ref()).unwrap() {
             //println!("{:?}", (vtable, method));
             if vtable_index == *vtable {
@@ -432,9 +428,6 @@ impl PartialClass {
         VTable,
         Vec<String>,
         Vec<SignatureEntry>)> {
-        
-        println!("{:#?}", self.class_to_vtable);
-        println!("{class_name:?}");
         
         let vtable_indices = self.class_to_vtable.get(class_name).unwrap();
 
