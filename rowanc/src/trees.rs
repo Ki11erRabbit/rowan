@@ -242,6 +242,12 @@ pub struct Annotation<'a> {
     pub span: Span,
 }
 
+impl<'a> Annotation<'a> {
+    pub fn new(name: Text<'a>, parameters: Vec<Text<'a>>, span: Span) -> Self {
+        Annotation { name, parameters, span }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Constraint<'a> {
     Extends(Vec<Type<'a>>, Span),

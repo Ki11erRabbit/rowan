@@ -336,7 +336,7 @@ pub enum Expression<'a> {
         params: Vec<ClosureParameter<'a>>,
         return_type: Type<'a>,
         body: Vec<Statement<'a>>,
-        captures: Vec<Text<'a>>,
+        captures: Vec<(Text<'a>, Type<'a>)>,
         processed_captures: bool,
         span: Span,
     },

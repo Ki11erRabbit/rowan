@@ -246,8 +246,8 @@ impl<'boxing> BoxClosureCapture<> {
                 self.get_capture(stmt, &bound_vars, &mut found_captures);
             }
 
-            for key in found_captures.keys() {
-                captures.push(Text::Owned(key.clone()));
+            for (key, (_, ty) ) in &found_captures {
+                captures.push((Text::Owned(key.clone()), ty.clone()));
             }
 
 
