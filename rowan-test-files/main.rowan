@@ -32,6 +32,7 @@ class Main {
 
     fn map(arr: [u64], f: fn(u64) -> u64) -> [u64] {
         let i: u64 = 0;
+        let test: u64 = f.call(i);
         let out: [u64] = new[u64; arr.len()];
         while i < arr.len() {
             out[i] = f.call(arr[i]);
