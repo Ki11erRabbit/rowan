@@ -87,21 +87,41 @@ pub fn link_class_files(
             let classfile::VTable { class_name, sub_class_name, .. } = vtable;
 
             let mut current_vtable = Vec::new();
-
+            
             let class_name_str = class.index_string_table(*class_name);
-            let vtable_class_name_symbol = if let Some(symbol) = class_map.get(class_name_str) {
-                *symbol
+            let vtable_class_name_symbol = if *sub_class_name != 0 {
+                let sub_class_str = class.index_string_table(*sub_class_name);
+                println!("sub_class_str: {sub_class_str}");
+                if let Some(symbol) = class_map.get(sub_class_str) {
+                    *symbol
+                } else {
+                    let string_table_index = string_table.add_string(sub_class_str);
+                    let symbol = symbol_table.add_string(string_table_index);
+                    string_map.insert(String::from(sub_class_str), symbol);
+
+                    let class_table_index = class_table.len();
+                    class_table.push(TableEntry::Hole);
+                    let symbol = symbol_table.add_class(class_table_index);
+
+                    class_map.insert(String::from(sub_class_str), symbol);
+                    symbol
+                }
             } else {
-                let string_table_index = string_table.add_string(class_name_str);
-                let symbol = symbol_table.add_string(string_table_index);
-                string_map.insert(String::from(class_name_str), symbol);
+                println!("sub class is none");
+                if let Some(symbol) = class_map.get(class_name_str) {
+                    *symbol
+                } else {
+                    let string_table_index = string_table.add_string(class_name_str);
+                    let symbol = symbol_table.add_string(string_table_index);
+                    string_map.insert(String::from(class_name_str), symbol);
 
-                let class_table_index = class_table.len();
-                class_table.push(TableEntry::Hole);
-                let symbol = symbol_table.add_class(class_table_index);
+                    let class_table_index = class_table.len();
+                    class_table.push(TableEntry::Hole);
+                    let symbol = symbol_table.add_class(class_table_index);
 
-                class_map.insert(String::from(class_name_str), symbol);
-                symbol
+                    class_map.insert(String::from(class_name_str), symbol);
+                    symbol
+                }
             };
             let (_sub_class_name_str, _sub_class_name_symbol) = if *sub_class_name != 0 {
                 let sub_class_name_str = class.index_string_table(*sub_class_name);
@@ -152,9 +172,10 @@ pub fn link_class_files(
                 let sig = jit_controller.create_signature(&signature[1..], &signature[0]);
 
                 current_vtable.push(
-                    (name_symbol, signature, bytecode, Box::new([]) as Box<[rowan_shared::bytecode::linked::Bytecode]>, FunctionValue::Blank, sig)
+                    (name_symbol, signature, bytecode, Box::new([]) as Box<[bytecode::linked::Bytecode]>, FunctionValue::Blank, sig)
                 );
             }
+            println!("vtable symbol: {vtable_class_name_symbol}, class symbol: {class_symbol}");
             vtables_map.entry(vtable_class_name_symbol)
                 .and_modify(|map| {
                     map.insert(class_symbol, current_vtable.clone());
@@ -181,7 +202,7 @@ pub fn link_class_files(
 
         let mut class_members = Vec::new();
         for member in members {
-            let rowan_shared::classfile::Member { name, type_tag } = member;
+            let classfile::Member { name, type_tag } = member;
 
             let name_str = class.index_string_table(*name);
             let name_symbol = if let Some(symbol) = string_map.get(name_str) {
@@ -271,22 +292,42 @@ pub fn link_class_files(
         for vtable in vtables {
             let classfile::VTable { class_name, sub_class_name, .. } = vtable;
             let class_name_str = class.index_string_table(*class_name);
-            let class_name_symbol = if let Some(symbol) = class_map.get(class_name_str) {
-                *symbol
+            let vtable_class_name_symbol = if *sub_class_name != 0 {
+                let sub_class_str = class.index_string_table(*sub_class_name);
+                println!("sub_class_str: {sub_class_str}");
+                if let Some(symbol) = class_map.get(sub_class_str) {
+                    *symbol
+                } else {
+                    let string_table_index = string_table.add_string(sub_class_str);
+                    let symbol = symbol_table.add_string(string_table_index);
+                    string_map.insert(String::from(sub_class_str), symbol);
+
+                    let class_table_index = class_table.len();
+                    class_table.push(TableEntry::Hole);
+                    let symbol = symbol_table.add_class(class_table_index);
+
+                    class_map.insert(String::from(sub_class_str), symbol);
+                    symbol
+                }
             } else {
-                let string_table_index = string_table.add_string(class_name_str);
-                let symbol = symbol_table.add_string(string_table_index);
-                string_map.insert(String::from(class_name_str), symbol);
+                println!("sub class is none");
+                if let Some(symbol) = class_map.get(class_name_str) {
+                    *symbol
+                } else {
+                    let string_table_index = string_table.add_string(class_name_str);
+                    let symbol = symbol_table.add_string(string_table_index);
+                    string_map.insert(String::from(class_name_str), symbol);
 
-                let class_table_index = class_table.len();
-                class_table.push(TableEntry::Hole);
-                let symbol = symbol_table.add_class(class_table_index);
+                    let class_table_index = class_table.len();
+                    class_table.push(TableEntry::Hole);
+                    let symbol = symbol_table.add_class(class_table_index);
 
-                class_map.insert(String::from(class_name_str), symbol);
-                symbol
+                    class_map.insert(String::from(class_name_str), symbol);
+                    symbol
+                }
             };
 
-            vtables_to_link.push(class_name_symbol);
+            vtables_to_link.push(vtable_class_name_symbol);
         }
 
         let static_members = static_members.iter()
@@ -341,7 +382,14 @@ pub fn link_class_files(
                 if *class_name == class_symbol {
                     // Here we load in the current class' vtable
                     // Nothing fancy happens here other than that we link the bytecode
-                    let functions = vtables_map.get(class_name).unwrap().get(class_name).unwrap();
+                    
+                    let Some(submap) = vtables_map.get(class_name) else {
+                        println!("skipping over the vtable of: {class_name_str}");
+                        panic!("missing map");
+                        continue;
+                    };
+                    
+                    let functions = submap.get(class_name).unwrap();
 
                     let mut functions_mapper = HashMap::new();
                     let functions = functions.into_iter()
@@ -434,7 +482,7 @@ pub fn link_class_files(
                     let derived_functions = vtables_map.get(class_name).unwrap().get(&class_symbol).unwrap();
                     //println!("\n\n\nclass_name: {class_name}");
                     //println!("vtables map: {:#?}", vtables_map);
-                    let base_functions = vtables_map.get(class_name).unwrap().get(&class_symbol).unwrap();
+                    let base_functions = vtables_map.get(class_name).unwrap().get(&class_name).unwrap();
 
                     for (_,_,_,_,value, _) in base_functions {
                         if value.is_blank() {

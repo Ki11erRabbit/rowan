@@ -755,7 +755,7 @@ impl Compiler {
         ]);
 
         let mut partial_class = PartialClass::new();
-        partial_class.set_name(&closure_name);
+        partial_class.set_name(&format!("std::closure::{}", closure_name));
         partial_class.set_parent("core::Object");
         let functions = vec![
             VTableEntry::default(),
@@ -834,7 +834,7 @@ impl Compiler {
         }
 
         for (path, file) in self.classes.into_iter() {
-            if file.is_printable() && file.get_class_name().contains(&String::from("IOLock")) {
+            if file.is_printable() && file.get_class_name().contains(&String::from("Closure0")) {
                 println!("closure: {file:#?}");
             }
             if let Some((file, native_definitions)) = file.create_class_file() {
@@ -1037,16 +1037,24 @@ impl Compiler {
             let names = names.iter()
                 .map(|n| n.clone())
                 .collect::<Vec<String>>();
+            
+            let vtable = vtable.clone();
 
-            partial_class.add_vtable(&vec![String::from("core"), String::from("Object")], vtable.clone(), &names, signatures);
+            partial_class.add_vtable(&vec![String::from("core"), String::from("Object")], vtable, &names, signatures);
             partial_class.set_parent("core::Object");
         }
 
-        for vtables in parent_vtables {
-            for (class_name, _source_class, vtable, names, signatures) in vtables {
+        if let Some(vtables) = parent_vtables {
+            for (class_name, source_class, vtable, names, signatures) in vtables {
                 let names = names.into_iter()
                     .map(|n| self.add_path_if_needed(n).join("::"))
                     .collect::<Vec<String>>();
+                let class_name = if let Some(source) = source_class {
+                    let path = self.add_path_if_needed(source.to_string());
+                    path
+                } else {
+                    class_name
+                };
                 partial_class.add_vtable(&class_name, vtable.clone(), &names, &signatures);
             }
         }
@@ -1260,7 +1268,7 @@ impl Compiler {
                 };
 
                 let vtable = partial_class.get_vtable(&path_name).unwrap();
-                let method_class_name = partial_class.index_string_table(vtable.class_name).split("::")
+                let method_class_name = partial_class.index_string_table(vtable.sub_class_name).split("::")
                     .map(|name| name.to_string())
                     .collect::<Vec<String>>();
                 //println!("{}", method_class_name);

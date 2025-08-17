@@ -58,7 +58,6 @@ pub extern "C" fn rowan_main() {
         core::generate_i64_box(),
         core::generate_f32_box(),
         core::generate_f64_box(),
-        
         core::generate_printer_class(),
         core::generate_exception_class(),
         core::generate_backtrace_class(),
