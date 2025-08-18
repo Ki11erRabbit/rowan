@@ -9,13 +9,16 @@ class Main {
     fn main(args: [String]) {
         let arr: [u64] = [1, 2, 3];
         let printer: Printer = new Printer();
+        let q: u64 = 0;
         Main::map(arr, |x: u64| -> u64 {
             let string: String = "calling lambda";
             Console::println(string);
+            q = q + 1;
 
             printer.println-int(x + 2);
             return x + 2;
         })
+        printer.println-int(q)
     }
 
     fn fib(n: u64) -> u64 {
@@ -35,8 +38,7 @@ class Main {
 
     fn map(arr: [u64], f: fn(u64) -> u64) -> [u64] {
         let i: u64 = 0;
-        let n: u64 = 3;
-        let out: [u64] = new[u64; n];
+        let out: [u64] = new[u64; arr.len()];
         while i < arr.len() {
             out[i] = f.call(arr[i]);
             i = i + 1;

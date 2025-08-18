@@ -66,7 +66,7 @@ impl<'boxing> BoxClosureCapture<> {
             span
         } = method;
 
-        let mut new_body = self.box_body(body);
+        let new_body = self.box_body(body);
 
         Method {
             name,
@@ -108,6 +108,10 @@ impl<'boxing> BoxClosureCapture<> {
                     let mut stmts: Vec<Statement> = self.box_primitives(index, &mut body);
                     let is_stmts_empty = stmts.is_empty();
                     index += stmts.len();
+                    println!();
+                    for stmt in &stmts {
+                        println!("{:?}", stmt);
+                    }
                     stmts.append(&mut body);
                     body = stmts;
                     if is_stmts_empty {
@@ -256,12 +260,12 @@ impl<'boxing> BoxClosureCapture<> {
             for i in (0..index).rev() {
                 match &stmts[i] {
                     Statement::Let { bindings, .. } => {
-                        if self.is_bound(bindings, &bound_vars) {
+                        if self.is_bound(bindings, &found_captures) {
                             indices.push(i);
                         }
                     }
                     Statement::Const { bindings, .. } => {
-                        if self.is_bound(bindings, &bound_vars) {
+                        if self.is_bound(bindings, &found_captures) {
                             indices.push(i);
                         }
                     }
@@ -271,6 +275,7 @@ impl<'boxing> BoxClosureCapture<> {
             found_captures
         };
 
+        println!("indices: {:?}", indices);
         for index in indices.into_iter().rev() {
             match &mut stmts[index] {
                 Statement::Let { bindings, ty, value, .. } => {
@@ -343,8 +348,8 @@ impl<'boxing> BoxClosureCapture<> {
                 self.get_capture_expression(value, bound_vars, captures, false);
             }
             Statement::Assignment { target, value, .. } => {
-                self.get_capture_expression(value, bound_vars, captures, true);
-                self.get_capture_expression(target, bound_vars, captures, false);
+                self.get_capture_expression(target, bound_vars, captures, true);
+                self.get_capture_expression(value, bound_vars, captures, false);
             }
             Statement::While { test, body, .. } => {
                 self.get_capture_expression(test, bound_vars, captures, false);
@@ -369,7 +374,8 @@ impl<'boxing> BoxClosureCapture<> {
         match expr {
             Expression::Variable(name, ty, ..) => {
                 if !bound_vars.contains(name.as_str()) {
-                    captures.insert(name.to_string(), (mutating_context, ty.clone()));
+                    captures.entry(name.to_string())
+                        .or_insert((mutating_context, ty.clone()));
                 }
             },
             Expression::This(..) => {
@@ -848,10 +854,10 @@ impl<'boxing> BoxClosureCapture<> {
         }
     }
 
-    fn is_bound(&self, pattern: &Pattern<'boxing>, captures: &HashSet<String>) -> bool {
+    fn is_bound(&self, pattern: &Pattern<'boxing>, captures: &HashMap<String, (bool, Type)>) -> bool {
         match pattern {
             Pattern::Variable(name, ..) => {
-                captures.contains(name.as_str())
+                captures.contains_key(name.as_str())
             }
             Pattern::Tuple(pattern, ..) => {
                 for pattern in pattern.iter() {

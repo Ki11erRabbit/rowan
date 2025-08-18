@@ -140,13 +140,16 @@ impl<'fix> FixTypesAfterBoxing<'fix> {
     }
     
     fn fix_body(&mut self, body: &mut Vec<Statement<'fix>>) {
+        println!();
         for statement in body {
+            //println!("{:?}", statement);
             match statement {
                 Statement::Expression(expr, ..) => {
                     self.fix_expr(expr);
                 }
                 Statement::Let { bindings, ty, value, .. } => {
                     self.fix_expr(value);
+                    //println!("bindings: {:?}", bindings);
                     self.bind_vars(bindings, ty);
                 }
                 Statement::Const { bindings, ty, value, .. } => {
@@ -169,28 +172,31 @@ impl<'fix> FixTypesAfterBoxing<'fix> {
     fn fix_expr(&mut self, expr: &mut Expression<'fix>) {
         match expr {
             Expression::Variable(var, ty, span) => {
-                let var_ty = self.lookup_variable(var.as_str()).unwrap();
-                if var_ty == *ty {
-                    return;
+                let Some(var_ty) = self.lookup_variable(var.as_str()) else {
+                    panic!("Variable {} not found", var);
+                };
+                if var.as_str() == "q" {
+                    println!("variable: {:?} {:?}", var_ty, ty);
                 }
                 match ty {
-                    Type::U8 if var_ty == Type::Object(Text::Borrowed("U8"), Span::new(0,0)) => {}
-                    Type::U16 if var_ty == Type::Object(Text::Borrowed("U16"), Span::new(0,0)) => {}
-                    Type::U32 if var_ty == Type::Object(Text::Borrowed("U32"), Span::new(0,0)) => {}
-                    Type::U64 if var_ty == Type::Object(Text::Borrowed("U64"), Span::new(0,0)) => {}
-                    Type::I8 if var_ty == Type::Object(Text::Borrowed("I8"), Span::new(0,0)) => {}
-                    Type::I16 if var_ty == Type::Object(Text::Borrowed("I16"), Span::new(0,0)) => {}
-                    Type::I32 if var_ty == Type::Object(Text::Borrowed("I32"), Span::new(0,0)) => {}
-                    Type::I64 if var_ty == Type::Object(Text::Borrowed("I64"), Span::new(0,0)) => {}
-                    Type::F32 if var_ty == Type::Object(Text::Borrowed("F32"), Span::new(0,0)) => {}
-                    Type::F64 if var_ty == Type::Object(Text::Borrowed("F64"), Span::new(0,0)) => {}
+                    Type::U8 if var_ty != *ty => {}
+                    Type::I8 if var_ty != *ty => {}
+                    Type::U16 if var_ty != *ty => {}
+                    Type::I16 if var_ty != *ty => {}
+                    Type::U32 if var_ty != *ty => {}
+                    Type::I32 if var_ty != *ty => {}
+                    Type::U64 if var_ty != *ty => {}
+                    Type::I64 if var_ty != *ty => {}
+                    Type::F32 if var_ty != *ty => {}
+                    Type::F64 if var_ty != *ty => {}
                     _ => return,
                 }
+                println!("var: {:?}", var_ty);
                 *expr = Expression::MemberAccess {
-                    object: Box::new(Expression::Variable(var.clone(), ty.clone(), span.clone())),
+                    object: Box::new(Expression::Variable(var.clone(), var_ty.clone(), span.clone())),
                     field: PathName::new(vec![Text::Borrowed("value")], Span::new(0, 0)),
                     span: *span,
-                    annotation: var_ty,
+                    annotation: ty.clone(),
                 }
             }
             Expression::Literal(..) => {}

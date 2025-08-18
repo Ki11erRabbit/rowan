@@ -28,7 +28,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     let vtable = VTable::new(functions);
     object.add_vtable(&vec![String::from("core"), String::from("Object")], vtable, &names, &signatures);
     object.make_not_printable();
-    classes.insert(vec![String::from("Object")], object);
+    classes.insert(vec![String::from("core"), String::from("Object")], object);
 
     let mut printer = PartialClass::new();
     printer.set_name("core::Printer");
@@ -184,6 +184,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     classes.insert(vec![String::from("InternedString")], interned_string);
 
     let mut u8_box = PartialClass::new();
+    u8_box.set_name("core::U8");
     let functions = vec![
         VTableEntry::default(),
     ];
@@ -204,6 +205,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     classes.insert(vec![String::from("U8")], u8_box);
 
     let mut u16_box = PartialClass::new();
+    u16_box.set_name("core::U16");
     let functions = vec![
         VTableEntry::default(),
     ];
@@ -224,6 +226,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     classes.insert(vec![String::from("U16")], u16_box);
 
     let mut u32_box = PartialClass::new();
+    u32_box.set_name("core::U32");
     let functions = vec![
         VTableEntry::default(),
     ];
@@ -244,6 +247,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     classes.insert(vec![String::from("U32")], u32_box);
 
     let mut u64_box = PartialClass::new();
+    u64_box.set_name("core::U64");
     let functions = vec![
         VTableEntry::default(),
     ];
@@ -266,6 +270,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
 
 
     let mut i8_box = PartialClass::new();
+    i8_box.set_name("core::I8");
     let functions = vec![
         VTableEntry::default(),
     ];
@@ -286,6 +291,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     classes.insert(vec![String::from("I8")], i8_box);
 
     let mut i16_box = PartialClass::new();
+    i16_box.set_name("core::I16");
     let functions = vec![
         VTableEntry::default(),
     ];
@@ -306,6 +312,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     classes.insert(vec![String::from("I16")], i16_box);
 
     let mut i32_box = PartialClass::new();
+    i32_box.set_name("core::I32");
     let functions = vec![
         VTableEntry::default(),
     ];
@@ -326,6 +333,7 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     classes.insert(vec![String::from("I32")], i32_box);
 
     let mut i64_box = PartialClass::new();
+    i64_box.set_name("core::I64");
     let functions = vec![
         VTableEntry::default(),
     ];
@@ -1037,7 +1045,7 @@ impl Compiler {
         }
 
         if parent.is_none() {
-            let object_class = self.classes.get(&vec!["Object".to_string()]).expect("Object not added to known classes");
+            let object_class = self.classes.get(&vec!["core".to_string(), "Object".to_string()]).expect("Object not added to known classes");
 
             let vtables = object_class.get_vtables(&[
                 String::from("core"),
@@ -1991,6 +1999,7 @@ impl Compiler {
         let (class_name, parent_name) = if class.contains_field(field.to_string().as_str()) {
             (class.get_class_name(), Vec::new())
         } else {
+            println!("object: {object:?} field: {field}");
             let Some((name, parent)) = class.find_class_with_field(self, field.to_string().as_str()) else {
                 todo!("report error about being unable to find field")
             };
@@ -2083,7 +2092,9 @@ impl Compiler {
             _ => todo!("report error about method output not being an object: {:?} {:?}", object, field),
         };
 
+        println!("name: {:?}", name);
         let class = self.classes.get(&name).unwrap_or(partial_class);
+        println!("{field}");
         let (class_name, parent_name) = if class.contains_field(field.to_string().as_str()) {
             (class.get_class_name(), Vec::new())
         } else {

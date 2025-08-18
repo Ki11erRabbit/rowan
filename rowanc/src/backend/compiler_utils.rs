@@ -139,7 +139,7 @@ pub struct PartialClass {
 }
 
 impl PartialClass {
-    
+
     pub fn is_printable(&self) -> bool {
         !self.dont_print
     }
@@ -439,7 +439,7 @@ impl PartialClass {
         VTable,
         Vec<String>,
         Vec<SignatureEntry>)> {
-        
+
         let vtable_indices = self.class_to_vtable.get(class_name).unwrap();
 
         let mut output = Vec::new();
@@ -525,6 +525,9 @@ impl PartialClass {
             return Some(class_name)
         }
 
+        if self.parent == 0 {
+            return None
+        }
         let parent = self.index_string_table(self.parent);
         let parent = parent.split("::").map(ToString::to_string).collect::<Vec<String>>();
         let parent = compiler.classes.get(&parent).unwrap();

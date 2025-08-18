@@ -984,6 +984,7 @@ fn link_bytecode(
             }
             compiled::Bytecode::InvokeStatic(class_index, method_index) => {
                 let class_str = class_file.index_string_table(class_index);
+                println!("{class_str}");
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let method_str = class_file.index_string_table(method_index);
