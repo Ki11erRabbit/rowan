@@ -8,10 +8,11 @@ class Main {
 
     fn main(args: [String]) {
         let arr: [u64] = [1, 2, 3];
+        let printer: Printer = new Printer();
         Main::map(arr, |x: u64| -> u64 {
             let string: String = "calling lambda";
             Console::println(string);
-            let printer: Printer = new Printer();
+
             printer.println-int(x + 2);
             return x + 2;
         })

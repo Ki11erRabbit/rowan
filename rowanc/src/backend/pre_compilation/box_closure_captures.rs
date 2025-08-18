@@ -224,6 +224,7 @@ impl<'boxing> BoxClosureCapture<> {
 
     /// TODO: fix this to handle nested closures
     fn box_primitives<'input>(&mut self, index: usize, stmts: &mut Vec<Statement<'boxing>>) -> Vec<Statement<'boxing>> {
+        println!("boxing primitives");
         let mut prepend_statements = Vec::new();
         let mut indices = Vec::new();
 
@@ -239,12 +240,13 @@ impl<'boxing> BoxClosureCapture<> {
                 return Vec::new();
             };
             *processed_captures = true;
-            let bound_vars = self.get_param_set(params);
+            let mut bound_vars = self.get_param_set(params);
             let mut found_captures = HashMap::new();
 
-            for stmt in body {
-                self.get_capture(stmt, &bound_vars, &mut found_captures);
+            for stmt in body.iter() {
+                self.get_capture(stmt, &mut bound_vars, &mut found_captures);
             }
+            println!("found captures: {:?}", found_captures);
 
             for (key, (_, ty) ) in &found_captures {
                 captures.push((Text::Owned(key.clone()), ty.clone()));
@@ -322,14 +324,22 @@ impl<'boxing> BoxClosureCapture<> {
     fn get_capture(
         &self,
         stmt: &Statement<'boxing>,
-        bound_vars: &HashSet<String>,
+        bound_vars: &mut HashSet<String>,
         captures: &mut HashMap<String, (bool, Type<'boxing>)>
     ) {
         match stmt {
-            Statement::Let { value, .. } => {
+            Statement::Let { bindings, value, .. } => {
+                let Pattern::Variable(var, _, _) = bindings else {
+                    todo!("support additional patterns")
+                };
+                bound_vars.insert(var.to_string());
                 self.get_capture_expression(value, bound_vars, captures, false);
             }
-            Statement::Const { value, .. } => {
+            Statement::Const { bindings, value, .. } => {
+                let Pattern::Variable(var, _, _) = bindings else {
+                    todo!("support additional patterns")
+                };
+                bound_vars.insert(var.to_string());
                 self.get_capture_expression(value, bound_vars, captures, false);
             }
             Statement::Assignment { target, value, .. } => {
@@ -352,7 +362,7 @@ impl<'boxing> BoxClosureCapture<> {
     fn get_capture_expression(
         &self,
         expr: &Expression<'boxing>,
-        bound_vars: &HashSet<String>,
+        bound_vars: &mut HashSet<String>,
         captures: &mut HashMap<String, (bool, Type<'boxing>)>,
         mutating_context: bool,
     ) {
@@ -363,9 +373,10 @@ impl<'boxing> BoxClosureCapture<> {
                 }
             },
             Expression::This(..) => {
-                captures.insert(String::from("this"), (mutating_context, Type::Object(Text::Borrowed(""), Span::new(0, 0))));
+                captures.insert(String::from("self"), (mutating_context, Type::Object(Text::Borrowed(""), Span::new(0, 0))));
             }
-            Expression::Call { args, .. } => {
+            Expression::Call { name, args, .. } => {
+                self.get_capture_expression(name.as_ref(), bound_vars, captures, true);
                 for arg in args {
                     self.get_capture_expression(arg, bound_vars, captures, false);
                 }
@@ -403,15 +414,16 @@ impl<'boxing> BoxClosureCapture<> {
                 let mut new_bindings = self.get_param_set(params);
                 new_bindings.extend(bound_vars.iter().cloned());
                 for stmt in body {
-                    self.get_capture(stmt, &new_bindings, captures);
+                    self.get_capture(stmt, &mut new_bindings, captures);
                 }
             }
             Expression::IfExpression(if_expr,..) => {
                 self.get_capture_expression_if(if_expr, bound_vars, captures);
             }
-            Expression::Variable(..) => {}
             Expression::Literal(..) => {}
-            Expression::MemberAccess { .. } => {}
+            Expression::MemberAccess { object, .. } => {
+                self.get_capture_expression(object.as_ref(), bound_vars, captures, false);
+            }
             Expression::ClassAccess { .. } => {}
             _ => todo!("handle remaining expressions in get_capture_expression"),
         }
@@ -420,7 +432,7 @@ impl<'boxing> BoxClosureCapture<> {
     fn get_capture_expression_if(
         &self,
         expr: &IfExpression<'boxing>,
-        bound_vars: &HashSet<String>,
+        bound_vars: &mut HashSet<String>,
         captures: &mut HashMap<String, (bool, Type<'boxing>)>
     ) {
         let IfExpression {
@@ -733,7 +745,7 @@ impl<'boxing> BoxClosureCapture<> {
     }
 
     fn get_closure_expression<'input>(&mut self, mut expr: &'input mut Expression<'boxing>) -> Option<&'input mut Expression<'boxing>> {
-        if expr.is_closure() && expr.processed_captures() {
+        if expr.is_closure() && !expr.processed_captures() {
             return Some(expr);
         }
 

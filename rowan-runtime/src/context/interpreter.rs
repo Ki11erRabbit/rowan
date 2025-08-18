@@ -331,7 +331,6 @@ impl BytecodeContext {
             specified,
             method_name,
         );
-        println!("bytecode: {:#?}", details.bytecode);
 
         let method_name = MethodName::VirtualMethod {
             object_class_symbol: object.class,
@@ -353,6 +352,7 @@ impl BytecodeContext {
             class_name,
             method_name,
         );
+        println!("bytecode: {:#?}", details.bytecode);
 
         let method_name = MethodName::StaticMethod {
             class_symbol: class_name,

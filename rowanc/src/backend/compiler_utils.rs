@@ -263,10 +263,10 @@ impl PartialClass {
         //println!("add_vtable1 {} {}", self.index_string_table(self.name), class_name.as_ref());
         vtable.class_name = self.name;
         let sub_class_name = if self.get_class_name() == *class_name {
-            println!("{} == {}", self.get_class_name().join("::"), class_name.join("::"));
+            //println!("{} == {}", self.get_class_name().join("::"), class_name.join("::"));
             self.name
         } else {
-            println!("{} != {}", self.get_class_name().join("::"), class_name.join("::"));
+            //println!("{} != {}", self.get_class_name().join("::"), class_name.join("::"));
             self.add_string(class_name.join("::"))
         };
         vtable.sub_class_name = sub_class_name;

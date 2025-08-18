@@ -77,7 +77,6 @@ pub fn link_class_files(
             let class_name_str = class.index_string_table(*class_name);
             let vtable_class_name_symbol = if *sub_class_name != 0 {
                 let sub_class_str = class.index_string_table(*sub_class_name);
-                println!("sub_class_str: {sub_class_str}");
                 if let Some(symbol) = class_map.get(sub_class_str) {
                     *symbol
                 } else {
@@ -93,7 +92,6 @@ pub fn link_class_files(
                     symbol
                 }
             } else {
-                println!("sub class is none");
                 if let Some(symbol) = class_map.get(class_name_str) {
                     *symbol
                 } else {
@@ -145,7 +143,6 @@ pub fn link_class_files(
 
                 let signature = class.signature_table[*signature as usize].types.clone();
                 let bytecode = if *bytecode == 0 {
-                    println!("method has no bytecode: {name_str} {name_symbol}");
                     MethodLocation::Blank
                 } else if *bytecode < 0 {
                     let string = name_str.replace("::", "__")
@@ -161,7 +158,6 @@ pub fn link_class_files(
                     (name_symbol, signature, bytecode, Box::new([]) as Box<[bytecode::linked::Bytecode]>, FunctionValue::Blank, sig)
                 );
             }
-            println!("vtable symbol: {vtable_class_name_symbol}, class symbol: {class_symbol}");
             vtables_map.entry(vtable_class_name_symbol)
                 .and_modify(|map| {
                     map.insert(class_symbol, current_vtable.clone());
@@ -261,7 +257,6 @@ pub fn link_class_files(
             let signature = class.signature_table[*signature as usize].types.clone();
             //println!("{}'s signature: {:?}", name_str, signature);
             let function = if *bytecode == 0 {
-                println!("no bytecode: {name_str}");
                 MethodLocation::Blank
             } else if *bytecode < 0 {
                 let string = name_str.replace("::", "__")
@@ -280,7 +275,6 @@ pub fn link_class_files(
             let class_name_str = class.index_string_table(*class_name);
             let vtable_class_name_symbol = if *sub_class_name != 0 {
                 let sub_class_str = class.index_string_table(*sub_class_name);
-                println!("sub_class_str: {sub_class_str}");
                 if let Some(symbol) = class_map.get(sub_class_str) {
                     *symbol
                 } else {
@@ -296,7 +290,6 @@ pub fn link_class_files(
                     symbol
                 }
             } else {
-                println!("sub class is none");
                 if let Some(symbol) = class_map.get(class_name_str) {
                     *symbol
                 } else {
@@ -358,7 +351,6 @@ pub fn link_class_files(
         class_parts_to_try_again = Vec::new();
         'outer: for class_part in class_parts {
             let (class_name_str, mut location, class_symbol, class_name_symbol, parent, members, static_methods, class, vtables, static_members, static_init) = class_part;
-            println!("{class_name_str}");
             let mut vtables_to_add = Vec::new();
             // Source class is one of the parents of the derived class
             // This is used to disambiguate
@@ -370,8 +362,6 @@ pub fn link_class_files(
                     // Nothing fancy happens here other than that we link the bytecode
 
                     let Some(submap) = vtables_map.get(class_name) else {
-                        println!("skipping over the vtable of: {class_name_str}");
-                        panic!("missing map");
                         continue;
                     };
 
@@ -426,13 +416,10 @@ pub fn link_class_files(
                                     (Box::new([]) as Box<[rowan_shared::bytecode::linked::Bytecode]>, value, sig)
                                 }
                                 MethodLocation::Blank => {
-                                    println!("location: {:?}", location);
-                                    println!("method name: {name_symbol}");
                                     let SymbolEntry::StringRef(index) = symbol_table[*name_symbol] else {
                                         panic!("Expected name symbol to be a string reference");
                                     };
                                     let name = &string_table[index];
-                                    println!("{name}");
                                     unreachable!("method location was blank")
                                 }
                             };

@@ -590,13 +590,13 @@ impl Compiler {
             self.scopes.pop();
         }
     }
-    
+
     fn store_scopes(&mut self) -> Vec<Frame> {
         let frames = self.scopes.clone();
         self.scopes.clear();
         frames
     }
-    
+
     fn load_scopes(&mut self, frames: Vec<Frame>) {
         self.scopes = frames;
     }
@@ -844,9 +844,9 @@ impl Compiler {
         }
 
         for (path, file) in self.classes.into_iter() {
-            if file.is_printable() && file.get_class_name().contains(&String::from("Closure0")) {
+            /*if file.is_printable() && file.get_class_name().contains(&String::from("Closure0")) {
                 println!("closure: {file:#?}");
-            }
+            }*/
             if let Some((file, native_definitions)) = file.create_class_file() {
                 if !native_definitions.is_empty() {
                     let path = format!("output/{}.h", path.join("/"));
@@ -1239,6 +1239,7 @@ impl Compiler {
                 is_native,
                 ..
             } = method;
+            println!("\t{name}");
 
             self.push_scope();
             let mut is_static = true;
@@ -1338,6 +1339,7 @@ impl Compiler {
         output.push(Bytecode::StartBlock(block));
         
         for statement in body {
+            // println!("{:#?}", statement);
             match statement {
                 Statement::Expression(expr, _) => {
                     self.compile_expression(class_name, partial_class, &expr, output, false)?;
@@ -2049,6 +2051,7 @@ impl Compiler {
             _ => {}
         }
 
+        println!("set_object: {:?}", object);
         self.compile_expression(class_name, partial_class, object.as_ref(), output, false)?;
 
         let annotation = object.get_type();
@@ -2297,6 +2300,7 @@ impl Compiler {
                                 output.push(Bytecode::StoreArgument(i as u8));
                             }
 
+                            self.get_variable(value);
                             output.push(Bytecode::StoreArgument(0));
 
                             let mut closure_name = String::from("Closure");
@@ -2484,7 +2488,8 @@ impl Compiler {
             method_params.push(parameter.clone());
         }
 
-        let body = if captures.is_empty() {
+        let body = if !captures.is_empty() {
+            println!("We have captures");
             let mut new_body = Vec::new();
             for (capture, ty) in captures {
                 let field = PathName::new(vec![capture.clone()], Span::new(0,0));
@@ -2548,7 +2553,7 @@ impl Compiler {
 
                 body.push(Statement::Assignment {
                     target: Expression::MemberAccess {
-                        object: Box::new(Expression::This(Span::new(0,0))),
+                        object: Box::new(Expression::Variable(capture.clone(), Type::Object(Text::Owned(class_name.clone()), Span::new(0,0)), Span::new(0,0))),
                         field: PathName::new(vec![capture.clone()], Span::new(0,0)),
                         span: Span::new(0,0),
                         annotation: ty.clone(),
@@ -2612,7 +2617,7 @@ impl Compiler {
             type_params: vec![],
             span,
         };
-        
+
         let frames = self.store_scopes();
 
         self.compile_class(class)?;
@@ -2630,6 +2635,13 @@ impl Compiler {
             let class_index = partial_class.add_string(path.join("::"));
             path.push(String::from("create"));
             let method_index = partial_class.add_string(path.join("::"));
+            
+            for (i, (capture, _)) in captures.iter().enumerate() {
+                let index = self.get_variable(capture).expect("TODO: error missing variable");
+                output.push(Bytecode::LoadLocal(index));
+                output.push(Bytecode::StoreArgument(i as u8));
+            }
+            
             output.push(
                 Bytecode::InvokeStatic(class_index, method_index)
             );

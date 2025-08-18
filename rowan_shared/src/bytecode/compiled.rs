@@ -6,7 +6,7 @@ use crate::TypeTag;
 pub type BlockIdOffset = i64;
 pub type StringIndex = u64;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Bytecode {
     /// No operation
     Nop,
