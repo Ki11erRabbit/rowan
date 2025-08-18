@@ -10,7 +10,7 @@ fn main() {
     let lib_name = "rowan_runtime";
     let lib_path = workspace_dir
         .join("target")
-        .join("debug")
+        .join("release")
         .join(format!(
             "{}{}{}",
             lib_prefix(),

@@ -542,11 +542,11 @@ pub struct Compiler {
     pub(crate) classes: HashMap<Vec<String>, PartialClass>,
     current_block: u64,
     method_returned: bool,
+    current_block_returned: bool,
     current_type_args: HashMap<String, TypeTag>,
     current_module: Vec<String>,
     active_imports: HashMap<String, Vec<String>>,
     imports_to_change: HashMap<String, Vec<String>>,
-    current_block_returned: bool,
     closures: HashMap<String, Vec<String>>,
     closures_under_path: HashMap<String, usize>,
 }
@@ -1239,7 +1239,7 @@ impl Compiler {
                 is_native,
                 ..
             } = method;
-            println!("\t{name}");
+            //println!("\t{name}");
 
             self.push_scope();
             let mut is_static = true;
@@ -2051,7 +2051,6 @@ impl Compiler {
             _ => {}
         }
 
-        println!("set_object: {:?}", object);
         self.compile_expression(class_name, partial_class, object.as_ref(), output, false)?;
 
         let annotation = object.get_type();
@@ -2489,7 +2488,6 @@ impl Compiler {
         }
 
         let body = if !captures.is_empty() {
-            println!("We have captures");
             let mut new_body = Vec::new();
             for (capture, ty) in captures {
                 let field = PathName::new(vec![capture.clone()], Span::new(0,0));
@@ -2553,7 +2551,7 @@ impl Compiler {
 
                 body.push(Statement::Assignment {
                     target: Expression::MemberAccess {
-                        object: Box::new(Expression::Variable(capture.clone(), Type::Object(Text::Owned(class_name.clone()), Span::new(0,0)), Span::new(0,0))),
+                        object: Box::new(Expression::Variable(Text::Borrowed("11037"), Type::Object(Text::Owned(class_name.clone()), Span::new(0,0)), Span::new(0,0))),
                         field: PathName::new(vec![capture.clone()], Span::new(0,0)),
                         span: Span::new(0,0),
                         annotation: ty.clone(),
@@ -2619,9 +2617,15 @@ impl Compiler {
         };
 
         let frames = self.store_scopes();
+        let current_block: u64 = self.current_block;
+        let method_returned: bool = self.method_returned;
+        let current_block_returned: bool = self.current_block_returned;
 
         self.compile_class(class)?;
         self.load_scopes(frames);
+        self.current_block = current_block;
+        self.method_returned = method_returned;
+        self.current_block_returned = current_block_returned;
 
         let path = self.add_path_if_needed(format!("Closure{closure_number}"));
 

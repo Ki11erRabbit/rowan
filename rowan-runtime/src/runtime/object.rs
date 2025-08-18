@@ -111,9 +111,7 @@ impl Object {
         let class = unsafe { class.as_ref()? };
         let mut pointer_offset = 0;
         for field in class.members.iter() {
-            println!("field type: {:?}", field);
             let offset_part = field.get_size_and_padding();
-            println!("offset_part: {}", offset_part);
             pointer_offset += field.get_size_and_padding();
             if offset == 0 {
                 break;

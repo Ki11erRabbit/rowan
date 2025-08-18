@@ -352,7 +352,7 @@ impl BytecodeContext {
             class_name,
             method_name,
         );
-        println!("bytecode: {:#?}", details.bytecode);
+        //println!("bytecode: {:#?}", details.bytecode);
 
         let method_name = MethodName::StaticMethod {
             class_symbol: class_name,
@@ -369,7 +369,6 @@ impl BytecodeContext {
         return_slot: Option<&mut StackValue>
     ) -> CallContinueState {
         for (i, pair) in self.call_args.iter().zip(details.arguments.iter()).enumerate() {
-            println!("call arg{i}: {pair:?}");
             match pair {
                 (StackValue::Int8(_), runtime::class::TypeTag::U8) |
                 (StackValue::Int8(_), runtime::class::TypeTag::I8) => {}
@@ -397,8 +396,6 @@ impl BytecodeContext {
                 let mut variables = self.current_frame()
                     .variables[..var_len]
                     .to_vec();
-                //super::sort_call_args(&mut variables);
-                //let need_padding = super::need_padding(&variables);
                 let return_value = call_function_pointer(
                     self,
                     &mut variables,
@@ -486,6 +483,7 @@ impl BytecodeContext {
         }
         loop {
             let active_bytecode = self.active_bytecodes[self.active_bytecodes.len() - 1];
+            assert_ne!(self.current_frame().ip, active_bytecode.len());
             let bytecode = &active_bytecode[self.current_frame().ip];
             self.current_frame_mut().ip += 1;
 
@@ -603,7 +601,7 @@ impl BytecodeContext {
 
     /// The bool return dictates whether execution should continue or not.
     pub fn interpret(&mut self, bytecode: &Bytecode) -> bool {
-        println!("Bytecode: {bytecode:?}");
+        //println!("Bytecode: {bytecode:?}");
         match bytecode {
             Bytecode::Nop => {}
             Bytecode::Breakpoint => {}
@@ -2225,20 +2223,20 @@ impl BytecodeContext {
                 self.push_value(StackValue::from(interned_string));
             }
             Bytecode::Return => {
-                self.check_and_do_garbage_collection();
+                //self.check_and_do_garbage_collection();
                 let value = self.pop_value();
                 self.pop();
                 self.push_value(value);
-                if self.active_frames.len() == 1 {
+                if self.active_frames.len() == 0 {
                     return false;
                 }
             }
             Bytecode::ReturnVoid => {
-                self.check_and_do_garbage_collection();
-                if self.active_frames.len() == 1 {
+                //self.check_and_do_garbage_collection();
+                self.pop();
+                if self.active_frames.len() == 0 {
                     return false;
                 }
-                self.pop();
             }
             Bytecode::RegisterException(..) => {
                 todo!("registering of exceptions");
