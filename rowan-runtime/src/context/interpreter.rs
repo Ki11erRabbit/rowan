@@ -331,6 +331,7 @@ impl BytecodeContext {
             specified,
             method_name,
         );
+        println!("bytecode: {:#?}", details.bytecode);
 
         let method_name = MethodName::VirtualMethod {
             object_class_symbol: object.class,
@@ -2051,7 +2052,6 @@ impl BytecodeContext {
                 };
                 match (tag, value) {
                     (TypeTag::U8, StackValue::Int8(value)) | (TypeTag::I8, StackValue::Int8(value)) => {
-
                         Object::set_8(self, object, *access, *parent_name, *index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
@@ -2059,7 +2059,6 @@ impl BytecodeContext {
                         }
                     }
                     (TypeTag::U16, StackValue::Int16(value)) | (TypeTag::I16, StackValue::Int16(value)) => {
-
                         Object::set_16(self, object, *access, *parent_name, *index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
@@ -2067,7 +2066,6 @@ impl BytecodeContext {
                         }
                     }
                     (TypeTag::U32, StackValue::Int32(value)) | (TypeTag::I32, StackValue::Int32(value)) => {
-
                         Object::set_32(self, object, *access, *parent_name, *index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
@@ -2075,7 +2073,6 @@ impl BytecodeContext {
                         }
                     }
                     (TypeTag::U64, StackValue::Int64(value)) | (TypeTag::I64, StackValue::Int64(value)) => {
-
                         Object::set_64(self, object, *access, *parent_name, *index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
@@ -2083,7 +2080,6 @@ impl BytecodeContext {
                         }
                     }
                     (TypeTag::F32, StackValue::Float32(value)) => {
-
                         Object::set_f32(self, object, *access, *parent_name, *index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,
@@ -2091,7 +2087,6 @@ impl BytecodeContext {
                         }
                     }
                     (TypeTag::F32, StackValue::Float64(value)) => {
-
                         Object::set_f64(self, object, *access, *parent_name, *index, value);
                         match self.handle_exception() {
                             CallContinueState::Error => return false,

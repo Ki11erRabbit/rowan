@@ -246,13 +246,23 @@ impl<'boxing> BoxClosureCapture<> {
             *processed_captures = true;
             let mut bound_vars = self.get_param_set(params);
             let mut found_captures = HashMap::new();
+            let mut ordering = Vec::new();
 
             for stmt in body.iter() {
-                self.get_capture(stmt, &mut bound_vars, &mut found_captures);
+                self.get_capture(stmt, &mut bound_vars, &mut found_captures, &mut ordering);
             }
             println!("found captures: {:?}", found_captures);
-
-            for (key, (mutated, ty) ) in &found_captures {
+            
+            let mut captures_discovered = Vec::new();
+            for order in ordering {
+                let Some(capture) = found_captures.remove(&order) else {
+                    continue;
+                };
+                captures_discovered.push((order, capture));
+            }
+            let mut found_captures = HashMap::new();
+            for (key, (mutated, ty) ) in &captures_discovered {
+                found_captures.insert(key.clone(), (*mutated, ty.clone()));
                 let ty = if *mutated {
                     match ty {
                         Type::U8 => Type::Object(Text::Borrowed("U8"), Span::new(0,0)),
@@ -347,7 +357,8 @@ impl<'boxing> BoxClosureCapture<> {
         &self,
         stmt: &Statement<'boxing>,
         bound_vars: &mut HashSet<String>,
-        captures: &mut HashMap<String, (bool, Type<'boxing>)>
+        captures: &mut HashMap<String, (bool, Type<'boxing>)>,
+        ordering: &mut Vec<String>,
     ) {
         match stmt {
             Statement::Let { bindings, value, .. } => {
@@ -355,27 +366,27 @@ impl<'boxing> BoxClosureCapture<> {
                     todo!("support additional patterns")
                 };
                 bound_vars.insert(var.to_string());
-                self.get_capture_expression(value, bound_vars, captures, false);
+                self.get_capture_expression(value, bound_vars, captures, false, ordering);
             }
             Statement::Const { bindings, value, .. } => {
                 let Pattern::Variable(var, _, _) = bindings else {
                     todo!("support additional patterns")
                 };
                 bound_vars.insert(var.to_string());
-                self.get_capture_expression(value, bound_vars, captures, false);
+                self.get_capture_expression(value, bound_vars, captures, false, ordering);
             }
             Statement::Assignment { target, value, .. } => {
-                self.get_capture_expression(target, bound_vars, captures, true);
-                self.get_capture_expression(value, bound_vars, captures, false);
+                self.get_capture_expression(target, bound_vars, captures, true, ordering);
+                self.get_capture_expression(value, bound_vars, captures, false, ordering);
             }
             Statement::While { test, body, .. } => {
-                self.get_capture_expression(test, bound_vars, captures, false);
+                self.get_capture_expression(test, bound_vars, captures, false, ordering);
                 for stmt in body {
-                    self.get_capture(stmt, bound_vars, captures);
+                    self.get_capture(stmt, bound_vars, captures, ordering);
                 }
             }
             Statement::Expression(expr, ..) => {
-                self.get_capture_expression(expr, bound_vars, captures, false);
+                self.get_capture_expression(expr, bound_vars, captures, false, ordering);
             }
             _ => todo!("remaining statements of get_capture"),
         }
@@ -387,46 +398,49 @@ impl<'boxing> BoxClosureCapture<> {
         bound_vars: &mut HashSet<String>,
         captures: &mut HashMap<String, (bool, Type<'boxing>)>,
         mutating_context: bool,
+        ordering: &mut Vec<String>,
     ) {
         match expr {
             Expression::Variable(name, ty, ..) => {
                 if !bound_vars.contains(name.as_str()) {
+                    ordering.push(name.to_string());
                     captures.entry(name.to_string())
                         .or_insert((mutating_context, ty.clone()));
                 }
             },
             Expression::This(..) => {
+                ordering.push(String::from("self"));
                 captures.insert(String::from("self"), (mutating_context, Type::Object(Text::Borrowed(""), Span::new(0, 0))));
             }
             Expression::Call { name, args, .. } => {
-                self.get_capture_expression(name.as_ref(), bound_vars, captures, true);
+                self.get_capture_expression(name.as_ref(), bound_vars, captures, true, ordering);
                 for arg in args {
-                    self.get_capture_expression(arg, bound_vars, captures, false);
+                    self.get_capture_expression(arg, bound_vars, captures, false, ordering);
                 }
             }
             Expression::StaticCall { args, .. } => {
                 for arg in args {
-                    self.get_capture_expression(arg, bound_vars, captures, false);
+                    self.get_capture_expression(arg, bound_vars, captures, false, ordering);
                 }
             }
             Expression::Parenthesized(expr, _) => {
-                self.get_capture_expression(expr, bound_vars, captures, mutating_context);
+                self.get_capture_expression(expr, bound_vars, captures, mutating_context, ordering);
             }
             Expression::UnaryOperation { operand, .. } => {
-                self.get_capture_expression(operand.as_ref(), bound_vars, captures, false);
+                self.get_capture_expression(operand.as_ref(), bound_vars, captures, false, ordering);
             }
             Expression::BinaryOperation { left, right, .. } => {
-                self.get_capture_expression(left.as_ref(), bound_vars, captures, false);
-                self.get_capture_expression(right.as_ref(), bound_vars, captures, false);
+                self.get_capture_expression(left.as_ref(), bound_vars, captures, false, ordering);
+                self.get_capture_expression(right.as_ref(), bound_vars, captures, false, ordering);
             }
             Expression::Return(expr, _) => {
                 if let Some(expr) = expr {
-                    self.get_capture_expression(expr, bound_vars, captures, false);
+                    self.get_capture_expression(expr, bound_vars, captures, false, ordering);
                 }
             }
             Expression::New(_, expr, _) => {
                 if let Some(expr) = expr {
-                    self.get_capture_expression(expr, bound_vars, captures, false);
+                    self.get_capture_expression(expr, bound_vars, captures, false, ordering);
                 }
             }
             Expression::Closure {
@@ -437,15 +451,15 @@ impl<'boxing> BoxClosureCapture<> {
                 let mut new_bindings = self.get_param_set(params);
                 new_bindings.extend(bound_vars.iter().cloned());
                 for stmt in body {
-                    self.get_capture(stmt, &mut new_bindings, captures);
+                    self.get_capture(stmt, &mut new_bindings, captures, ordering);
                 }
             }
             Expression::IfExpression(if_expr,..) => {
-                self.get_capture_expression_if(if_expr, bound_vars, captures);
+                self.get_capture_expression_if(if_expr, bound_vars, captures, ordering);
             }
             Expression::Literal(..) => {}
             Expression::MemberAccess { object, .. } => {
-                self.get_capture_expression(object.as_ref(), bound_vars, captures, false);
+                self.get_capture_expression(object.as_ref(), bound_vars, captures, false, ordering);
             }
             Expression::ClassAccess { .. } => {}
             _ => todo!("handle remaining expressions in get_capture_expression"),
@@ -456,7 +470,8 @@ impl<'boxing> BoxClosureCapture<> {
         &self,
         expr: &IfExpression<'boxing>,
         bound_vars: &mut HashSet<String>,
-        captures: &mut HashMap<String, (bool, Type<'boxing>)>
+        captures: &mut HashMap<String, (bool, Type<'boxing>)>,
+        ordering: &mut Vec<String>,
     ) {
         let IfExpression {
             condition,
@@ -464,18 +479,18 @@ impl<'boxing> BoxClosureCapture<> {
             else_branch,
             ..
         } = expr;
-        self.get_capture_expression(condition, bound_vars, captures, false);
+        self.get_capture_expression(condition, bound_vars, captures, false, ordering);
         for stmt in then_branch {
-            self.get_capture(stmt, bound_vars, captures);
+            self.get_capture(stmt, bound_vars, captures, ordering);
         }
 
         match else_branch {
             Some(Either::Left(elif_branch)) => {
-                self.get_capture_expression_if(elif_branch.as_ref(), bound_vars, captures)
+                self.get_capture_expression_if(elif_branch.as_ref(), bound_vars, captures, ordering)
             }
             Some(Either::Right(else_branch)) => {
                 for stmt in else_branch {
-                    self.get_capture(stmt, bound_vars, captures);
+                    self.get_capture(stmt, bound_vars, captures, ordering);
                 }
             }
             None => {}

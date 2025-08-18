@@ -1375,6 +1375,7 @@ impl Compiler {
                     self.compile_expression(class_name, partial_class, &expr, output, false)?;
                 }
                 Statement::Let { bindings, value, .. } => {
+                    println!("{value:?}");
                     self.compile_expression(class_name, partial_class, &value, output, false)?;
                     match bindings {
                         Pattern::Variable(var, _, _) => {
@@ -2546,7 +2547,6 @@ impl Compiler {
             body.clone()
         };
 
-
         let call_method = Method {
             name: Text::Owned(format!("std::closure::{}::call", closure_name.clone())),
             is_native: false,
@@ -2603,7 +2603,6 @@ impl Compiler {
                 };
                 members.push(member);
             }
-
             body.push(Statement::Expression(
                 Expression::Return(
                     Some(Box::new(
