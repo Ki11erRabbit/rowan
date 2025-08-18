@@ -5,6 +5,76 @@ use rowan_shared::classfile::{BytecodeIndex, StaticMethods};
 use crate::backend::Compiler;
 use crate::native::NativeAttributes;
 
+pub struct ClassMap {
+    class_table: Vec<PartialClass>,
+    aliases: HashMap<Vec<String>, usize>,
+}
+
+impl ClassMap {
+    pub fn new() -> Self {
+        ClassMap {
+            class_table: Vec::new(),
+            aliases: HashMap::new(),
+        }
+    }
+    
+    pub fn get(&self, name: &Vec<String>) -> Option<&PartialClass> {
+        let index = self.aliases.get(name)?;
+        self.class_table.get(*index)
+    }
+    
+    pub fn get_mut(&mut self, name: &Vec<String>) -> Option<&mut PartialClass> {
+        let index = self.aliases.get(name)?;
+        self.class_table.get_mut(*index)
+    }
+    
+    pub fn insert(&mut self, name: Vec<String>, class: PartialClass) -> usize {
+        let index = self.class_table.len();
+        self.class_table.push(class);
+        self.aliases.insert(name, index);
+        index
+    }
+    
+    pub fn add_alias(&mut self, name: Vec<String>, index: usize) {
+        self.aliases.insert(name, index);
+    }
+
+    pub fn contains_key(&self, path: &Vec<String>) -> bool {
+        self.aliases.contains_key(path)
+    }
+}
+
+impl IntoIterator for ClassMap {
+    type Item = (Vec<String>, PartialClass);
+    type IntoIter = std::collections::hash_map::IntoIter<Vec<String>, PartialClass>;
+    fn into_iter(mut self) -> Self::IntoIter {
+        let mut values_to_keys = HashMap::new();
+        for (key, value) in self.aliases.iter() {
+            values_to_keys.entry(*value)
+                .and_modify(|v: &mut Vec<&Vec<String>>| v.push(key))
+                .or_insert(vec![key]);
+        }
+        let mut classes = self.class_table.drain(..)
+            .map(Some)
+            .collect::<Vec<_>>();
+        let mut output: HashMap<Vec<String>, PartialClass> = HashMap::new();
+        for (key, values) in values_to_keys.into_iter() {
+            let mut longest_value: Option<&Vec<String>> = None;
+            for value in values.into_iter() {
+                if let Some(the_longest_value) = longest_value {
+                    if value.len() > the_longest_value.len() {
+                        longest_value = Some(value);
+                    }
+                } else {
+                    longest_value = Some(value);
+                }
+            }
+            output.insert(longest_value.cloned().unwrap(), classes[key].take().unwrap());
+        }
+        output.into_iter()
+    }
+}
+
 #[derive(Debug)]
 pub enum PartialClassError {
     Ambiguity,
@@ -464,6 +534,9 @@ impl PartialClass {
     }
 
     pub fn add_string<S: AsRef<str>>(&mut self, string: S) -> u64 {
+        if string.as_ref() == "U64" {
+            panic!("bad class string");
+        }
         if let Some(index) = self.string_to_index.get(string.as_ref()) {
             return *index;
         }

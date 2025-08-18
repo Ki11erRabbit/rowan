@@ -67,8 +67,6 @@ pub fn link_class_files(
             main_class_symbol = Some(class_symbol);
         }
 
-        let name_str = class.index_string_table(*parent);
-
         for vtable in vtables {
             let classfile::VTable { class_name, sub_class_name, .. } = vtable;
 
@@ -957,8 +955,8 @@ fn link_bytecode(
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let method_str = class_file.index_string_table(method_index);
-                let method_symbol: Symbol = if let Some(index) = string_map.get(method_str) {
-                    *index
+                let method_symbol: Symbol = if let Some(symbol) = string_map.get(method_str) {
+                    *symbol
                 } else {
                     let index = string_table.add_string(method_str);
                     let symbol = symbol_table.add_string(index);
@@ -972,24 +970,23 @@ fn link_bytecode(
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let method_str = class_file.index_string_table(method_index);
-                let method_symbol: Symbol = if let Some(index) = string_map.get(method_str) {
-                    *index
+                let method_symbol: Symbol = if let Some(symbol) = string_map.get(method_str) {
+                    *symbol
                 } else {
                     let index = string_table.add_string(method_str);
                     let symbol = symbol_table.add_string(index);
                     symbol
-                }; 
+                };
 
                 output.push(linked::Bytecode::InvokeVirtTail(class_symbol as u64, method_symbol as u64));
             }
             compiled::Bytecode::InvokeStatic(class_index, method_index) => {
                 let class_str = class_file.index_string_table(class_index);
-                println!("{class_str}");
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let method_str = class_file.index_string_table(method_index);
-                let method_symbol: Symbol = if let Some(index) = string_map.get(method_str) {
-                    *index
+                let method_symbol: Symbol = if let Some(symbol) = string_map.get(method_str) {
+                    *symbol
                 } else {
                     let index = string_table.add_string(method_str);
                     let symbol = symbol_table.add_string(index);
@@ -1003,8 +1000,8 @@ fn link_bytecode(
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let method_str = class_file.index_string_table(method_index);
-                let method_symbol: Symbol = if let Some(index) = string_map.get(method_str) {
-                    *index
+                let method_symbol: Symbol = if let Some(symbol) = string_map.get(method_str) {
+                    *symbol
                 } else {
                     let index = string_table.add_string(method_str);
                     let symbol = symbol_table.add_string(index);
@@ -1208,9 +1205,15 @@ pub fn link_vm_classes(
         let static_methods = static_methods.iter()
             .map(|method|{
                 let cranelift_sig = jit_controller.create_signature(&method.signature[1..], &method.signature[0]);
-
-                let index = string_table.add_static_string(method.name);
-                let symbol = symbol_table.add_string(index);
+                
+                let symbol = if let Some(symbol) = string_map.get(method.name) {
+                    *symbol
+                } else {
+                    let index = string_table.add_static_string(method.name);
+                    let symbol = symbol_table.add_string(index);
+                    string_map.insert(method.name.to_string(), symbol);
+                    symbol
+                };
 
                 let value = FunctionValue::Builtin(method.fn_pointer);
                 (symbol, method.signature.clone(), value, cranelift_sig)

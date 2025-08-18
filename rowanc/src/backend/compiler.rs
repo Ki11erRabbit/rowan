@@ -7,12 +7,12 @@ use rowan_shared::classfile::{SignatureIndex, StaticMethods};
 use crate::{trees::ir, trees::ir::{Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement}, backend::compiler_utils::Frame};
 use crate::trees::ir::{ClosureParameter, IfExpression, ParentDec};
 use crate::trees::{BinaryOperator, PathName, Type, UnaryOperator, Text, Annotation, Span, Visibility};
-use super::compiler_utils::{PartialClass, StaticMember};
+use super::compiler_utils::{ClassMap, PartialClass, StaticMember};
 
 
 
-fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
-    let mut classes = HashMap::new();
+fn create_stdlib() -> ClassMap {
+    let mut classes = ClassMap::new();
 
     let mut object = PartialClass::new();
     object.set_name("core::Object");
@@ -28,7 +28,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     let vtable = VTable::new(functions);
     object.add_vtable(&vec![String::from("core"), String::from("Object")], vtable, &names, &signatures);
     object.make_not_printable();
-    classes.insert(vec![String::from("core"), String::from("Object")], object);
+    let index = classes.insert(vec![String::from("core"), String::from("Object")], object);
+    classes.add_alias(vec![String::from("Object")], index);
 
     let mut printer = PartialClass::new();
     printer.set_name("core::Printer");
@@ -54,7 +55,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     
     printer.add_vtable(&vec![String::from("core"), String::from("Printer")], vtable, &names, &signatures);
     printer.make_not_printable();
-    classes.insert(vec![String::from("Printer")], printer);
+    let index = classes.insert(vec![String::from("Printer")], printer);
+    classes.add_alias(vec![String::from("core"), String::from("Printer")], index);
 
     
     let mut string = PartialClass::new();
@@ -78,7 +80,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     
     string.add_vtable(&vec![String::from("core"), String::from("String")], vtable, &names, &signatures);
     string.make_not_printable();
-    classes.insert(vec![String::from("String")], string);
+    let index = classes.insert(vec![String::from("String")], string);
+    classes.add_alias(vec![String::from("core"), String::from("String")], index);
 
     let mut string_buffer = PartialClass::new();
     string_buffer.set_name("core::StringBuffer");
@@ -132,7 +135,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     
     string_buffer.add_static_methods(&vec![String::from("core"), String::from("StringBuffer")], static_methods, &names, &signatures);
     string_buffer.make_not_printable();
-    classes.insert(vec![String::from("StringBuffer")], string_buffer);
+    let index = classes.insert(vec![String::from("StringBuffer")], string_buffer);
+    classes.add_alias(vec![String::from("core"), String::from("StringBuffer")], index);
 
 
     let mut interned_string = PartialClass::new();
@@ -181,7 +185,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
 
     interned_string.add_static_methods(&vec![String::from("core"), String::from("InternedString")], static_methods, &names, &signatures);
     interned_string.make_not_printable();
-    classes.insert(vec![String::from("InternedString")], interned_string);
+    let index = classes.insert(vec![String::from("InternedString")], interned_string);
+    classes.add_alias(vec![String::from("core"), String::from("InternedString")], index);
 
     let mut u8_box = PartialClass::new();
     u8_box.set_name("core::U8");
@@ -202,7 +207,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         type_tag: TypeTag::U8,
     }, "value");
     u8_box.make_not_printable();
-    classes.insert(vec![String::from("U8")], u8_box);
+    let index = classes.insert(vec![String::from("U8")], u8_box);
+    classes.add_alias(vec![String::from("core"), String::from("U8")], index);
 
     let mut u16_box = PartialClass::new();
     u16_box.set_name("core::U16");
@@ -223,7 +229,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         type_tag: TypeTag::U16,
     }, "value");
     u16_box.make_not_printable();
-    classes.insert(vec![String::from("U16")], u16_box);
+    let index = classes.insert(vec![String::from("U16")], u16_box);
+    classes.add_alias(vec![String::from("core"), String::from("U16")], index);
 
     let mut u32_box = PartialClass::new();
     u32_box.set_name("core::U32");
@@ -244,7 +251,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         type_tag: TypeTag::U32,
     }, "value");
     u32_box.make_not_printable();
-    classes.insert(vec![String::from("U32")], u32_box);
+    let index = classes.insert(vec![String::from("U32")], u32_box);
+    classes.add_alias(vec![String::from("core"), String::from("U32")], index);
 
     let mut u64_box = PartialClass::new();
     u64_box.set_name("core::U64");
@@ -265,9 +273,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         type_tag: TypeTag::U64,
     }, "value");
     u64_box.make_not_printable();
-    classes.insert(vec![String::from("U64")], u64_box);
-
-
+    let index = classes.insert(vec![String::from("U64")], u64_box);
+    classes.add_alias(vec![String::from("core"), String::from("U64")], index);
 
     let mut i8_box = PartialClass::new();
     i8_box.set_name("core::I8");
@@ -288,7 +295,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         type_tag: TypeTag::I8,
     }, "value");
     i8_box.make_not_printable();
-    classes.insert(vec![String::from("I8")], i8_box);
+    let index = classes.insert(vec![String::from("I8")], i8_box);
+    classes.add_alias(vec![String::from("core"), String::from("I8")], index);
 
     let mut i16_box = PartialClass::new();
     i16_box.set_name("core::I16");
@@ -309,7 +317,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         type_tag: TypeTag::I16,
     }, "value");
     i16_box.make_not_printable();
-    classes.insert(vec![String::from("I16")], i16_box);
+    let index = classes.insert(vec![String::from("I16")], i16_box);
+    classes.add_alias(vec![String::from("core"), String::from("I16")], index);
 
     let mut i32_box = PartialClass::new();
     i32_box.set_name("core::I32");
@@ -330,7 +339,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         type_tag: TypeTag::I32,
     }, "value");
     i32_box.make_not_printable();
-    classes.insert(vec![String::from("I32")], i32_box);
+    let index = classes.insert(vec![String::from("I32")], i32_box);
+    classes.add_alias(vec![String::from("core"), String::from("I32")], index);
 
     let mut i64_box = PartialClass::new();
     i64_box.set_name("core::I64");
@@ -351,7 +361,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         type_tag: TypeTag::I64,
     }, "value");
     i64_box.make_not_printable();
-    classes.insert(vec![String::from("I64")], i64_box);
+    let index = classes.insert(vec![String::from("I64")], i64_box);
+    classes.add_alias(vec![String::from("core"), String::from("I64")], index);
 
     let mut f32_box = PartialClass::new();
     let functions = vec![
@@ -371,7 +382,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         type_tag: TypeTag::F32,
     }, "value");
     f32_box.make_not_printable();
-    classes.insert(vec![String::from("F32")], f32_box);
+    let index = classes.insert(vec![String::from("F32")], f32_box);
+    classes.add_alias(vec![String::from("core"), String::from("F32")], index);
 
     let mut f64_box = PartialClass::new();
     let functions = vec![
@@ -391,7 +403,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
         type_tag: TypeTag::F64,
     }, "value");
     f64_box.make_not_printable();
-    classes.insert(vec![String::from("F64")], f64_box);
+    let index = classes.insert(vec![String::from("F64")], f64_box);
+    classes.add_alias(vec![String::from("core"), String::from("F64")], index);
 
 
     let mut array = PartialClass::new();
@@ -412,7 +425,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     
     array.add_vtable(&vec![String::from("core"), String::from("Array8")], vtable, &names, &signatures);
     array.make_not_printable();
-    classes.insert(vec![String::from("Array8")], array);
+    let index = classes.insert(vec![String::from("Array8")], array);
+    classes.add_alias(vec![String::from("core"), String::from("Array8")], index);
 
     let mut array = PartialClass::new();
     array.set_name("core::Array16");
@@ -432,7 +446,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
 
     array.add_vtable(&vec![String::from("core"), String::from("Array16")], vtable, &names, &signatures);
     array.make_not_printable();
-    classes.insert(vec![String::from("Array16")], array);
+    let index = classes.insert(vec![String::from("Array16")], array);
+    classes.add_alias(vec![String::from("core"), String::from("Array16")], index);
 
     let mut array = PartialClass::new();
     array.set_name("core::Array32");
@@ -452,7 +467,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     
     array.add_vtable(&vec![String::from("core"), String::from("Array32")], vtable, &names, &signatures);
     array.make_not_printable();
-    classes.insert(vec![String::from("Array32")], array);
+    let index = classes.insert(vec![String::from("Array32")], array);
+    classes.add_alias(vec![String::from("core"), String::from("Array32")], index);
 
     let mut array = PartialClass::new();
     array.set_name("core::Array64");
@@ -472,7 +488,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     
     array.add_vtable(&vec![String::from("core"), String::from("Array64")], vtable, &names, &signatures);
     array.make_not_printable();
-    classes.insert(vec![String::from("Array64")], array);
+    let index = classes.insert(vec![String::from("Array64")], array);
+    classes.add_alias(vec![String::from("core"), String::from("Array64")], index);
 
     let mut array = PartialClass::new();
     array.set_name("core::Arrayf32");
@@ -492,7 +509,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     
     array.add_vtable(&vec![String::from("core"), String::from("Arrayf32")], vtable, &names, &signatures);
     array.make_not_printable();
-    classes.insert(vec![String::from("Arrayf32")], array);
+    let index = classes.insert(vec![String::from("Arrayf32")], array);
+    classes.add_alias(vec![String::from("core"), String::from("Arrayf32")], index);
 
     let mut array = PartialClass::new();
     array.set_name("core::Arrayf64");
@@ -512,7 +530,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     
     array.add_vtable(&vec![String::from("core"), String::from("Arrayf64")], vtable, &names, &signatures);
     array.make_not_printable();
-    classes.insert(vec![String::from("Arrayf64")], array);
+    let index = classes.insert(vec![String::from("Arrayf64")], array);
+    classes.add_alias(vec![String::from("core"), String::from("Arrayf64")], index);
 
     let mut array = PartialClass::new();
     array.set_name("core::Arrayobject");
@@ -532,7 +551,8 @@ fn create_stdlib() -> HashMap<Vec<String>, PartialClass> {
     
     array.add_vtable(&vec![String::from("core"), String::from("Arrayobject")], vtable, &names, &signatures);
     array.make_not_printable();
-    classes.insert(vec![String::from("Arrayobject")], array);
+    let index = classes.insert(vec![String::from("Arrayobject")], array);
+    classes.add_alias(vec![String::from("core"), String::from("Arrayobject")], index);
     
     classes
 }
@@ -547,7 +567,7 @@ pub enum CompilerError {
 
 pub struct Compiler {
     scopes: Vec<Frame>,
-    pub(crate) classes: HashMap<Vec<String>, PartialClass>,
+    pub(crate) classes: ClassMap,
     current_block: u64,
     method_returned: bool,
     current_block_returned: bool,
@@ -651,8 +671,10 @@ impl Compiler {
         if let Some(path) = path {
             let module = path.clone();
             module
-        } else if self.classes.get(&vec![class.clone()]).is_some() {
-            return vec![class]
+        } else if let Some(class) = self.classes.get(&vec![class.clone()]) {
+            let result = class.get_class_name();
+            println!("{result:?}");
+            result
         } else {
             let mut module = self.current_module.clone();
             module.push(class);
@@ -2137,6 +2159,7 @@ impl Compiler {
         let (name, ty) = 'setup_args: loop {
             let (name, ty, var): (&PathName, Vec<String>, Text) = match name.as_ref() {
                 Expression::MemberAccess { object, field, .. } => {
+                    println!("{field}");
                     match object.as_ref() {
                         Expression::Variable(var, Type::Object(ty, _), _) => {
                             let path = self.add_path_if_needed(ty.to_string());
@@ -2169,7 +2192,7 @@ impl Compiler {
                                 Type::F64 => Text::Borrowed("Arrayf64"),
                                 Type::Native => unreachable!("Native shouldn't be a constructable type in Rowan"),
                             };
-                            (field, vec![ty.to_string()], var.clone())
+                            (field, vec![String::from("core"), ty.to_string()], var.clone())
                         }
                         Expression::This(_) => {
                             (field, class_name.clone(), Text::Borrowed("self"))
@@ -2422,6 +2445,7 @@ impl Compiler {
             output.push(Bytecode::StoreArgument(args.len() as u8));
         }
 
+        println!("{ty:?} {class_name:?}");
         if ty == *class_name {
 
             let mut method_name = class_name.clone();

@@ -686,7 +686,6 @@ impl Runtime {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             unreachable!("Lock poisoned");
         };
-
         let Ok(class_table) = CLASS_TABLE.read() else {
             unreachable!("Lock poisoned");
         };
@@ -1113,14 +1112,14 @@ impl Runtime {
     pub fn check_and_do_garbage_collection(ctx: &mut BytecodeContext) {
         ctx.check_and_do_garbage_collection();
     }
-    
+
     pub fn block_collection(object: Reference) {
         let Ok(mut object_table) = OBJECT_TABLE.write() else {
             panic!("Lock poisoned");
         };
         object_table.block_collection(object);
     }
-    
+
     pub fn allow_collection(object: Reference) {
         let Ok(mut object_table) = OBJECT_TABLE.write() else {
             panic!("Lock poisoned");

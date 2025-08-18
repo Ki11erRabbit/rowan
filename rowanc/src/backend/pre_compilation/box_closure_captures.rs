@@ -252,8 +252,25 @@ impl<'boxing> BoxClosureCapture<> {
             }
             println!("found captures: {:?}", found_captures);
 
-            for (key, (_, ty) ) in &found_captures {
-                captures.push((Text::Owned(key.clone()), ty.clone()));
+            for (key, (mutated, ty) ) in &found_captures {
+                let ty = if *mutated {
+                    match ty {
+                        Type::U8 => Type::Object(Text::Borrowed("U8"), Span::new(0,0)),
+                        Type::U16 => Type::Object(Text::Borrowed("U16"), Span::new(0,0)),
+                        Type::U32 => Type::Object(Text::Borrowed("U32"), Span::new(0,0)),
+                        Type::U64 => Type::Object(Text::Borrowed("U64"), Span::new(0,0)),
+                        Type::I8 => Type::Object(Text::Borrowed("I8"), Span::new(0,0)),
+                        Type::I16 => Type::Object(Text::Borrowed("I16"), Span::new(0,0)),
+                        Type::I32 => Type::Object(Text::Borrowed("I32"), Span::new(0,0)),
+                        Type::I64 => Type::Object(Text::Borrowed("I64"), Span::new(0,0)),
+                        Type::F32 => Type::Object(Text::Borrowed("F32"), Span::new(0,0)),
+                        Type::F64 => Type::Object(Text::Borrowed("F64"), Span::new(0,0)),
+                        ty => ty.clone(),
+                    }
+                } else {
+                    ty.clone()
+                };
+                captures.push((Text::Owned(key.clone()), ty));
             }
 
 

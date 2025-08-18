@@ -368,7 +368,7 @@ impl BytecodeContext {
         method_name: MethodName,
         return_slot: Option<&mut StackValue>
     ) -> CallContinueState {
-        for (i, pair) in self.call_args.iter().zip(details.arguments.iter()).enumerate() {
+        for pair in self.call_args.iter().zip(details.arguments.iter()) {
             match pair {
                 (StackValue::Int8(_), runtime::class::TypeTag::U8) |
                 (StackValue::Int8(_), runtime::class::TypeTag::I8) => {}

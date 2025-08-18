@@ -3,6 +3,7 @@ use rowan_shared::TypeTag;
 use crate::runtime::core::{VMClass, VMMember, VMMethod};
 use crate::runtime::object::Object;
 use crate::runtime::{Reference, Runtime};
+use crate::context::BytecodeContext;
 use std::{concat, stringify};
 
 macro_rules! generate_box {
@@ -13,7 +14,7 @@ macro_rules! generate_box {
                 object: Object,
                 value: $typ,
             }
-            
+
             pub fn [< generate_ $typ _box >]() -> VMClass {
                 let static_methods = vec![
                     VMMethod::new(
@@ -22,15 +23,15 @@ macro_rules! generate_box {
                         vec![TypeTag::Object, TypeTag::$name]
                     )
                 ];
-                
+
                 let members = vec![
                     VMMember::new(concat!("core::", stringify!($name), "::value"), TypeTag::$name),
                 ];
-                
+
                 VMClass::new(concat!("core::", stringify!($name)), "core::Object",vec![], members, static_methods, Vec::new())
             }
-            
-            fn [< $typ _new >](value: $typ) -> *mut $name {
+
+            fn [< $typ _new >](_: &mut BytecodeContext, value: $typ) -> *mut $name {
                 let int_box = Runtime::new_object(concat!("core::", stringify!($name))) as *mut $name;
                 let int_box = unsafe { int_box.as_mut().unwrap() };
                 int_box.value = value;
