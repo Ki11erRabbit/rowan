@@ -331,7 +331,7 @@ impl BytecodeContext {
             specified,
             method_name,
         );
-        println!("bytecode: {:#?}", details.bytecode);
+        //println!("bytecode: {:#?}", details.bytecode);
 
         let method_name = MethodName::VirtualMethod {
             object_class_symbol: object.class,

@@ -145,7 +145,7 @@ impl Class {
             }
             out += size + (padding - size);  // we are padding the struct so that it is compatible with C
         }
-        out
+        out + 8 //padding of 8 bytes to make valgrind happy
     }
 
     pub fn get_vtable(&self, sym: &Symbol) -> Option<VTableIndex> {

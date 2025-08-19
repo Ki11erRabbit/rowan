@@ -28,10 +28,10 @@ impl Object {
         //println!("layout size: {}", layout.size());
         let data_layout = Layout::array::<u8>(data_size).expect("Wrong layout or too big");
 
-        let (whole_layout, size) = layout.extend(data_layout).expect("Wrong layout or too big");
+        let (whole_layout, _) = layout.extend(data_layout).expect("Wrong layout or too big");
         //println!("size: {}", whole_layout.size());
         //println!("padded size: {}", whole_layout.pad_to_align().size());
-        let pointer = unsafe { alloc(whole_layout.pad_to_align()) };
+        let pointer = unsafe { alloc(whole_layout) };
 
         if pointer.is_null() {
             eprintln!("Out of memory in object allocate");
@@ -41,7 +41,7 @@ impl Object {
         unsafe {
             {
                 let pointer = pointer as *mut u8;
-                for i in 0..size {
+                for i in 0..(whole_layout.size()) {
                     pointer.add(i).write(0);
                 }
             }
@@ -53,7 +53,7 @@ impl Object {
             });
 
         }
-        GarbageCollection::update_heap_size((size_of::<Object>() + data_size) as i64);
+        GarbageCollection::update_heap_size(whole_layout.size() as i64);
         pointer
     }
 

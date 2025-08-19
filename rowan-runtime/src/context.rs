@@ -30,7 +30,8 @@ pub enum MethodName {
 
 const CALLING_CONVENTION: ffi_abi = libffi::raw::ffi_abi_FFI_DEFAULT_ABI;
 
-pub fn call_function_pointer(
+#[inline(never)]
+pub extern "C" fn call_function_pointer(
     mut context: &mut BytecodeContext,
     call_args: &mut [StackValue],
     fn_pointer: *const (),
@@ -130,52 +131,54 @@ pub fn call_function_pointer(
 
     }
 
+    let ptr = CodePtr(fn_pointer as *mut _);
+
     match return_type {
         TypeTag::I8 | TypeTag::U8 => {
             let out = unsafe {
-                call::<u8>(&mut cif, CodePtr(fn_pointer as *mut _), values.as_mut_ptr())
+                call::<u8>(&mut cif, ptr, values.as_mut_ptr())
             };
             StackValue::from(out)
         }
         TypeTag::I16 | TypeTag::U16 => {
             let out = unsafe {
-                call::<u16>(&mut cif, CodePtr(fn_pointer as *mut _), values.as_mut_ptr())
+                call::<u16>(&mut cif, ptr, values.as_mut_ptr())
             };
             StackValue::from(out)
         }
         TypeTag::I32 | TypeTag::U32 => {
             let out = unsafe {
-                call::<u32>(&mut cif, CodePtr(fn_pointer as *mut _), values.as_mut_ptr())
+                call::<u32>(&mut cif, ptr, values.as_mut_ptr())
             };
             StackValue::from(out)
         }
         TypeTag::I64 | TypeTag::U64=> {
             let out = unsafe {
-                call::<u64>(&mut cif, CodePtr(fn_pointer as *mut _), values.as_mut_ptr())
+                call::<u64>(&mut cif, ptr, values.as_mut_ptr())
             };
             StackValue::from(out)
         }
         TypeTag::F32 => {
             let out = unsafe {
-                call::<f32>(&mut cif, CodePtr(fn_pointer as *mut _), values.as_mut_ptr())
+                call::<f32>(&mut cif, ptr, values.as_mut_ptr())
             };
             StackValue::from(out)
         }
         TypeTag::F64 => {
             let out = unsafe {
-                call::<f64>(&mut cif, CodePtr(fn_pointer as *mut _), values.as_mut_ptr())
+                call::<f64>(&mut cif, ptr, values.as_mut_ptr())
             };
             StackValue::from(out)
         }
         TypeTag::Object => {
             let out = unsafe {
-                call::<Reference>(&mut cif, CodePtr(fn_pointer as *mut _), values.as_mut_ptr())
+                call::<Reference>(&mut cif, ptr, values.as_mut_ptr())
             };
             StackValue::from(out)
         }
         TypeTag::Void => {
-            let _ = unsafe {
-                call::<()>(&mut cif, CodePtr(fn_pointer as *mut _), values.as_mut_ptr())
+            unsafe {
+                call::<()>(&mut cif, ptr, values.as_mut_ptr());
             };
             StackValue::Blank
         }
