@@ -10,10 +10,18 @@ can be implemented.
 * [ ] Compiler Error Reporting
   * [ ] Parse Errors
   * [ ] Typechecker Errors
+  * [ ] Compile Errors
 * [ ] Generics
   * [x] Classes
   * [ ] Methods
-* [ ] Throwing Exceptions
+* [ ] Exceptions
+  * [ ] Throwing Exceptions
+  * [ ] Catching Exceptions
+* [ ] Interfaces/Traits
+  * [ ] Definition Blocks
+  * [ ] Implementation Blocks
+  * [ ] Runtime can bind trait impl to class
+  * [ ] Static trait methods
 * [x] Module Paths
   * [x] Static method Paths
   * [x] Method Paths
@@ -40,6 +48,9 @@ can be implemented.
 * [ ] loop expressions
   * [ ] continue
   * [ ] break can return from loop
+* [ ] for loop
+  * [ ] iterator trait
+  * [ ] desugar into loop expression and matching
 * [ ] Unions
   * [ ] Generation into closed Class inheritance
   * [ ] More complicated Matching integration
