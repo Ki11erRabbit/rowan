@@ -32,9 +32,9 @@ can be implemented.
   * [x] Garbage collection doesn't collect static class fields
   * [x] There is a way to pass objects to FFI and mark that memory as uncollectable
   * [x] Garbage collection operation skips over native methods if they call Rowan code
-* [ ] Closure Expressions
-  * [ ] Captured Primitives (ints, floats) are boxed if they are mutated in closures
-  * [ ] Construction of Objects that are the closure
+* [x] Closure Expressions
+  * [x] Captured Primitives (ints, floats) are boxed if they are mutated in closures
+  * [x] Construction of Objects that are the closure
 * [x] Safepoint markers in loops
   * [x] GC checks in loops
 * [ ] loop expressions

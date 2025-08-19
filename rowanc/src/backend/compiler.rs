@@ -575,7 +575,7 @@ pub struct Compiler {
     current_module: Vec<String>,
     active_imports: HashMap<String, Vec<String>>,
     imports_to_change: HashMap<String, Vec<String>>,
-    closures: HashMap<String, Vec<String>>,
+    functions: HashMap<String, Vec<String>>,
     closures_under_path: HashMap<String, usize>,
 }
 
@@ -593,7 +593,7 @@ impl Compiler {
             active_imports: HashMap::new(),
             imports_to_change: HashMap::new(),
             current_block_returned: false,
-            closures: HashMap::new(),
+            functions: HashMap::new(),
             closures_under_path: HashMap::new(),
         }
     }
@@ -699,8 +699,8 @@ impl Compiler {
         }
     }
 
-    fn create_closure_class(&mut self, args: &[ClosureParameter], return_type: &Type) -> String {
-        let mut closure_name = String::from("Closure");
+    fn create_function_class_from_closure(&mut self, args: &[ClosureParameter], return_type: &Type) -> String {
+        let mut closure_name = String::from("Function");
         let ret_type = match return_type {
             Type::I8 => TypeTag::I8,
             Type::U8 => TypeTag::U8,
@@ -785,55 +785,189 @@ impl Compiler {
             _ => closure_name.push_str("object"),
         }
 
-        if self.closures.contains_key(&closure_name) {
+        if self.functions.contains_key(&closure_name) {
             return closure_name;
         }
         self.active_imports.insert(closure_name.clone(), vec![
             String::from("std"),
-            String::from("closure"),
+            String::from("function"),
             closure_name.clone()
         ]);
 
         let mut partial_class = PartialClass::new();
-        partial_class.set_name(&format!("std::closure::{}", closure_name));
+        partial_class.set_name(&format!("std::function::{}", closure_name));
         partial_class.set_parent("core::Object");
         let functions = vec![
             VTableEntry::default(),
         ];
         let names = vec![
-            format!("std::closure::{}::call", closure_name),
+            format!("std::function::{}::call", closure_name),
         ];
         let signatures = vec![
             SignatureEntry::new(types),
         ];
         let vtable = VTable::new(functions);
 
-        partial_class.add_vtable(&vec![String::from("std"), String::from("closure"), closure_name.clone()], vtable, &names, &signatures);
+        partial_class.add_vtable(&vec![String::from("std"), String::from("function"), closure_name.clone()], vtable, &names, &signatures);
         let path = vec![
             String::from("std"),
-            String::from("closure"),
+            String::from("function"),
             closure_name.clone(),
         ];
 
         let closure_path = [
             String::from("std"),
-            String::from("closure"),
+            String::from("function"),
             closure_name.clone(),
         ];
 
         partial_class.attach_bytecode(
             &closure_path,
-            format!("std::closure::{closure_name}::call"),
+            format!("std::function::{closure_name}::call"),
             &[0],
             false,
         ).unwrap();
 
         self.classes.insert(path.clone(), partial_class);
 
-        self.closures.insert(closure_name.clone(), path);
+        self.functions.insert(closure_name.clone(), path);
 
         closure_name
     }
+
+    fn create_function_class_from_type(&mut self, ty: &Type) -> String {
+        let Type::Function(args, return_type, ..) = ty else {
+            unreachable!("We should have already checked for this");
+        };
+        let mut closure_name = String::from("Function");
+        let ret_type = match return_type.as_ref() {
+            Type::I8 => TypeTag::I8,
+            Type::U8 => TypeTag::U8,
+            Type::I16 => TypeTag::I16,
+            Type::U16 => TypeTag::U16,
+            Type::I32 => TypeTag::I32,
+            Type::U32 => TypeTag::U32,
+            Type::I64 => TypeTag::I64,
+            Type::U64 => TypeTag::U64,
+            Type::F32 => TypeTag::F32,
+            Type::F64 => TypeTag::F64,
+            Type::Void => TypeTag::Void,
+            _ => TypeTag::Object,
+        };
+        let mut types = vec![ret_type, TypeTag::Object];
+        for param in args {
+            match ty {
+                Type::I8 => {
+                    types.push(TypeTag::I8);
+                    closure_name.push_str("i8")
+                },
+                Type::U8 => {
+                    types.push(TypeTag::U8);
+                    closure_name.push_str("u8")
+                },
+                Type::I16 => {
+                    types.push(TypeTag::I16);
+                    closure_name.push_str("i16")
+                },
+                Type::U16 => {
+                    types.push(TypeTag::U16);
+                    closure_name.push_str("u16")
+                },
+                Type::I32 => {
+                    types.push(TypeTag::I32);
+                    closure_name.push_str("i32")
+                },
+                Type::U32 => {
+                    types.push(TypeTag::U32);
+                    closure_name.push_str("u32")
+                },
+                Type::I64 => {
+                    types.push(TypeTag::I64);
+                    closure_name.push_str("i64")
+                },
+                Type::U64 => {
+                    types.push(TypeTag::U64);
+                    closure_name.push_str("u64")
+                },
+                Type::F32 => {
+                    types.push(TypeTag::F32);
+                    closure_name.push_str("f32")
+                },
+                Type::F64 => {
+                    types.push(TypeTag::F64);
+                    closure_name.push_str("f64")
+                },
+                _ => {
+                    types.push(TypeTag::Object);
+                    closure_name.push_str("object")
+                },
+            }
+        }
+        match return_type.as_ref() {
+            Type::I8  => closure_name.push_str("i8"),
+            Type::U8 => closure_name.push_str("u8"),
+            Type::I16  => closure_name.push_str("i16"),
+            Type::U16 => closure_name.push_str("u16"),
+            Type::I32 => closure_name.push_str("i32"),
+            Type::U32 => closure_name.push_str("u32"),
+            Type::I64 => closure_name.push_str("i64"),
+            Type::U64 => closure_name.push_str("u64"),
+            Type::F32 => closure_name.push_str("f32"),
+            Type::F64 => closure_name.push_str("f64"),
+            Type::Void => closure_name.push_str("void"),
+            _ => closure_name.push_str("object"),
+        }
+
+        if self.functions.contains_key(&closure_name) {
+            return closure_name;
+        }
+        self.active_imports.insert(closure_name.clone(), vec![
+            String::from("std"),
+            String::from("function"),
+            closure_name.clone()
+        ]);
+
+        let mut partial_class = PartialClass::new();
+        partial_class.set_name(&format!("std::function::{}", closure_name));
+        partial_class.set_parent("core::Object");
+        let functions = vec![
+            VTableEntry::default(),
+        ];
+        let names = vec![
+            format!("std::function::{}::call", closure_name),
+        ];
+        let signatures = vec![
+            SignatureEntry::new(types),
+        ];
+        let vtable = VTable::new(functions);
+
+        partial_class.add_vtable(&vec![String::from("std"), String::from("function"), closure_name.clone()], vtable, &names, &signatures);
+        let path = vec![
+            String::from("std"),
+            String::from("function"),
+            closure_name.clone(),
+        ];
+
+        let closure_path = [
+            String::from("std"),
+            String::from("function"),
+            closure_name.clone(),
+        ];
+
+        partial_class.attach_bytecode(
+            &closure_path,
+            format!("std::function::{closure_name}::call"),
+            &[0],
+            false,
+        ).unwrap();
+
+        self.classes.insert(path.clone(), partial_class);
+
+        self.functions.insert(closure_name.clone(), path);
+
+        closure_name
+    }
+
 
     /// files should be sorted in a way that means we don't need to do each file incrementally
     pub fn compile_files(
@@ -1020,6 +1154,26 @@ impl Compiler {
         members: &Vec<ir::Member>,
         static_members: &Vec<ir::StaticMember>,
     ) -> Result<(), CompilerError> {
+        for method in methods.iter() {
+            let Method {
+                parameters,
+                ..
+            } = method;
+            parameters.iter().for_each(|param| {
+                match param {
+                    Parameter::Pattern { ty, .. } => {
+                        match ty {
+                            Type::Function(..) => {
+                                self.create_function_class_from_type(ty);
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+            });
+        }
+        
         let mut partial_class = PartialClass::new();
         let path_name = name.join("::");
         partial_class.set_name(&path_name);
@@ -1159,8 +1313,6 @@ impl Compiler {
         HashMap<String,SignatureIndex>,
         Vec<SignatureEntry>,
     ), CompilerError> {
-
-
         let mut entries = Vec::new();
         let mut names = Vec::new();
         let mut signatures = Vec::new();
@@ -1198,7 +1350,6 @@ impl Compiler {
                         signature.push(self.convert_type(ty));
                     }
                 }
-
             });
 
             let signature_index = signatures.len() + static_signatures.len(); 
@@ -1864,7 +2015,7 @@ impl Compiler {
                 // create implementation closure from base closure class
                 // if captures is non-empty, call a static function that makes the closure with each of the captures
                 // if captures is empty, create the closure object
-                let closure_class_name = self.create_closure_class(params, return_type);
+                let closure_class_name = self.create_function_class_from_closure(params, return_type);
                 self.compile_closure_expression(
                     class_name,
                     partial_class,
@@ -2337,7 +2488,7 @@ impl Compiler {
                             self.get_variable(value);
                             output.push(Bytecode::StoreArgument(0));
 
-                            let mut closure_name = String::from("Closure");
+                            let mut closure_name = String::from("Function");
 
                             for arg in function_args {
                                 match arg {
@@ -2372,7 +2523,7 @@ impl Compiler {
 
                             let annotation = vec![
                                 String::from("std"),
-                                String::from("closure"),
+                                String::from("function"),
                                 closure_name,
                             ];
 
@@ -2548,7 +2699,7 @@ impl Compiler {
         };
 
         let call_method = Method {
-            name: Text::Owned(format!("std::closure::{}::call", closure_name.clone())),
+            name: Text::Owned(format!("std::function::{}::call", closure_name.clone())),
             is_native: false,
             annotations: vec![Annotation::new(Text::Borrowed("Override"), Vec::new(), Span::new(0, 0))],
             visibility: Visibility::Public,
