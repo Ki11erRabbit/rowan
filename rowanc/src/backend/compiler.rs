@@ -107,14 +107,23 @@ fn create_stdlib() -> ClassMap {
     let functions = vec![
         VTableEntry::default(),
         VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
+        VTableEntry::default(),
     ];
     let names = vec![
         "core::StringBuffer::push",
         "core::StringBuffer::intern",
+        "core::StringBuffer::push-string",
+        "core::StringBuffer::insert",
+        "core::StringBuffer::insert-string",
     ];
     let signatures = vec![
         SignatureEntry::new(vec![TypeTag::Void, TypeTag::Object, TypeTag::U32]),
         SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object]),
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object, TypeTag::Object]),
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object, TypeTag::U64, TypeTag::U32]),
+        SignatureEntry::new(vec![TypeTag::Object, TypeTag::Object, TypeTag::U64, TypeTag::Object]),
     ];
     let vtable = VTable::new(functions);
     string_buffer.add_vtable(&vec![String::from("core"), String::from("StringBuffer")], vtable, &names, &signatures);

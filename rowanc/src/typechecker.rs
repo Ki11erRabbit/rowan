@@ -36,6 +36,9 @@ fn create_stdlib<'a>() -> HashMap<Vec<String>, (String, HashMap<String, ClassAtt
     string_buffer_attributes.insert(String::from("intern"), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::Object(String::from("InternedString"))))));
     string_buffer_attributes.insert(String::from("from-interned"), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::Object(String::from("InternedString"))], Box::new(TypeCheckerType::Object(String::from("StringBuffer"))))));
     string_buffer_attributes.insert(String::from("new"), ClassAttribute::Method(TypeCheckerType::Function(vec![], Box::new(TypeCheckerType::Object(String::from("StringBuffer"))))));
+    string_buffer_attributes.insert(String::from("push-string"), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::Object(String::from("String"))], Box::new(TypeCheckerType::Void))));
+    string_buffer_attributes.insert(String::from("insert"), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64, TypeCheckerType::Char], Box::new(TypeCheckerType::Void))));
+    string_buffer_attributes.insert(String::from("insert-string"), ClassAttribute::Method(TypeCheckerType::Function(vec![TypeCheckerType::U64, TypeCheckerType::Object(String::from("String"))], Box::new(TypeCheckerType::Void))));
     
     info.insert(vec!["StringBuffer".to_string()], (String::from("String"), string_buffer_attributes));
 

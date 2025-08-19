@@ -1,6 +1,9 @@
+use std::ptr::slice_from_raw_parts;
+use std::slice::from_raw_parts;
 use rowan_shared::TypeTag;
 use super::array8_init;
 use crate::context::BytecodeContext;
+use crate::external;
 use crate::runtime::core::{Array, VMClass, VMMember, VMMethod, VMVTable};
 use crate::runtime::{Reference, Runtime, Symbol};
 use crate::runtime::object::Object;
@@ -266,9 +269,59 @@ impl StringBuffer {
         let bytes = c.encode_utf8(&mut char_buffer).as_bytes();
 
         unsafe {
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.buffer.add(self.length as usize), bytes.len());
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.buffer.add(self.length as usize), size);
         }
 
+        self.length += size as u64;
+    }
+    
+    fn push_str(&mut self, string: &str) {
+        let size = string.len();
+        self.resize_if_needed(size);
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                string.as_ptr(),
+                self.buffer.add(self.length as usize),
+                size
+            );
+        }
+    }
+    
+    fn insert_char(&mut self, index: usize, c: char) {
+        let size = c.len_utf8();
+        self.resize_if_needed(size);
+        let mut char_buffer = [0; 4];
+        let bytes = c.encode_utf8(&mut char_buffer).as_bytes();
+        
+        unsafe {
+            std::ptr::copy(
+                self.buffer.add(index),
+                self.buffer.add(index + size),
+                self.length as usize - index
+            );
+        }
+        
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.buffer.add(index), size);
+        }
+        self.length += size as u64;
+    }
+    
+    fn insert_str(&mut self, index: usize, string: &str) {
+        let size = string.len();
+        self.resize_if_needed(size);
+        
+        unsafe {
+            std::ptr::copy(
+                self.buffer.add(index),
+                self.buffer.add(index + size),
+                self.length as usize - index
+            )
+        }
+        
+        unsafe {
+            std::ptr::copy_nonoverlapping(string.as_ptr(), self.buffer.add(index), size);
+        }
         self.length += size as u64;
     }
 }
@@ -321,6 +374,21 @@ pub fn generate_string_buffer_class() -> VMClass {
                 "core::StringBuffer::intern",
                 string_buffer_intern as *const (),
                 vec![TypeTag::Object, TypeTag::Object]
+            ),
+            VMMethod::new(
+                "core::StringBuffer::insert",
+                string_buffer_insert as *const (),
+                vec![TypeTag::Void, TypeTag::Object, TypeTag::U64, TypeTag::U32]
+            ),
+            VMMethod::new(
+                "core::StringBuffer::insert-string",
+                string_buffer_insert_string as *const (),
+                vec![TypeTag::Void, TypeTag::Object, TypeTag::U64, TypeTag::Object]
+            ),
+            VMMethod::new(
+                "core::StringBuffer::push-string",
+                string_buffer_push_string as *const (),
+                vec![TypeTag::Void, TypeTag::Object, TypeTag::Object]
             ),
         ]
     );
@@ -416,18 +484,23 @@ pub fn string_buffer_drop(object: &mut StringBuffer) {
     }
 }
 
-extern "C" fn string_buffer_is_char_boundary(_: &mut BytecodeContext, this: Reference, index: u64) -> u8 {
-    let object = this;
-    let object = object as *mut StringBuffer;
-    let object = unsafe { object.as_ref().unwrap() };
+extern "C" fn string_buffer_is_char_boundary(_: &mut BytecodeContext, this: *mut StringBuffer, index: u64) -> u8 {
+    let object = unsafe { this.as_ref().unwrap() };
     let length = object.length;
     let pointer = object.buffer;
 
     if index > length {
-        return 0;
+        todo!("Throw exception for index out of bounds");
     }
+    
+    let string = unsafe {
+        let slice = from_raw_parts(pointer, index as usize);
+        std::str::from_utf8_unchecked(slice)
+    };
+    
+    string.is_char_boundary(index as usize) as u8
 
-    unsafe {
+    /*unsafe {
         if *pointer.add(index as usize) ^ 0b10000000 == 0b10000000 {
             1
         } else if (*pointer.add(index as usize) ^ 0b11100000) & 0b100000 == 0b100000 {
@@ -439,7 +512,7 @@ extern "C" fn string_buffer_is_char_boundary(_: &mut BytecodeContext, this: Refe
         } else {
             0
         }
-    }
+    }*/
 }
 
 extern "C" fn string_buffer_as_bytes(context: &mut BytecodeContext, this: Reference) -> Reference {
@@ -472,4 +545,43 @@ extern "C" fn string_buffer_push(_: &mut BytecodeContext, this: Reference, chara
     object.push_char(unsafe {
         char::from_u32_unchecked(character)
     })
+}
+
+extern "C" fn string_buffer_push_string(_: &mut BytecodeContext, this: *mut StringBuffer, string: Reference) {
+    let mut buf = std::ptr::null();
+    let mut size = 0;
+
+    external::rowan_get_string_buffer(string, &mut buf, &mut size);
+    
+    let object = unsafe { this.as_mut().unwrap() };
+    
+    let string = unsafe {
+        let slice = from_raw_parts(buf, size as usize);
+        str::from_utf8(slice).unwrap()
+    };
+    
+    object.push_str(string);
+}
+
+extern "C" fn string_buffer_insert(_: &mut BytecodeContext, this: *mut StringBuffer, index: u64, character: u32) {
+    let object = unsafe { this.as_mut().unwrap() };
+    object.insert_char(index as usize, unsafe {
+        char::from_u32_unchecked(character)
+    });
+}
+
+extern "C" fn string_buffer_insert_string(_: &mut BytecodeContext, this: *mut StringBuffer, index: u64, string: Reference) {
+    let mut buf = std::ptr::null();
+    let mut size = 0;
+
+    external::rowan_get_string_buffer(string, &mut buf, &mut size);
+
+    let object = unsafe { this.as_mut().unwrap() };
+
+    let string = unsafe {
+        let slice = from_raw_parts(buf, size as usize);
+        str::from_utf8(slice).unwrap()
+    };
+
+    object.insert_str(index as usize, string);
 }
