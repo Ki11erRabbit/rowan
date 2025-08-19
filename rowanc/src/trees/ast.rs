@@ -30,6 +30,8 @@ impl File<'_> {
 pub enum TopLevelStatement<'a> {
     Import(Import<'a>),
     Class(Class<'a>),
+    Trait(Trait<'a>),
+    TraitImpl(TraitImpl<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
@@ -168,6 +170,59 @@ impl TypeParameter<'_> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub struct Trait<'a> {
+    pub name: Text<'a>,
+    pub parents: Vec<ParentDec<'a>>,
+    pub methods: Vec<Method<'a>>,
+    pub type_params: Vec<TypeParameter<'a>>,
+    pub span: Span,
+}
+
+impl Trait<'_> {
+    pub fn new<'a>(
+        name: Text<'a>, 
+        parents: Vec<ParentDec<'a>>, 
+        methods: Vec<Method<'a>>, 
+        type_params: Vec<TypeParameter<'a>>, 
+        span: Span
+    ) -> Trait<'a> {
+        Trait {
+            name,
+            parents,
+            methods,
+            type_params,
+            span
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
+pub struct TraitImpl<'a> {
+    pub name: Text<'a>,
+    pub implementer: Text<'a>,
+    pub methods: Vec<Method<'a>>,
+    pub type_params: Vec<TypeParameter<'a>>,
+    pub span: Span,
+}
+
+impl TraitImpl<'_> {
+    pub fn new<'a>(
+        name: Text<'a>,
+        implementer: Text<'a>,
+        methods: Vec<Method<'a>>,
+        type_params: Vec<TypeParameter<'a>>,
+        span: Span
+    ) -> TraitImpl<'a> {
+        TraitImpl {
+            name,
+            implementer,
+            methods,
+            type_params,
+            span
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub enum Statement<'a> {
