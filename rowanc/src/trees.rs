@@ -158,7 +158,7 @@ pub enum Type<'a> {
     F32,
     F64,
     Char,
-    Str,
+    Boolean,
     Native,
     Array(Box<Type<'a>>, Span),
     Object(Text<'a>, Span),

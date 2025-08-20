@@ -45,6 +45,10 @@ pub enum Token<'a> {
     To,
     This,
     Native,
+    // Traits
+    Trait,
+    Impl,
+    Default,
     // Variables
     Let,
     Const,
@@ -69,7 +73,6 @@ pub enum Token<'a> {
     Char,
     Bool,
     Void,
-    Str,
     // Constants
     True,
     False,
@@ -149,6 +152,9 @@ impl std::fmt::Display for Token<'_> {
             Token::To => write!(f, "to"),
             Token::This => write!(f, "self"),
             Token::Native => write!(f, "native"),
+            Token::Trait => write!(f, "trait"),
+            Token::Impl => write!(f, "impl"),
+            Token::Default => write!(f, "default"),
             Token::Let => write!(f, "let"),
             Token::Const => write!(f, "const"),
             Token::Mut => write!(f, "mut"),
@@ -169,9 +175,8 @@ impl std::fmt::Display for Token<'_> {
             Token::Char => write!(f, "char"),
             Token::Bool => write!(f, "bool"),
             Token::Void => write!(f, "void"),
-            Token::Str => write!(f, "str"),
-            Token::True => write!(f, "true"),
-            Token::False => write!(f, "false"),
+            Token::True => write!(f, "True"),
+            Token::False => write!(f, "False"),
             Token::IntLiteral(lit) => write!(f, "{}", lit),
             Token::FloatLiteral(lit) => write!(f, "{}", lit),
             Token::CharLiteral(lit) => write!(f, "{}", lit),
@@ -486,6 +491,9 @@ impl<'a> TokenLexer<'a> {
                     "to" => Ok(SpannedToken::new(Token::To, start, end)),
                     "self" => Ok(SpannedToken::new(Token::This, start, end)),
                     "native" => Ok(SpannedToken::new(Token::Native, start, end)),
+                    "trait" => Ok(SpannedToken::new(Token::Trait, start, end)),
+                    "impl" => Ok(SpannedToken::new(Token::Impl, start, end)),
+                    "default" => Ok(SpannedToken::new(Token::Default, start, end)),
                     "let" => Ok(SpannedToken::new(Token::Let, start, end)),
                     "const" => Ok(SpannedToken::new(Token::Const, start, end)),
                     "mut" => Ok(SpannedToken::new(Token::Mut, start, end)),
@@ -506,7 +514,6 @@ impl<'a> TokenLexer<'a> {
                     "char" => Ok(SpannedToken::new(Token::Char, start, end)),
                     "bool" => Ok(SpannedToken::new(Token::Bool, start, end)),
                     "void" => Ok(SpannedToken::new(Token::Void, start, end)),
-                    "str" => Ok(SpannedToken::new(Token::Str, start, end)),
                     "True" => Ok(SpannedToken::new(Token::True, start, end)),
                     "False" => Ok(SpannedToken::new(Token::False, start, end)),
                     _ => {
@@ -703,7 +710,7 @@ mod tests {
 
     #[test]
     fn test_keywords() {
-        let input = "if else match fn return break continue while for in record union class signal static extends connect disconnect let const import module pub u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 char bool True False";
+        let input = "if else match fn return break continue while for in record union class static extends let const import module pub u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 char bool True False";
 
         let mut lexer = TokenLexer::new(input);
         let expected = vec![
@@ -720,11 +727,8 @@ mod tests {
             Token::Record,
             Token::Union,
             Token::Class,
-            Token::Signal,
             Token::Static,
             Token::Extends,
-            Token::Connect,
-            Token::Disconnect,
             Token::Let,
             Token::Const,
             Token::Import,

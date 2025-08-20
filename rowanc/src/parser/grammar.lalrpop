@@ -37,6 +37,9 @@ extern {
         "to" => Token::To,
         "self" => Token::This,
         "native" => Token::Native,
+        "trait" => Token::Trait,
+        "impl" => Token::Impl,
+        "default" => Token::Default,
         "let" => Token::Let,
         "const" => Token::Const,
         "mut" => Token::Mut,
@@ -57,7 +60,6 @@ extern {
         "char" => Token::Char,
         "bool" => Token::Bool,
         "void" => Token::Void,
-        "str" => Token::Str,
         "True" => Token::True,
         "False" => Token::False,
         Int_lit => Token::IntLiteral(<Text<'a>>),
@@ -156,7 +158,9 @@ pub Decl: TopLevelStatement<'a> = {
         p.span.end = end;
         TopLevelStatement::Import(Import::new(p, Span::new(start, end)))
     },
-    <c:Class> => c
+    <c:Class> => c,
+    <t:Trait> => t,
+    <ti:TraitImpl> => ti,
 };
 
 pub Class: TopLevelStatement<'a> = {
@@ -478,6 +482,131 @@ Constraint: Constraint<'a> = {
     }
 };
 
+Trait: TopLevelStatement<'a> = {
+    <start: @L> "trait" <id:Identifier> <typl:TypeParamList?> "{" <members:TraitMembers> "}" <end:@R> => {
+        let typl = match typl {
+            None => Vec::new(),
+            Some(typl) => typl,
+        };
+        TopLevelStatement::Trait(Trait::new(id, Vec::new(), members, typl, Span::new(start, end)))
+    },
+    <start: @L> "trait" <id:Identifier> <typl:TypeParamList?> "extends" <parents:TraitParents?> "{" <members:TraitMembers> "}" <end:@R> => {
+        let typl = match typl {
+            None => Vec::new(),
+            Some(typl) => typl,
+        };
+        let parents = match parents {
+            None => Vec::new(),
+            Some(parents) => parents,
+        };
+        TopLevelStatement::Trait(Trait::new(id, parents, members, typl, Span::new(start, end)))
+    },
+};
+
+TraitParents: Vec<Type<'a>> = {
+    <first:TraitParentType> <rest: (Plus <TraitParentType>)*> => {
+        let mut output = vec![first];
+        for item in rest {
+            output.push(item);
+        }
+        output
+    }
+};
+
+TraitParentType: Type<'a> = {
+    <object:ObjectType> => object,
+    <type_arg:TypeArg> => type_arg,
+};
+
+TraitMembers: Vec<Method<'a>> = {
+    <methods:(Lb <TraitMember>)*> Lb? => methods,
+};
+
+TraitMember: Method<'a> = {
+    <method:TraitDefinition> => method,
+    <method:TraitDefault> => method,
+};
+
+TraitDefinition: Method<'a> = {
+    <start: @L> "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <end: @R> => {
+        let span = Span::new(start, end);
+        let type_params = match typaram {
+            Some(typ) => typ,
+            None => Vec::new(),
+        };
+
+        Method {
+            visibility: Visibility::Public,
+            name,
+            is_native: false,
+            annotations: Vec::new(),
+            type_params,
+            parameters: params,
+            return_type: ret,
+            body: Vec::new(),
+            span
+        }
+    },
+};
+
+TraitDefault: Method<'a> = {
+    <start: @L> "default" "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <body:Block> <end: @R> => {
+        let span = Span::new(start, end);
+        let type_params = match typaram {
+            Some(typ) => typ,
+            None => Vec::new(),
+        };
+
+        Method {
+            visibility: Visibility::Public,
+            name,
+            is_native: false,
+            annotations: Vec::new(),
+            type_params,
+            parameters: params,
+            return_type: ret,
+            body,
+            span
+        }
+    },
+};
+
+TraitImpl: TopLevelStatement<'a> = {
+    <start: @L> "impl" <typl:TypeParamList?> <trait_name:TraitParentType> "for" <data:Type> "{" <members:TraitImplMembers> "}" <end:@R> => {
+        let typl = match typl {
+            None => Vec::new(),
+            Some(typl) => typl,
+        };
+        TopLevelStatement::TraitImpl(TraitImpl::new(trait_name, data, members, typl, Span::new(start, end)))
+    },
+};
+
+TraitImplMembers: Vec<Method<'a>> = {
+    <methods:(Lb <TraitImplMethod>)*> Lb? => methods,
+};
+
+TraitImplMethod: Method<'a> = {
+    <start: @L> "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <body:Block> <end: @R> => {
+        let span = Span::new(start, end);
+        let type_params = match typaram {
+            Some(typ) => typ,
+            None => Vec::new(),
+        };
+
+        Method {
+            visibility: Visibility::Public,
+            name,
+            is_native: false,
+            annotations: Vec::new(),
+            type_params,
+            parameters: params,
+            return_type: ret,
+            body,
+            span
+        }
+    },
+};
+
 BaseType: Type<'a> = {
     "void" => Type::Void,
     "u8" => Type::U8,
@@ -489,9 +618,9 @@ BaseType: Type<'a> = {
     "i32" => Type::I32,
     "i64" => Type::I64,
     "char" => Type::Char,
-    "str" => Type::Str,
     "f32" => Type::F32,
     "f64" => Type::F64,
+    "bool" => Type::Boolean,
 };
 
 ObjectType: Type<'a> ={
@@ -506,10 +635,7 @@ ArrayType: Type<'a> = {
     },
 };
 
-Type: Type<'a> = {
-    <ty:BaseType> => ty,
-    <ty:ObjectType> => ty,
-    <ty:ArrayType> => ty,
+TypeArg: Type<'a> = {
     <start: @L> <ty:ObjectType> "[" <arg:Type> <args:("," <Type>)*> "]" <end: @R> => {
         let mut types = vec![arg];
         for t in args.into_iter() {
@@ -517,6 +643,13 @@ Type: Type<'a> = {
         }
         Type::TypeArg(Box::new(ty), types, Span::new(start, end))
     },
+};
+
+Type: Type<'a> = {
+    <ty:BaseType> => ty,
+    <ty:ObjectType> => ty,
+    <ty:ArrayType> => ty,
+    <ta:TypeArg> => ta,
     <f:FunctionType> => f,
     <start: @L> "(" <ty:Type> <tys:("," <Type>)*> ")" <end: @R> => {
         let mut v = vec![ty];
