@@ -75,7 +75,7 @@ pub enum TypeCheckerType {
     F32,
     F64,
     Char,
-    Str,
+    Boolean,
     Array(Box<TypeCheckerType>),
     Object(String),
     TypeArg(Box<TypeCheckerType>, Vec<TypeCheckerType>),
@@ -99,7 +99,7 @@ impl<'a> From<Type<'a>> for TypeCheckerType {
             Type::F32 => TypeCheckerType::F32,
             Type::F64 => TypeCheckerType::F64,
             Type::Char => TypeCheckerType::Char,
-            Type::Str => TypeCheckerType::Str,
+            Type::Boolean => TypeCheckerType::Boolean,
             Type::Array(ty, _) => TypeCheckerType::Array(Box::new(TypeCheckerType::from(*ty))),
             Type::Object(name, _) => TypeCheckerType::Object(name.to_string()),
             Type::TypeArg(name, constraint, _) => TypeCheckerType::TypeArg(
@@ -142,7 +142,7 @@ impl<'a> Into<Type<'a>> for TypeCheckerType {
             TypeCheckerType::F32 => Type::F32,
             TypeCheckerType::F64 => Type::F64,
             TypeCheckerType::Char => Type::Char,
-            TypeCheckerType::Str => Type::Str,
+            TypeCheckerType::Boolean => Type::Boolean,
             TypeCheckerType::Array(ty) => Type::Array(Box::new((*ty).into()), Span::new(0, 0)),
             TypeCheckerType::Object(name) => Type::Object(Text::Owned(name), Span::new(0, 0)),
             TypeCheckerType::TypeArg(name, constraint) => Type::TypeArg(

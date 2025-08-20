@@ -173,7 +173,7 @@ impl TypeParameter<'_> {
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Trait<'a> {
     pub name: Text<'a>,
-    pub parents: Vec<ParentDec<'a>>,
+    pub parents: Vec<Type<'a>>,
     pub methods: Vec<Method<'a>>,
     pub type_params: Vec<TypeParameter<'a>>,
     pub span: Span,
@@ -182,7 +182,7 @@ pub struct Trait<'a> {
 impl Trait<'_> {
     pub fn new<'a>(
         name: Text<'a>,
-        parents: Vec<ParentDec<'a>>,
+        parents: Vec<Type<'a>>,
         methods: Vec<Method<'a>>,
         type_params: Vec<TypeParameter<'a>>,
         span: Span
@@ -199,8 +199,8 @@ impl Trait<'_> {
 
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct TraitImpl<'a> {
-    pub name: Text<'a>,
-    pub implementer: Text<'a>,
+    pub r#trait: Type<'a>,
+    pub implementer: Type<'a>,
     pub methods: Vec<Method<'a>>,
     pub type_params: Vec<TypeParameter<'a>>,
     pub span: Span,
@@ -208,14 +208,14 @@ pub struct TraitImpl<'a> {
 
 impl TraitImpl<'_> {
     pub fn new<'a>(
-        name: Text<'a>,
-        implementer: Text<'a>,
+        r#trait: Type<'a>,
+        implementer: Type<'a>,
         methods: Vec<Method<'a>>,
         type_params: Vec<TypeParameter<'a>>,
         span: Span
     ) -> TraitImpl<'a> {
         TraitImpl {
-            name,
+            r#trait,
             implementer,
             methods,
             type_params,

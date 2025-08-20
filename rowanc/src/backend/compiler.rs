@@ -1012,6 +1012,12 @@ impl Compiler {
 
                         self.active_imports.insert(import.path.segments.last().map(ToString::to_string).unwrap(), path);
                     }
+                    TopLevelStatement::Trait(r#trait) => {
+                        
+                    }
+                    TopLevelStatement::TraitImpl(trait_impl) => {
+                        
+                    }
                 }
             }
         }
@@ -1401,7 +1407,7 @@ impl Compiler {
             Type::I32 => TypeTag::I32,
             Type::I64 => TypeTag::I64,
             Type::Char => TypeTag::U32,
-            Type::Str => TypeTag::Str,
+            Type::Boolean => TypeTag::U8,
             Type::F32 => TypeTag::F32,
             Type::F64 => TypeTag::F64,
             Type::Array(_, _) => TypeTag::Object,
@@ -1730,7 +1736,7 @@ impl Compiler {
                             Type::Array(_, _) => TypeTag::Object,
                             Type::Tuple(_, _) => TypeTag::Object,
                             Type::Char => TypeTag::U32,
-                            Type::Str => TypeTag::Str,
+                            Type::Boolean => TypeTag::U8,
                             Type::Object(_, _) => TypeTag::Object,
                             Type::Void => TypeTag::Void,
                             Type::TypeArg(_ ,_, _) => TypeTag::Object,
@@ -1850,7 +1856,7 @@ impl Compiler {
                             Type::Object(_, _) => TypeTag::Object,
                             Type::TypeArg(_, _, _) => TypeTag::Object,
                             Type::Void => TypeTag::Void,
-                            Type::Str => TypeTag::Str,
+                            Type::Boolean => TypeTag::U8,
                             Type::Tuple(_, _) => TypeTag::Object,
                             Type::Array(_, _) => TypeTag::Object,
                             Type::Char => TypeTag::U32,
@@ -2328,11 +2334,11 @@ impl Compiler {
                         }
                         Expression::Variable(var, Type::Array(ty, _), _) => {
                             let ty = match ty.as_ref() {
-                                Type::U8 | Type::I8 => Text::Borrowed("Array8"),
+                                Type::U8 | Type::I8 | Type::Boolean => Text::Borrowed("Array8"),
                                 Type::U16 | Type::I16 => Text::Borrowed("Array16"),
                                 Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
                                 Type::U64 | Type::I64 => Text::Borrowed("Array64"),
-                                Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                                Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
                                 Type::Object(ty, _) => {
                                     let path = self.add_path_if_needed(ty.to_string());
                                     if self.classes.contains_key(&path) {
@@ -2413,11 +2419,11 @@ impl Compiler {
                                 }
                                 Type::Array(ty, _) => {
                                     let ty = match ty.as_ref() {
-                                        Type::U8 | Type::I8 => Text::Borrowed("Array8"),
+                                        Type::U8 | Type::I8 | Type::Boolean => Text::Borrowed("Array8"),
                                         Type::U16 | Type::I16 => Text::Borrowed("Array16"),
                                         Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
                                         Type::U64 | Type::I64 => Text::Borrowed("Array64"),
-                                        Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                                        Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
                                         Type::Object(ty, _) => {
                                             let path = self.add_path_if_needed(ty.to_string());
                                             if self.classes.contains_key(&path) {
@@ -2568,11 +2574,11 @@ impl Compiler {
             let ty = match type_args.first().unwrap() {
                 Type::Array(ty, _) => {
                     match ty.as_ref() {
-                        Type::U8 | Type::I8 => Text::Borrowed("Array8"),
+                        Type::U8 | Type::I8 | Type::Boolean => Text::Borrowed("Array8"),
                         Type::U16 | Type::I16 => Text::Borrowed("Array16"),
                         Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
                         Type::U64 | Type::I64 => Text::Borrowed("Array64"),
-                        Type::Str | Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                        Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
                         Type::F32 => Text::Borrowed("Arrayf32"),
                         Type::F64 => Text::Borrowed("Arrayf64"),
                         Type::Object(ty, _) => {
