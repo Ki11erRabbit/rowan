@@ -3,19 +3,22 @@ use fxhash::FxHashMap;
 use crate::context::{MethodName, StackValue, WrappedReference};
 
 
-pub struct StackFrame {
-    pub(crate) ip: usize,
-    current_block: usize,
-    block_positions: &'static FxHashMap<usize, usize>,
-    pub(crate) variables: [StackValue; 256],
-    pub(crate) method_name: MethodName,
-    pub(crate) is_for_bytecode: bool,
+pub enum StackFrame {
+    Full {
+        ip: usize,
+        current_block: usize,
+        block_positions: &'static FxHashMap<usize, usize>,
+        variables: [StackValue; 256],
+        method_name: MethodName,
+    },
+    Light {
+        method_name: MethodName,
+    }
 }
 
 impl StackFrame {
     pub fn new(
         args: &[StackValue],
-        is_for_bytecode: bool,
         method_name: MethodName,
         block_positions: &'static FxHashMap<usize, usize>,
     ) -> Self {
@@ -26,44 +29,115 @@ impl StackFrame {
             }
             *variable = *arg;
         }
-        Self {
+        Self::Full {
             ip: 0,
             current_block: 0,
             block_positions,
             variables,
-            is_for_bytecode,
             method_name,
         }
     }
 
+    pub fn is_for_bytecode(&self) -> bool {
+        match self {
+            StackFrame::Full { .. } => true,
+            StackFrame::Light { .. } => false,
+        }
+    }
+
+    pub fn new_light(method_name: MethodName) -> Self {
+        StackFrame::Light { method_name }
+    }
+
+    pub fn method_name(&self) -> &MethodName {
+        match self {
+            StackFrame::Full { method_name, .. } => method_name,
+            StackFrame::Light { method_name } => method_name,
+        }
+    }
+
+    pub fn variables(&self) -> &[StackValue] {
+        match self {
+            StackFrame::Full { variables, .. } => variables,
+            StackFrame::Light { .. } => unreachable!("Can't get variables from a light frame"),
+        }
+    }
+
+    pub fn variables_mut(&mut self) -> &mut [StackValue] {
+        match self {
+            StackFrame::Full { variables, .. } => variables,
+            StackFrame::Light { .. } => unreachable!("Can't get variables from a light frame"),
+        }
+    }
+
+    pub fn ip(&self) -> &usize {
+        match self {
+            StackFrame::Full { ip, .. } => ip,
+            StackFrame::Light { .. } => unreachable!("cannot get ip of a light frame"),
+        }
+    }
+
+    pub fn ip_mut(&mut self) -> &mut usize {
+        match self {
+            StackFrame::Full { ip, .. } => ip,
+            StackFrame::Light { .. } => unreachable!("cannot get ip of a light frame"),
+        }
+    }
+
     pub fn goto(&mut self, block_offset: isize) {
-        let next_block = self.current_block as isize + block_offset;
-        let next_block = next_block as usize;
-        let pc = self.block_positions[&next_block];
-        self.ip = pc;
-        self.current_block = next_block;
+        match self {
+            StackFrame::Full {
+                block_positions,
+                ip,
+                current_block,
+                ..
+            } => {
+                let next_block = *current_block as isize + block_offset;
+                let next_block = next_block as usize;
+                let pc = block_positions[&next_block];
+                *ip = pc;
+                *current_block = next_block;
+            },
+            StackFrame::Light { .. } => unreachable!("can't change instruction pointer with light stack frame")
+        }
     }
 
     pub fn vars_len(&self) -> usize {
-        for (i, var) in self.variables.iter().enumerate() {
-            if var.is_blank() {
-                return i;
+        match self {
+            StackFrame::Full {
+                variables,
+                ..
+            } => {
+                for (i, var) in variables.iter().enumerate() {
+                    if var.is_blank() {
+                        return i;
+                    }
+                }
+                variables.len()
             }
+            StackFrame::Light { .. } => 0,
         }
-        self.variables.len()
     }
 
     pub fn collect(&self, references: &mut HashSet<WrappedReference>) {
-        for variable in self.variables.iter() {
-            match variable {
-                StackValue::Reference(value) =>  {
-                    references.insert(WrappedReference(*value));
+        match self {
+            StackFrame::Full {
+                variables,
+                ..
+            } => {
+                for variable in variables.iter() {
+                    match variable {
+                        StackValue::Reference(value) =>  {
+                            references.insert(WrappedReference(*value));
+                        }
+                        StackValue::Blank => {
+                            break;
+                        }
+                        _ => {}
+                    }
                 }
-                StackValue::Blank => {
-                    break;
-                }
-                _ => {}
             }
+            StackFrame::Light { .. } => {}
         }
     }
 }
