@@ -61,7 +61,7 @@ pub enum TypeCheckerError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeCheckerType {
     Void,
     U8,
@@ -82,6 +82,7 @@ pub enum TypeCheckerType {
     Function(Vec<TypeCheckerType>, Box<TypeCheckerType>),
     Tuple(Vec<TypeCheckerType>),
     Native,
+    Existential(Box<TypeCheckerType>),
 }
 
 impl<'a> From<Type<'a>> for TypeCheckerType {
@@ -111,6 +112,7 @@ impl<'a> From<Type<'a>> for TypeCheckerType {
             ),
             Type::Tuple(tys, _) => TypeCheckerType::Tuple(tys.into_iter().map(TypeCheckerType::from).collect()),
             Type::Native => TypeCheckerType::Native,
+            Type::Existential(ty) => TypeCheckerType::Existential(Box::new(TypeCheckerType::from(ty.as_ref())))
         }
     }
 }
@@ -154,6 +156,7 @@ impl<'a> Into<Type<'a>> for TypeCheckerType {
             ),
             TypeCheckerType::Tuple(tys) => Type::Tuple(tys.into_iter().map(|x| x.into()).collect(), Span::new(0, 0)),
             TypeCheckerType::Native => Type::Native,
+            TypeCheckerType::Existential(ty) => Type::Existential(Box::new((*ty).into())),
         }
     }
 }
@@ -273,7 +276,10 @@ impl TypeChecker {
             (TypeCheckerType::F32, TypeCheckerType::F32) => true,
             (TypeCheckerType::F64, TypeCheckerType::F64) => true,
             (TypeCheckerType::Char, TypeCheckerType::Char) => true,
-            (TypeCheckerType::Str, TypeCheckerType::Str) => true,
+            (TypeCheckerType::Boolean, TypeCheckerType::Boolean) => true,
+            (TypeCheckerType::Existential(left), TypeCheckerType::Existential(right)) => {
+                left == right
+            }
             (TypeCheckerType::Array(ty1), TypeCheckerType::Array(ty2)) => {
                 self.compare_types(ty1, ty2)
             }
@@ -377,6 +383,12 @@ impl TypeChecker {
                 (TopLevelStatement::Import(_), TopLevelStatement::Class(_)) => {
                     Ordering::Less
                 }
+                (TopLevelStatement::TraitImpl(_), TopLevelStatement::Import(_)) => {
+                    Ordering::Greater
+                }
+                (TopLevelStatement::Import(_), TopLevelStatement::TraitImpl(_)) => {
+                    Ordering::Less
+                }
                 _ => Ordering::Equal,
             }
         });
@@ -395,6 +407,8 @@ impl TypeChecker {
                     let path = import.path.segments.iter().map(ToString::to_string).collect::<Vec<_>>();
                     self.active_paths.insert(path_terminator, path);
                 }
+                TopLevelStatement::Trait(r#trait) => {}
+                TopLevelStatement::TraitImpl(r#trait) => {}
             }
         }
         Ok(())

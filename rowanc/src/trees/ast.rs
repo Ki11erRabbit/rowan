@@ -561,7 +561,7 @@ impl Expression<'_> {
                 ty.clone().map(|t| Either::Left(t))
             }
             Expression::Literal(Literal::Constant(Constant::String(_, _))) => {
-                Some(Either::Left(Type::Str))
+                Some(Either::Left(Type::Object(Text::Borrowed("InternedString"), Span::new(0, 0))))
             }
             Expression::Literal(Literal::Void(_)) => {
                 Some(Either::Left(Type::Void))

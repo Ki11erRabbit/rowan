@@ -1419,6 +1419,7 @@ impl Compiler {
             Type::Tuple(_, _) => TypeTag::Object,
             Type::Function(_, _, _) => TypeTag::Object,
             Type::Native => TypeTag::Native,
+            Type::Existential(_) => TypeTag::Object,
         }
 
     }
@@ -1741,6 +1742,7 @@ impl Compiler {
                             Type::Void => TypeTag::Void,
                             Type::TypeArg(_ ,_, _) => TypeTag::Object,
                             Type::Function(_, _, _) => TypeTag::Object,
+                            Type::Existential(_) => TypeTag::Object,
                             Type::Native => unreachable!("Native should not ever occur in here"),
                         };
                         output.push(Bytecode::LoadU64(exprs.len() as u64));
@@ -1861,6 +1863,7 @@ impl Compiler {
                             Type::Array(_, _) => TypeTag::Object,
                             Type::Char => TypeTag::U32,
                             Type::Function(_, _, _) => TypeTag::Object,
+                            Type::Existential(_) => TypeTag::Object,
                             Type::Native => unreachable!("Should not be able to get a native type"),
                         };
 
@@ -2338,7 +2341,7 @@ impl Compiler {
                                 Type::U16 | Type::I16 => Text::Borrowed("Array16"),
                                 Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
                                 Type::U64 | Type::I64 => Text::Borrowed("Array64"),
-                                Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                                Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) | Type::Existential(_) => Text::Borrowed("ArrayObject"),
                                 Type::Object(ty, _) => {
                                     let path = self.add_path_if_needed(ty.to_string());
                                     if self.classes.contains_key(&path) {
@@ -2423,7 +2426,7 @@ impl Compiler {
                                         Type::U16 | Type::I16 => Text::Borrowed("Array16"),
                                         Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
                                         Type::U64 | Type::I64 => Text::Borrowed("Array64"),
-                                        Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                                        Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) | Type::Existential(_) => Text::Borrowed("ArrayObject"),
                                         Type::Object(ty, _) => {
                                             let path = self.add_path_if_needed(ty.to_string());
                                             if self.classes.contains_key(&path) {
@@ -2578,7 +2581,7 @@ impl Compiler {
                         Type::U16 | Type::I16 => Text::Borrowed("Array16"),
                         Type::U32 | Type::I32 | Type::Char => Text::Borrowed("Array32"),
                         Type::U64 | Type::I64 => Text::Borrowed("Array64"),
-                        Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) => Text::Borrowed("ArrayObject"),
+                        Type::Function(_, _, _) | Type::Array(_, _) | Type::Void | Type::Tuple(_, _) | Type::TypeArg(_, _, _) | Type::Existential(_) => Text::Borrowed("ArrayObject"),
                         Type::F32 => Text::Borrowed("Arrayf32"),
                         Type::F64 => Text::Borrowed("Arrayf64"),
                         Type::Object(ty, _) => {

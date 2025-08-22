@@ -572,7 +572,7 @@ impl Expression<'_> {
                 Either::Left(ty.clone())
             }
             Expression::Literal(Literal::Constant(Constant::String(_, _))) => {
-                Either::Left(Type::Str)
+                Either::Left(Type::Object(Text::Borrowed("InternedString"), Span::new(0, 0)))
             }
             Expression::Literal(Literal::Void(_)) => {
                 Either::Left(Type::Void)

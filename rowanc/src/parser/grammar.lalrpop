@@ -645,12 +645,22 @@ TypeArg: Type<'a> = {
     },
 };
 
+ExistentialType: Type<'a> = {
+    "impl" <ty:ObjectType> => {
+        Type::Existential(Box::new(ty))
+    },
+    "impl" <ty:TypeArg> => {
+        Type::Existential(Box::new(ty))
+    }
+};
+
 Type: Type<'a> = {
     <ty:BaseType> => ty,
     <ty:ObjectType> => ty,
     <ty:ArrayType> => ty,
     <ta:TypeArg> => ta,
     <f:FunctionType> => f,
+    <e:ExistentialType> => e,
     <start: @L> "(" <ty:Type> <tys:("," <Type>)*> ")" <end: @R> => {
         let mut v = vec![ty];
         for t in tys.into_iter() {

@@ -165,6 +165,7 @@ pub enum Type<'a> {
     TypeArg(Box<Type<'a>>, Vec<Type<'a>>, Span),
     Function(Vec<Type<'a>>, Box<Type<'a>>, Span),
     Tuple(Vec<Type<'a>>, Span),
+    Existential(Box<Type<'a>>),
 }
 
 impl Type<'_> {
@@ -213,8 +214,8 @@ impl PartialEq for Type<'_> {
             (Type::F32, Type::F32) => true,
             (Type::F64, Type::F64) => true,
             (Type::Char, Type::Char) => true,
-            (Type::Str, Type::Str) => true,
             (Type::Native, Type::Native) => false,
+            (Type::Existential(left), Type::Existential(right)) => left.eq(right),
             (Type::Object(l_txt, ..), Type::Object(r_txt, ..)) => {
                 l_txt.as_str() == r_txt.as_str()
             }
