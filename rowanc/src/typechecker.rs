@@ -443,8 +443,28 @@ impl TypeChecker {
                     let path = import.path.segments.iter().map(ToString::to_string).collect::<Vec<_>>();
                     self.active_paths.insert(path_terminator, path);
                 }
-                TopLevelStatement::Trait(r#trait) => {}
-                TopLevelStatement::TraitImpl(r#trait) => {}
+                TopLevelStatement::Trait(r#trait) => {
+                    let Trait {
+                        methods,
+                        ..
+                    } = r#trait;
+
+                    for method in methods.iter_mut() {
+                        self.check_method(method)?
+                    }
+                    
+                }
+                TopLevelStatement::TraitImpl(r#impl) => {
+                    let TraitImpl {
+                        r#trait, 
+                        implementer, 
+                        methods,
+                        ..
+                    } = r#impl;
+                    // First we check if all of parents are satisfied
+                    // Then we check for all methods being implemented that need to be
+                    // Then we can actually check the types in the methods.
+                }
             }
         }
         Ok(())
