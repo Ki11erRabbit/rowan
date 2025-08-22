@@ -1,11 +1,12 @@
 use std::collections::HashMap;
-use itertools::Itertools;
+use std::io::BufRead;
 use rowan_shared::classfile::{BytecodeEntry, BytecodeIndex, SignatureEntry, SignatureIndex, StringEntry, StringIndex, VTable, VTableEntry};
-use rowan_shared::interfacefile::InterfaceFile;
+use rowan_shared::interfaceimplfile::InterfaceImplFile;
 
 #[derive(Debug)]
-pub struct PartialInterface {
-    name: StringIndex,
+pub struct PartialInterfaceImpl {
+    interface_name: StringIndex,
+    implementer_name: StringIndex,
     /// Virtual tables
     vtable: VTable,
     /// Where the bytecode is stored
@@ -24,10 +25,11 @@ pub struct PartialInterface {
     method_to_function: HashMap<String, usize>,
 }
 
-impl PartialInterface {
-    pub fn new() -> PartialInterface {
-        PartialInterface {
-            name: 0,
+impl PartialInterfaceImpl {
+    pub fn new() -> PartialInterfaceImpl {
+        PartialInterfaceImpl {
+            interface_name: 0,
+            implementer_name: 0,
             vtable: VTable::empty(),
             bytecode_table: Vec::new(),
             string_table: Vec::new(),
@@ -36,6 +38,7 @@ impl PartialInterface {
             method_to_function: HashMap::new(),
         }
     }
+
 
     pub fn index_string_table(&self, index: StringIndex) -> &str {
         std::str::from_utf8(&self.string_table[(index - 1) as usize].value).unwrap()
@@ -54,9 +57,10 @@ impl PartialInterface {
         self.vtable.functions.get(*index).cloned()
     }
 
-    pub fn create_interface_file(self) -> InterfaceFile {
-        InterfaceFile::new_from_parts(
-            self.name,
+    pub fn create_interface_file(self) -> InterfaceImplFile {
+        InterfaceImplFile::new_from_parts(
+            self.interface_name,
+            self.implementer_name,
             self.vtable,
             self.bytecode_table,
             self.string_table,
@@ -68,13 +72,25 @@ impl PartialInterface {
         self.signature_table.extend(sigs);
     }
 
-    pub fn set_name(&mut self, name: &str) {
-        self.name = self.add_string(name);
-        self.vtable.class_name = self.name;
+    pub fn set_interface_name(&mut self, name: &str) {
+        self.interface_name = self.add_string(name);
+        self.vtable.sub_class_name = self.interface_name;
+    }
+
+    pub fn set_implementer_name(&mut self, name: &str) {
+        self.implementer_name = self.add_string(name);
+        self.vtable.class_name = self.implementer_name;
     }
 
     pub fn get_interface_name<'a>(&'a self) -> Vec<String> {
-        let index = self.name;
+        let index = self.interface_name;
+        self.index_string_table(index).split("::")
+            .map(String::from)
+            .collect()
+    }
+    
+    pub fn get_implementer_name<'a>(&'a self) -> Vec<String> {
+        let index = self.implementer_name;
         self.index_string_table(index).split("::")
             .map(String::from)
             .collect()
@@ -110,9 +126,9 @@ impl PartialInterface {
             })
         }
     }
-    
+
     pub fn attach_bytecode<B: AsRef<[u8]>>(
-        &mut self, 
+        &mut self,
         method_name: impl AsRef<str>,
         bytecode: B
     ) {

@@ -1,5 +1,6 @@
 pub mod partial_class;
-mod partial_interface;
+pub mod partial_interface;
+pub mod partial_interface_impl;
 
 use std::collections::HashMap;
 use std::io::BufRead;
