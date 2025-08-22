@@ -5,6 +5,8 @@ pub mod partial_interface_impl;
 use std::collections::HashMap;
 use std::io::BufRead;
 use crate::backend::compiler_utils::partial_class::PartialClass;
+use crate::backend::compiler_utils::partial_interface::PartialInterface;
+use crate::backend::compiler_utils::partial_interface_impl::PartialInterfaceImpl;
 
 pub struct ClassMap {
     class_table: Vec<PartialClass>,
@@ -133,3 +135,9 @@ impl Frame {
     }
 }
 
+
+pub enum CurrentCompilationUnit<'a> {
+    Class(&'a mut PartialClass),
+    Interface(&'a mut PartialInterface),
+    InterfaceImpl(&'a mut PartialInterfaceImpl),
+}
