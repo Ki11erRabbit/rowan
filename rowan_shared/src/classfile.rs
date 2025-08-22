@@ -536,6 +536,10 @@ impl VTable {
             functions
         }
     }
+    
+    pub fn empty() -> Self {
+        VTable::new(vec![])
+    }
 }
 
 #[derive(PartialEq, Debug, Copy, Clone, Default)]

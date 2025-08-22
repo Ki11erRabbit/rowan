@@ -7,7 +7,7 @@ use rowan_shared::classfile::{SignatureIndex, StaticMethods};
 use crate::{trees::ir, trees::ir::{Class, Constant, Expression, File, Literal, Method, Parameter, Pattern, Statement, TopLevelStatement}, backend::compiler_utils::Frame};
 use crate::trees::ir::{ClosureParameter, IfExpression, ParentDec};
 use crate::trees::{BinaryOperator, PathName, Type, UnaryOperator, Text, Annotation, Span, Visibility};
-use super::compiler_utils::{ClassMap, PartialClass, StaticMember};
+use super::compiler_utils::{ClassMap, partial_class::{PartialClass, StaticMember}};
 
 
 
