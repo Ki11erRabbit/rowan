@@ -1,7 +1,7 @@
 use std::{borrow::BorrowMut, collections::HashMap};
 use std::cmp::Ordering;
 use either::Either;
-use crate::trees::ast::{Class, ClosureParameter, Constant, Expression, File, IfExpression, Literal, Method, Parameter, Pattern, Statement, StaticMember, TopLevelStatement};
+use crate::trees::ast::{Class, ClosureParameter, Constant, Expression, File, IfExpression, Literal, Method, Parameter, Pattern, Statement, StaticMember, TopLevelStatement, Trait, TraitImpl};
 use crate::trees::{BinaryOperator, PathName, Span, Text, Type, UnaryOperator};
 
 fn create_stdlib<'a>() -> HashMap<Vec<String>, (String, HashMap<String, ClassAttribute>)> {
@@ -195,7 +195,13 @@ impl Frame {
 }
 
 pub struct TypeChecker {
+    /// A mapping of a path to a pair
+    /// The pair is the parent of the class from the path, and a map of attribute name to attributes
     class_information: HashMap<Vec<String>, (String, HashMap<String, ClassAttribute>)>,
+    /// A mapping of a path to a function type.
+    trait_impls: HashMap<Vec<String>, Vec<HashMap<String, ClassAttribute>>>,
+    /// A mapping of a path to a function type.
+    trait_decl: HashMap<Vec<String>, (Vec<String>, HashMap<String, ClassAttribute)>>,
     scopes: Vec<Frame>,
     current_class: Vec<String>,
     active_paths: HashMap<String, Vec<String>>,
@@ -211,6 +217,8 @@ impl TypeChecker {
             current_class: Vec::new(),
             active_paths: HashMap::new(),
             active_module: Vec::new(),
+            trait_decl: HashMap::new(),
+            trait_impls: HashMap::new(),
         }
     }
 
@@ -245,7 +253,16 @@ impl TypeChecker {
         self.class_information.get(class).and_then(|attributes| {
             let out = attributes.1.get(attribute.as_ref());
             out
-        })
+        }).or_else(|| self.trait_impls.get(class).and_then(|impls| {
+            for item in impls.iter() {
+                if let Some(attr) = item.get(attribute.as_ref()) {
+                    return Some(attr);
+                }
+            }
+            None
+        })).or_else(|| self.trait_decl.get(class).and_then(|(_, decls)| {
+            decls.get(attribute.as_ref())
+        }))
     }
 
     fn attach_module_if_needed(&self, class: String) -> Vec<String> {
@@ -254,6 +271,10 @@ impl TypeChecker {
             let module = path.clone();
             module
         } else if self.class_information.get(&vec![class.clone()]).is_some() {
+            return vec![class]
+        } else if self.trait_decl.get(&vec![class.clone()]).is_some() {
+            return vec![class]
+        } else if self.trait_impls.get(&vec![class.clone()]).is_some() {
             return vec![class]
         } else {
             let mut module = self.active_module.clone();
@@ -389,10 +410,25 @@ impl TypeChecker {
                 (TopLevelStatement::Import(_), TopLevelStatement::TraitImpl(_)) => {
                     Ordering::Less
                 }
+                (TopLevelStatement::Class(_), TopLevelStatement::Trait(_)) => {
+                    Ordering::Less
+                }
+                (TopLevelStatement::Trait(_), TopLevelStatement::Class(_)) => {
+                    Ordering::Greater
+                }
+                (TopLevelStatement::TraitImpl(_), TopLevelStatement::Trait(_)) => {
+                    Ordering::Less
+                }
+                (TopLevelStatement::Trait(_), TopLevelStatement::TraitImpl(_)) => {
+                    Ordering::Greater
+                }
                 _ => Ordering::Equal,
             }
         });
         self.active_module = module.clone();
+
+        self.load_content(file.content.iter())?;
+
         for content in file.content.iter_mut() {
             match content {
                 TopLevelStatement::Class(class) => {
@@ -414,56 +450,193 @@ impl TypeChecker {
         Ok(())
     }
 
+    fn load_content(
+        &mut self,
+        mut content: impl Iterator<Item = &TopLevelStatement>,
+        module: &Vec<String>,
+    ) -> Result<(), TypeCheckerError> {
+        for statement in content {
+            match statement {
+                TopLevelStatement::Class(class) => {
+                    let Class {
+                        name,
+                        members,
+                        methods,
+                        parent,
+                        static_members,
+                        ..
+                    } = class;
+                    let class_name = name;
+                    let mut class_attributes = HashMap::new();
+                    for member in members.iter() {
+                        let crate::trees::ast::Member { name, ty, .. } = member;
+                        class_attributes.insert(name.to_string(), ClassAttribute::Member(TypeCheckerType::from(ty.clone())));
+                    }
+
+                    for method in methods.iter() {
+                        let Method { name, parameters, return_type, .. } = method;
+                        let mut argument_types = Vec::new();
+                        for parameter in parameters {
+                            match parameter {
+                                Parameter::This(_, _) => {
+                                    //argument_types.push(TypeCheckerType::Object(class_name.to_string()));
+                                }
+                                Parameter::Pattern { ty, .. } => {
+                                    argument_types.push(TypeCheckerType::from(ty.clone()));
+                                }
+                            }
+                        }
+                        let ty = TypeCheckerType::Function(argument_types, Box::new(TypeCheckerType::from(return_type.clone())));
+                        class_attributes.insert(name.to_string(), ClassAttribute::Method(ty));
+                    }
+
+                    for static_member in static_members.iter() {
+                        let StaticMember { name, ty, value, .. } = static_member;
+                        let ty = TypeCheckerType::from(ty.clone());
+                        class_attributes.insert(name.to_string(), ClassAttribute::StaticMember(ty));
+                    }
+
+                    let parent = parent.as_ref()
+                        .map(|dec| dec.name.to_string())
+                        .unwrap_or(String::from("Object"));
+                    let mut module = module.clone();
+                    module.push(class_name.to_string());
+
+                    self.class_information.insert(module.clone(), (parent, class_attributes));
+                }
+                TopLevelStatement::Trait(r#trait) => {
+                    let Trait {
+                        name,
+                        methods,
+                        parents,
+                        ..
+                    } = r#trait;
+
+                    let mut trait_attributes = HashMap::new();
+                    let mut parent_names = Vec::new();
+                    for parent in parents {
+                        match parent {
+                            Type::Object(name, ..) => parent_names.push(name.to_string()),
+                            Type::TypeArg(obj, ..) => {
+                                let Type::Object(name, ..) = obj.as_ref() else {
+                                    unreachable!("TypeArg should only be object")
+                                };
+                                parent_names.push(name.to_string());
+                            }
+                            _ => unreachable!("TypeArg and Object should be the only types here")
+                        }
+                    }
+
+                    for method in methods.iter() {
+                        let Method { name, parameters, return_type, .. } = method;
+                        let mut argument_types = Vec::new();
+                        for parameter in parameters {
+                            match parameter {
+                                Parameter::This(_, _) => {
+                                    //argument_types.push(TypeCheckerType::Object(class_name.to_string()));
+                                }
+                                Parameter::Pattern { ty, .. } => {
+                                    argument_types.push(TypeCheckerType::from(ty.clone()));
+                                }
+                            }
+                        }
+                        let ty = TypeCheckerType::Function(argument_types, Box::new(TypeCheckerType::from(return_type.clone())));
+                        trait_attributes.insert(name.to_string(), ClassAttribute::Method(ty));
+                    }
+                    
+                    let mut module = module.clone();
+                    module.push(name.to_string());
+                    
+                    self.trait_decl.insert(module, (parent_names, trait_attributes));
+                }
+                TopLevelStatement::TraitImpl(r#impl) => {
+                    let TraitImpl {
+                        r#trait, 
+                        implementer, 
+                        methods, 
+                        type_params, 
+                        span
+                    } = r#impl;
+                    
+                    let implementer = match implementer {
+                        Type::Object(name, ..) => name.to_string(),
+                        Type::TypeArg(obj, ..) => {
+                            let Type::Object(name, ..) = obj.as_ref() else {
+                                unreachable!("TypeArg should only be object")
+                            };
+                            name.to_string()
+                        }
+                        _ => unreachable!("TypeArg and Object should be the only types here")
+                    };
+                    
+                    let trait_name = match r#trait {
+                        Type::Object(name, ..) => name.to_string(),
+                        Type::TypeArg(obj, ..) => {
+                            let Type::Object(name, ..) = obj.as_ref() else {
+                                unreachable!("TypeArg should only be object")
+                            };
+                            name.to_string()
+                        }
+                        _ => unreachable!("TypeArg and Object should be the only types here")
+                    };
+                    
+                    let mut trait_impl_attributes = HashMap::new();
+                    for method in methods.iter() {
+                        let Method { name, parameters, return_type, .. } = method;
+                        let mut argument_types = Vec::new();
+                        for parameter in parameters {
+                            match parameter {
+                                Parameter::This(_, _) => {
+                                    //argument_types.push(TypeCheckerType::Object(class_name.to_string()));
+                                }
+                                Parameter::Pattern { ty, .. } => {
+                                    argument_types.push(TypeCheckerType::from(ty.clone()));
+                                }
+                            }
+                        }
+                        let ty = TypeCheckerType::Function(argument_types, Box::new(TypeCheckerType::from(return_type.clone())));
+                        trait_impl_attributes.insert(name.to_string(), ClassAttribute::Method(ty));
+                    }
+                    
+                    let mut trait_module = module.clone();
+                    trait_module.push(trait_name);
+                    let (_, all_trait_attributes) = self.trait_decl.get(&trait_module).unwrap();
+                    for (key, value) in all_trait_attributes {
+                        if !trait_impl_attributes.contains_key(key) {
+                            trait_impl_attributes.insert(key.to_string(), value.clone());
+                        }
+                    }
+
+                    let implementer = self.attach_module_if_needed(implementer);
+
+                    self.trait_impls.entry(implementer)
+                        .and_modify(|l| l.push(trait_impl_attributes))
+                        .or_insert(vec![trait_impl_attributes]);
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     fn check_class<'a>(&mut self, class: &mut Class<'a>, module: &Vec<String>) -> Result<(), TypeCheckerError> {
         let Class {
             name,
-            members,
             methods,
-            parent,
             static_members,
             ..
         } = class;
         let class_name = name;
-        let mut class_attributes = HashMap::new();
-        for member in members.iter() {
-            let crate::trees::ast::Member { name, ty, .. } = member;
-            class_attributes.insert(name.to_string(), ClassAttribute::Member(TypeCheckerType::from(ty.clone())));
-        }
-
-        for method in methods.iter() {
-            let crate::trees::ast::Method { name, parameters, return_type, .. } = method;
-            let mut argument_types = Vec::new();
-            for parameter in parameters {
-                match parameter {
-                    Parameter::This(_, _) => {
-                        //argument_types.push(TypeCheckerType::Object(class_name.to_string()));
-                    }
-                    Parameter::Pattern { ty, .. } => {
-                        argument_types.push(TypeCheckerType::from(ty.clone()));
-                    }
-                }
-            }
-            let ty = TypeCheckerType::Function(argument_types, Box::new(TypeCheckerType::from(return_type.clone())));
-            class_attributes.insert(name.to_string(), ClassAttribute::Method(ty));
-        }
 
         for static_member in static_members.iter_mut() {
             let StaticMember { name, ty, value, .. } = static_member;
             if let Some(value) = value {
                 self.annotate_expr(ty, value)?;
             }
-            let ty = TypeCheckerType::from(ty.clone());
-            class_attributes.insert(name.to_string(), ClassAttribute::StaticMember(ty));
         }
 
-        
-        let parent = parent.as_ref()
-            .map(|dec| dec.name.to_string())
-            .unwrap_or(String::from("Object"));
         let mut module = module.clone();
         module.push(class_name.to_string());
-
-        self.class_information.insert(module.clone(), (parent, class_attributes));
 
         self.current_class = module;
         for method in methods.iter_mut() {
