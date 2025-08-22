@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use either::Either;
-use crate::trees::ir::{Class, Expression, File, IfExpression, Method, Parameter, Pattern, Statement, TopLevelStatement};
+use crate::trees::ir::{Class, Expression, File, IfExpression, Method, Parameter, Pattern, Statement, TopLevelStatement, Trait, TraitImpl};
 use crate::trees::{PathName, Span, Text, Type};
 
 pub struct Frame<'fix> {
@@ -64,6 +64,127 @@ impl<'fix> FixTypesAfterBoxing<'fix> {
                 }
                 TopLevelStatement::Class(class) => {
                     new_content.push(TopLevelStatement::Class(self.fix_class(class)));
+                }
+                TopLevelStatement::Trait(r#trait) => {
+                    let Trait {
+                        name, 
+                        parents, 
+                        methods, 
+                        type_params,
+                        span
+                    } = r#trait;
+                    let trait_name = name.clone();
+                    
+                    let mut new_methods = Vec::new();
+                    for method in methods {
+                        let Method {
+                            name,
+                            is_native,
+                            annotations,
+                            visibility,
+                            type_params,
+                            parameters,
+                            return_type,
+                            mut body,
+                            span
+                        } = method;
+                        self.push_frame();
+                        for param in &parameters {
+                            match &param {
+                                Parameter::Pattern { name, ty, .. } => {
+                                    self.bind_vars(name, ty);
+                                }
+                                Parameter::This(..) => {
+                                    self.bind_variable("this", Type::Existential(Box::new(Type::Object(trait_name.clone(), Span::new(0,0)))));
+                                }
+                            }
+                        }
+
+                        self.fix_body(&mut body);
+                        self.pop_frame();
+
+                        new_methods.push(Method {
+                            name,
+                            is_native,
+                            annotations,
+                            visibility,
+                            type_params,
+                            parameters,
+                            return_type,
+                            body,
+                            span
+                        });
+                    }
+                    let methods = new_methods;
+                    
+                    let r#trait = Trait {
+                        name,
+                        parents,
+                        methods,
+                        type_params,
+                        span,
+                    };
+                    new_content.push(TopLevelStatement::Trait(r#trait));
+                }
+                TopLevelStatement::TraitImpl(r#impl) => {
+                    let TraitImpl {
+                        r#trait, 
+                        implementer, 
+                        methods, 
+                        type_params, 
+                        span
+                    } = r#impl;
+
+                    let mut new_methods = Vec::new();
+                    for method in methods {
+                        let Method {
+                            name,
+                            is_native,
+                            annotations,
+                            visibility,
+                            type_params,
+                            parameters,
+                            return_type,
+                            mut body,
+                            span
+                        } = method;
+                        self.push_frame();
+                        for param in &parameters {
+                            match &param {
+                                Parameter::Pattern { name, ty, .. } => {
+                                    self.bind_vars(name, ty);
+                                }
+                                Parameter::This(..) => {
+                                    self.bind_variable("this", Type::Existential(Box::new(implementer.clone())));
+                                }
+                            }
+                        }
+
+                        self.fix_body(&mut body);
+                        self.pop_frame();
+
+                        new_methods.push(Method {
+                            name,
+                            is_native,
+                            annotations,
+                            visibility,
+                            type_params,
+                            parameters,
+                            return_type,
+                            body,
+                            span
+                        });
+                    }
+                    let methods = new_methods;
+                    
+                    let r#impl = TraitImpl {
+                        r#trait,
+                        implementer,
+                        methods,
+                        type_params,
+                        span,
+                    };
+                    new_content.push(TopLevelStatement::TraitImpl(r#impl));
                 }
             }
         }

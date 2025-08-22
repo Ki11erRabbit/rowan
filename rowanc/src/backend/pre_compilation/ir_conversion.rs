@@ -38,6 +38,60 @@ impl<'convert> IRConverter {
             ast::TopLevelStatement::Class(class) => {
                 ir::TopLevelStatement::Class(self.convert_class(class)?)
             }
+            ast::TopLevelStatement::Trait(r#trait) => {
+                let ast::Trait {
+                    name, 
+                    parents, 
+                    methods, 
+                    type_params, 
+                    span
+                } = r#trait;
+
+                let methods = methods.into_iter()
+                    .map(|m| self.convert_method(m))
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let type_params = type_params.into_iter()
+                    .map(|tp| self.convert_type_param(tp))
+                    .collect::<Result<Vec<_>, _>>()?;
+                
+                let r#trait = ir::Trait {
+                    name,
+                    parents,
+                    methods,
+                    type_params,
+                    span,
+                };
+                
+                ir::TopLevelStatement::Trait(r#trait)
+            }
+            ast::TopLevelStatement::TraitImpl(r#impl) => {
+                let ast::TraitImpl {
+                    r#trait, 
+                    implementer,
+                    methods, 
+                    type_params,
+                    span
+                } = r#impl;
+
+                let methods = methods.into_iter()
+                    .map(|m| self.convert_method(m))
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let type_params = type_params.into_iter()
+                    .map(|tp| self.convert_type_param(tp))
+                    .collect::<Result<Vec<_>, _>>()?;
+                
+                let r#impl = ir::TraitImpl {
+                    r#trait,
+                    implementer,
+                    methods,
+                    type_params,
+                    span
+                };
+                
+                ir::TopLevelStatement::TraitImpl(r#impl)
+            }
         };
 
         Ok(result)

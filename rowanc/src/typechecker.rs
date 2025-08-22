@@ -592,6 +592,7 @@ impl TypeChecker {
                             };
                             name.to_string()
                         }
+                        _ => unreachable!("trait impl traitname can only be Object or TypeArg"),
                     };
                     let trait_path = self.attach_module_if_needed(r#trait);
 
@@ -603,6 +604,10 @@ impl TypeChecker {
                             };
                             name.to_string()
                         }
+                        Type::Array(..) => {
+                            String::from("Array")
+                        }
+                        _ => todo!("allow for more types to be in trait impl implementer slot"),
                     };
                     
                     let (parents, attrs) = self.trait_decl.get(&trait_path)

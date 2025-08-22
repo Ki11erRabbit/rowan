@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use either::Either;
-use crate::trees::ir::{Class, ClosureParameter, Expression, File, IfExpression, Method, Parameter, Pattern, Statement, TopLevelStatement};
+use crate::trees::ir::{Class, ClosureParameter, Expression, File, IfExpression, Method, Parameter, Pattern, Statement, TopLevelStatement, Trait, TraitImpl};
 use crate::trees::{PathName, Span, Text, Type};
 
 pub struct BoxClosureCapture<> {}
@@ -27,10 +27,64 @@ impl<'boxing> BoxClosureCapture<> {
                 TopLevelStatement::Class(class) => {
                     new_content.push(TopLevelStatement::Class(self.box_class(class)));
                 }
+                TopLevelStatement::Trait(r#trait) => {
+                    new_content.push(TopLevelStatement::Trait(self.box_trait(r#trait)));
+                }
+                TopLevelStatement::TraitImpl(r#impl) => {
+                    new_content.push(TopLevelStatement::TraitImpl(self.box_trait_impl(r#impl)));
+                }
             }
         }
 
         File { path, content: new_content }
+    }
+    
+    fn box_trait(&mut self, r#trait: Trait<'boxing>) -> Trait<'boxing> {
+        let Trait {
+            name, 
+            parents, 
+            methods, 
+            type_params, 
+            span
+        } = r#trait;
+        
+        let mut new_methods = Vec::new();
+        for method in methods.into_iter() {
+            new_methods.push(self.box_method(method));
+        }
+        let methods = new_methods;
+        
+        Trait {
+            name,
+            parents,
+            methods,
+            type_params,
+            span
+        }
+    }
+    
+    fn box_trait_impl(&mut self, r#impl: TraitImpl<'boxing>) -> TraitImpl<'boxing> {
+        let TraitImpl {
+            r#trait, 
+            implementer, 
+            methods, 
+            type_params, 
+            span
+        } = r#impl;
+        
+        let mut new_methods = Vec::new();
+        for method in methods.into_iter() {
+            new_methods.push(self.box_method(method));
+        }
+        let methods = new_methods;
+        
+        TraitImpl {
+            r#trait,
+            implementer,
+            methods,
+            type_params,
+            span,
+        }
     }
 
     fn box_class(&mut self, class: Class<'boxing>) -> Class<'boxing> {
