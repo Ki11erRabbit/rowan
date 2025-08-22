@@ -1,6 +1,8 @@
 use std::{borrow::BorrowMut, collections::HashMap};
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use either::Either;
+use itertools::Itertools;
 use crate::trees::ast::{Class, ClosureParameter, Constant, Expression, File, IfExpression, Literal, Method, Parameter, Pattern, Statement, StaticMember, TopLevelStatement, Trait, TraitImpl};
 use crate::trees::{BinaryOperator, PathName, Span, Text, Type, UnaryOperator};
 
@@ -199,9 +201,11 @@ pub struct TypeChecker {
     /// The pair is the parent of the class from the path, and a map of attribute name to attributes
     class_information: HashMap<Vec<String>, (String, HashMap<String, ClassAttribute>)>,
     /// A mapping of a path to a function type.
-    trait_impls: HashMap<Vec<String>, Vec<HashMap<String, ClassAttribute>>>,
+    trait_impls: HashMap<Vec<String>, Vec<(String, HashMap<String, ClassAttribute>)>>,
     /// A mapping of a path to a function type.
-    trait_decl: HashMap<Vec<String>, (Vec<String>, HashMap<String, ClassAttribute)>>,
+    /// The bool should represent whether there is a default implementation or not
+    /// True if there is a default implementation, false if it needs implementing
+    trait_decl: HashMap<Vec<String>, (Vec<String>, HashMap<String, (bool, ClassAttribute)>)>,
     scopes: Vec<Frame>,
     current_class: Vec<String>,
     active_paths: HashMap<String, Vec<String>>,
@@ -254,14 +258,17 @@ impl TypeChecker {
             let out = attributes.1.get(attribute.as_ref());
             out
         }).or_else(|| self.trait_impls.get(class).and_then(|impls| {
-            for item in impls.iter() {
+            for (_, item) in impls.iter() {
                 if let Some(attr) = item.get(attribute.as_ref()) {
                     return Some(attr);
                 }
             }
             None
         })).or_else(|| self.trait_decl.get(class).and_then(|(_, decls)| {
-            decls.get(attribute.as_ref())
+            if let Some((_, attr)) = decls.get(attribute.as_ref()) {
+                return Some(attr);
+            }
+            None
         }))
     }
 
@@ -300,6 +307,120 @@ impl TypeChecker {
             (TypeCheckerType::Boolean, TypeCheckerType::Boolean) => true,
             (TypeCheckerType::Existential(left), TypeCheckerType::Existential(right)) => {
                 left == right
+            }
+            (TypeCheckerType::Object(object), TypeCheckerType::Existential(exist)) => {
+                let exist_name = match exist.as_ref() {
+                    TypeCheckerType::Object(exist_name) => exist_name,
+                    TypeCheckerType::TypeArg(exist_object, ..) => {
+                        let TypeCheckerType::Object(exist_name) = exist_object.as_ref() else {
+                            unreachable!("TypeArg should start with an object")
+                        };
+                        exist_name
+                    }
+                    _ => unreachable!("Existential should only be Object or TypeArg")
+                };
+                
+                let object_path = self.attach_module_if_needed(object.clone());
+                let impls = self.trait_impls.get(&object_path)
+                    .expect("We should know impls by this point");
+                for (impl_name, _) in impls.iter() {
+                    if impl_name.as_str() == exist_name.as_str() {
+                        return true
+                    }
+                }
+                false
+            }
+            (TypeCheckerType::Existential(exist), TypeCheckerType::Object(object)) => {
+                let exist_name = match exist.as_ref() {
+                    TypeCheckerType::Object(exist_name) => exist_name,
+                    TypeCheckerType::TypeArg(exist_object, ..) => {
+                        let TypeCheckerType::Object(exist_name) = exist_object.as_ref() else {
+                            unreachable!("TypeArg should start with an object")
+                        };
+                        exist_name
+                    }
+                    _ => unreachable!("Existential should only be Object or TypeArg")
+                };
+
+                let object_path = self.attach_module_if_needed(object.clone());
+                let impls = self.trait_impls.get(&object_path)
+                    .expect("We should know impls by this point");
+                for (impl_name, _) in impls.iter() {
+                    if impl_name.as_str() == exist_name.as_str() {
+                        return true
+                    }
+                }
+                false
+            }
+            (TypeCheckerType::Array(ty), TypeCheckerType::Existential(exist)) => {
+                let mut type_args_match = true;
+                let exist_name = match exist.as_ref() {
+                    TypeCheckerType::Object(exist_name) => {
+                        type_args_match = true;
+                        exist_name
+                    },
+                    TypeCheckerType::TypeArg(exist_object, args) => {
+                        for arg in args {
+                            if self.compare_types(ty.as_ref(), arg) {
+                                type_args_match = true;
+                            }
+                        }
+                        let TypeCheckerType::Object(exist_name) = exist_object.as_ref() else {
+                            unreachable!("TypeArg should start with an object")
+                        };
+                        exist_name
+                    }
+                    _ => unreachable!("Existential should only be Object or TypeArg")
+                };
+                
+                if !type_args_match {
+                    return false
+                }
+
+                let object_path = self.attach_module_if_needed(String::from("Array"));
+                let impls = self.trait_impls.get(&object_path)
+                    .expect("We should know impls by this point");
+                for (impl_name, _) in impls.iter() {
+                    if impl_name.as_str() == exist_name.as_str() {
+                        return true
+                    }
+                }
+                false
+            }
+            (TypeCheckerType::Existential(exist), TypeCheckerType::Array(ty)) => {
+                let mut type_args_match = true;
+                let exist_name = match exist.as_ref() {
+                    TypeCheckerType::Object(exist_name) => {
+                        type_args_match = true;
+                        exist_name
+                    },
+                    TypeCheckerType::TypeArg(exist_object, args) => {
+                        for arg in args {
+                            if self.compare_types(ty.as_ref(), arg) {
+                                type_args_match = true;
+                            }
+                        }
+                        let TypeCheckerType::Object(exist_name) = exist_object.as_ref() else {
+                            unreachable!("TypeArg should start with an object")
+                        };
+                        exist_name
+                    }
+                    _ => unreachable!("Existential should only be Object or TypeArg")
+                };
+
+                if !type_args_match {
+                    return false
+                }
+
+                let object_path = self.attach_module_if_needed(String::from("Array"));
+                let impls = self.trait_impls.get(&object_path)
+                    .expect("We should know impls by this point");
+                for (impl_name, _) in impls.iter() {
+                    if impl_name.as_str() == exist_name.as_str() {
+                        return true
+                    }
+                }
+                false
             }
             (TypeCheckerType::Array(ty1), TypeCheckerType::Array(ty2)) => {
                 self.compare_types(ty1, ty2)
@@ -427,7 +548,7 @@ impl TypeChecker {
         });
         self.active_module = module.clone();
 
-        self.load_content(file.content.iter())?;
+        self.load_content(file.content.iter(), &module)?;
 
         for content in file.content.iter_mut() {
             match content {
@@ -452,27 +573,97 @@ impl TypeChecker {
                     for method in methods.iter_mut() {
                         self.check_method(method)?
                     }
-                    
                 }
                 TopLevelStatement::TraitImpl(r#impl) => {
                     let TraitImpl {
                         r#trait, 
-                        implementer, 
+                        implementer,
                         methods,
                         ..
                     } = r#impl;
                     // First we check if all of parents are satisfied
                     // Then we check for all methods being implemented that need to be
                     // Then we can actually check the types in the methods.
+                    let r#trait = match r#trait {
+                        Type::Object(name, ..) => name.to_string(),
+                        Type::TypeArg(obj, ..) => {
+                            let Type::Object(name, ..) = obj.as_ref() else {
+                                unreachable!("TypeArg should only be object")
+                            };
+                            name.to_string()
+                        }
+                    };
+                    let trait_path = self.attach_module_if_needed(r#trait);
+
+                    let class_name = match implementer {
+                        Type::Object(name, ..) => name.to_string(),
+                        Type::TypeArg(obj, ..) => {
+                            let Type::Object(name, ..) = obj.as_ref() else {
+                                unreachable!("TypeArg should only be object")
+                            };
+                            name.to_string()
+                        }
+                    };
+                    
+                    let (parents, attrs) = self.trait_decl.get(&trait_path)
+                        .expect("TODO: handle missing trait decl");
+                    let parents = parents.iter()
+                        .cloned()
+                        .collect::<HashSet<_>>();
+                    let mut seen = HashSet::new();
+                    let class_path = self.attach_module_if_needed(class_name.clone());
+                    if let Some(impls) = self.trait_impls.get(&class_path) {
+                        for (trait_name, _) in impls.iter() {
+                            if parents.contains(trait_name) {
+                                seen.insert(trait_name.clone());
+                            }
+                        }
+                    }
+                    let difference = parents.difference(&seen)
+                        .collect::<Vec<_>>();
+                    if !difference.is_empty() {
+                        todo!("Report missing trait impl")
+                    }
+                    
+                    let mut seen = HashSet::new();
+                    for method in methods.iter_mut() {
+                        let Method {
+                            name,
+                            ..
+                        } = method;
+                        if attrs.contains_key(name.as_str()) {
+                            seen.insert(name.to_string());
+                        }
+                    }
+                    let mut all = attrs.keys()
+                        .map(ToString::to_string)
+                        .collect::<HashSet<_>>();
+                    
+                    let difference = all.difference(&seen).collect::<Vec<_>>();
+                    for not_seen_key in difference {
+                        if let Some((is_default, _)) = attrs.get(not_seen_key) {
+                            if !is_default {
+                                todo!("report error about missing trait implementation")
+                            }
+                        }
+                    }
+
+                    let mut module = module.clone();
+                    module.push(class_name.to_string());
+
+                    self.current_class = module;
+                    for method in methods.iter_mut() {
+                        self.check_method(method)?
+                    }
                 }
             }
         }
         Ok(())
     }
 
-    fn load_content(
+    fn load_content<'a>(
         &mut self,
-        mut content: impl Iterator<Item = &TopLevelStatement>,
+        mut content: impl Iterator<Item = &'a TopLevelStatement<'a>>,
         module: &Vec<String>,
     ) -> Result<(), TypeCheckerError> {
         for statement in content {
@@ -548,7 +739,7 @@ impl TypeChecker {
                     }
 
                     for method in methods.iter() {
-                        let Method { name, parameters, return_type, .. } = method;
+                        let Method { name, parameters, return_type, body, .. } = method;
                         let mut argument_types = Vec::new();
                         for parameter in parameters {
                             match parameter {
@@ -561,12 +752,12 @@ impl TypeChecker {
                             }
                         }
                         let ty = TypeCheckerType::Function(argument_types, Box::new(TypeCheckerType::from(return_type.clone())));
-                        trait_attributes.insert(name.to_string(), ClassAttribute::Method(ty));
+                        let is_default = body.is_empty();
+                        trait_attributes.insert(name.to_string(), (is_default, ClassAttribute::Method(ty)));
                     }
                     
                     let mut module = module.clone();
                     module.push(name.to_string());
-                    
                     self.trait_decl.insert(module, (parent_names, trait_attributes));
                 }
                 TopLevelStatement::TraitImpl(r#impl) => {
@@ -617,21 +808,22 @@ impl TypeChecker {
                         let ty = TypeCheckerType::Function(argument_types, Box::new(TypeCheckerType::from(return_type.clone())));
                         trait_impl_attributes.insert(name.to_string(), ClassAttribute::Method(ty));
                     }
+                    let attrs = (trait_name, trait_impl_attributes);
                     
-                    let mut trait_module = module.clone();
+                    /*let mut trait_module = module.clone();
                     trait_module.push(trait_name);
                     let (_, all_trait_attributes) = self.trait_decl.get(&trait_module).unwrap();
                     for (key, value) in all_trait_attributes {
                         if !trait_impl_attributes.contains_key(key) {
                             trait_impl_attributes.insert(key.to_string(), value.clone());
                         }
-                    }
+                    }*/
 
                     let implementer = self.attach_module_if_needed(implementer);
 
                     self.trait_impls.entry(implementer)
-                        .and_modify(|l| l.push(trait_impl_attributes))
-                        .or_insert(vec![trait_impl_attributes]);
+                        .and_modify(|l| l.push(attrs.clone()))
+                        .or_insert(vec![attrs]);
                 }
                 _ => {}
             }
@@ -987,6 +1179,18 @@ impl TypeChecker {
                     }
                     Type::Array(_, _) => {
                         Text::Borrowed("Array")
+                    }
+                    Type::Existential(obj) => {
+                        match obj.as_ref() {
+                            Type::Object(name, ..) => name.clone(),
+                            Type::TypeArg(obj, ..) => {
+                                let Type::Object(name, _) = obj.as_ref() else {
+                                    unreachable!("TypeArg for Existential can only be Object");
+                                };
+                                name.clone()
+                            }
+                            _ => unreachable!("Existential can only be Object or TypeArg"),
+                        }
                     }
                     x => todo!("member access is incomplete {x:?}"),
                 };
