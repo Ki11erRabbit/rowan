@@ -83,6 +83,8 @@ pub type SignatureIndex = u64;
 pub struct ClassFile {
     /// Magic number to identify the file
     pub magic: u8,
+    /// Type of Class File, (Class, Interface, or InterfaceImpl)
+    pub r#type: u8,
     /// Major, minor, and patch version numbers
     pub major_version: u8,
     /// Major, minor, and patch version numbers
@@ -130,6 +132,7 @@ impl ClassFile {
     ) -> ClassFile {
         ClassFile {
             magic: 0,
+            r#type: 0,
             major_version: 0,
             minor_version: 1,
             patch_version: 0,
@@ -149,29 +152,31 @@ impl ClassFile {
     pub fn new(binary: &[u8]) -> ClassFile {
         let mut index = 0;
         let magic = binary[0];
-        let major_version = binary[1];
-        let minor_version = binary[2];
-        let patch_version = binary[3];
-        index += 4;
+        // asserting that we are indeed a Class file and not an Interface or InterfaceImpl
+        assert_eq!(binary[1], 0);
+        let major_version = binary[2];
+        let minor_version = binary[3];
+        let patch_version = binary[4];
+        index += 5;
         let name = u64::from_le_bytes([
             binary[4], binary[5], binary[6], binary[7],
             binary[8], binary[9], binary[10], binary[11]
         ]);
-        index += 8;
+        index += size_of::<StringIndex>();
 
         let parent = u64::from_le_bytes([
             binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
             binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
         ]);
-        index += std::mem::size_of::<StringIndex>();
+        index += size_of::<StringIndex>();
 
-        index += 4; // 4 byte padding to align pointer
+        index += 3; // 4 byte padding to align pointer
 
         let vtables_size = u64::from_le_bytes([
             binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
             binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
         ]);
-        index += std::mem::size_of::<u64>();
+        index += size_of::<u64>();
         let mut vtables = Vec::new();
         for _ in 0..vtables_size {
 
@@ -179,17 +184,17 @@ impl ClassFile {
                 binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
                 binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
             ]);
-            index += std::mem::size_of::<u64>();
+            index += size_of::<u64>();
             let sub_class_name = u64::from_le_bytes([
                 binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
                 binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
             ]);
-            index += std::mem::size_of::<u64>();
+            index += size_of::<u64>();
             let vtable_size = u64::from_le_bytes([
                 binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
                 binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
             ]);
-            index += std::mem::size_of::<u64>();
+            index += size_of::<u64>();
             let functions = unsafe {
                 std::slice::from_raw_parts(
                     binary.as_ptr().add(index) as *const VTableEntry,
@@ -216,11 +221,11 @@ impl ClassFile {
                 binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
                 binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
             ]);
-            index += std::mem::size_of::<StringIndex>();
+            index += size_of::<StringIndex>();
             let type_tag = unsafe {
                 std::ptr::read(binary.as_ptr().add(index) as *const u8)
             };
-            index += std::mem::size_of::<u8>();
+            index += size_of::<u8>();
             let tag = type_tag.into();
             members.push(Member {
                 name,
@@ -236,7 +241,7 @@ impl ClassFile {
             binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
             binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
         ]);
-        index += std::mem::size_of::<u64>();
+        index += size_of::<u64>();
         let functions = unsafe {
             std::slice::from_raw_parts(
                 binary.as_ptr().add(index) as *const VTableEntry,
@@ -244,13 +249,13 @@ impl ClassFile {
             )
         };
         let static_methods = StaticMethods::new(functions.to_vec());
-        index += static_methods_size as usize * std::mem::size_of::<VTableEntry>();
+        index += static_methods_size as usize * size_of::<VTableEntry>();
 
         let members_size = u64::from_le_bytes([
             binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
             binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
         ]);
-        index += std::mem::size_of::<u64>();
+        index += size_of::<u64>();
 
         let mut static_members = Vec::new();
         for _ in 0..members_size {
@@ -258,7 +263,7 @@ impl ClassFile {
                 binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
                 binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
             ]);
-            index += std::mem::size_of::<StringIndex>();
+            index += size_of::<StringIndex>();
             let type_tag = unsafe {
                 std::ptr::read(binary.as_ptr().add(index) as *const u8)
             };
@@ -267,7 +272,7 @@ impl ClassFile {
                 name,
                 type_tag: tag
             });
-            index += std::mem::size_of::<u8>();
+            index += size_of::<u8>();
         }
 
         let static_init = i64::from_le_bytes([
@@ -356,6 +361,7 @@ impl ClassFile {
 
         ClassFile {
             magic,
+            r#type: 0,
             major_version,
             minor_version,
             patch_version,
@@ -388,13 +394,14 @@ impl ClassFile {
     pub fn as_binary(&self) -> Vec<u8> {
         let mut binary = Vec::new();
         binary.push(self.magic);
+        binary.push(0); // Value for ClassFile
         binary.push(self.major_version);
         binary.push(self.minor_version);
         binary.push(self.patch_version);
         binary.extend_from_slice(&self.name.to_le_bytes());
         binary.extend_from_slice(&self.parent.to_le_bytes());
 
-        binary.extend_from_slice(&[0u8; 4]); // Padding of 4 Bytes
+        binary.extend_from_slice(&[0u8; 3]); // Padding of 3 Bytes
 
         binary.extend_from_slice(&self.vtables.len().to_le_bytes());
         for vtable in &self.vtables {

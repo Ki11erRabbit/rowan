@@ -1,7 +1,6 @@
 pub mod bytecode;
 pub mod classfile;
-
-
+mod interfacefile;
 
 /// Represents a type tag for a member or parameter
 /// This represents all the primitive types

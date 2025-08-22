@@ -1,0 +1,206 @@
+use crate::classfile::{BytecodeEntry, BytecodeIndex, Member, SignatureEntry, StaticMethods, StringEntry, StringIndex, VTable, VTableEntry};
+
+#[derive(PartialEq, Debug)]
+pub struct InterfaceFile {
+    /// Magic number to identify the file
+    pub magic: u8,
+    /// Type of Class File, (Class, Interface, or InterfaceImpl)
+    pub r#type: u8,
+    /// Major, minor, and patch version numbers
+    pub major_version: u8,
+    /// Major, minor, and patch version numbers
+    pub minor_version: u8,
+    /// Major, minor, and patch version numbers
+    pub patch_version: u8,
+    /// Class name
+    pub name: StringIndex,
+    /// Virtual tables
+    pub vtable: VTable,
+    /// Where the bytecode is stored
+    /// This table is 1 indexed to allow for methods to be empty
+    pub(crate) bytecode_table: Vec<BytecodeEntry>,
+    /// String table
+    /// This table is 1 indexed to allow for StringIndices 0 value to mean "null"
+    pub(crate) string_table: Vec<StringEntry>,
+    /// Signature table
+    /// This holds the signatures of methods
+    pub signature_table: Vec<SignatureEntry>,
+}
+
+impl InterfaceFile {
+    pub fn new_from_parts(
+        name: StringIndex, 
+        vtable: VTable, 
+        bytecode_table: Vec<BytecodeEntry>,
+        string_table: Vec<StringEntry>,
+        signature_table: Vec<SignatureEntry>,
+    ) -> Self {
+        InterfaceFile {
+            magic: 0,
+            r#type: 1,
+            major_version: 0,
+            minor_version: 0,
+            patch_version: 0,
+            name,
+            vtable,
+            bytecode_table,
+            string_table,
+            signature_table,
+        }
+    }
+    
+    pub fn new(binary: &[u8]) -> Self {
+        let mut index = 0;
+        let magic = binary[0];
+        // asserting that we are indeed a Interface file and not an Class or InterfaceImpl
+        assert_eq!(binary[1], 1);
+        let major_version = binary[2];
+        let minor_version = binary[3];
+        let patch_version = binary[4];
+        index += 5;
+        let name = u64::from_le_bytes([
+            binary[4], binary[5], binary[6], binary[7],
+            binary[8], binary[9], binary[10], binary[11]
+        ]);
+        index += 8;
+        
+        index += 3; // padding of 3 bytes
+
+        let class_name = u64::from_le_bytes([
+            binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+            binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+        ]);
+        index += size_of::<u64>();
+        let sub_class_name = u64::from_le_bytes([
+            binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+            binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+        ]);
+        index += size_of::<u64>();
+        let vtable_size = u64::from_le_bytes([
+            binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+            binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+        ]);
+        index += size_of::<u64>();
+        let functions = unsafe {
+            std::slice::from_raw_parts(
+                binary.as_ptr().add(index) as *const VTableEntry,
+                vtable_size as usize
+            )
+        };
+        let vtable = VTable {
+            class_name,
+            sub_class_name,
+            functions: functions.to_vec()
+        };
+        index += vtable_size as usize * size_of::<VTableEntry>();
+
+        let mut bytecode_table = Vec::new();
+        let bytecode_table_size = u64::from_le_bytes([
+            binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+            binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+        ]);
+        index += 8;
+
+        for _ in 0..bytecode_table_size {
+            let code_size = u64::from_le_bytes([
+                binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+                binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+            ]);
+            index += 8;
+            let code = unsafe {
+                std::slice::from_raw_parts(
+                    binary.as_ptr().add(index),
+                    code_size as usize
+                )
+            };
+            bytecode_table.push(BytecodeEntry {
+                code: code.to_vec()
+            });
+            index += code_size as usize;
+        }
+
+        let string_table_size = u64::from_le_bytes([
+            binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+            binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+        ]);
+        index += std::mem::size_of::<u64>();
+
+        let mut string_table = Vec::new();
+        for _ in 0..string_table_size {
+            let length = u64::from_le_bytes([
+                binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+                binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+            ]);
+            index += 8;
+            let value = unsafe {
+                std::slice::from_raw_parts(
+                    binary.as_ptr().add(index),
+                    length as usize
+                )
+            };
+            string_table.push(StringEntry {
+                value: value.to_vec()
+            });
+            index += length as usize;
+        }
+
+        let signature_table_size = u64::from_le_bytes([
+            binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+            binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+        ]);
+        index += std::mem::size_of::<u64>();
+
+        let mut signature_table = Vec::new();
+        for _ in 0..signature_table_size {
+            let length = u64::from_le_bytes([
+                binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+                binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+            ]);
+            index += std::mem::size_of::<u64>();
+            let mut types = Vec::new();
+            for _ in 0..length {
+                let type_tag = unsafe {
+                    std::ptr::read(binary.as_ptr().add(index) as *const u8)
+                };
+                let tag = type_tag.into();
+                types.push(tag);
+                index += std::mem::size_of::<u8>();
+            }
+            signature_table.push(SignatureEntry {
+                types
+            });
+        }
+        
+        InterfaceFile {
+            magic,
+            r#type: 1,
+            major_version,
+            minor_version,
+            patch_version,
+            name,
+            vtable,
+            bytecode_table,
+            string_table,
+            signature_table
+        }
+    }
+    
+    #[inline]
+    pub fn as_binary(&self) -> Vec<u8> {
+        let mut binary = Vec::new();
+        binary.push(self.magic);
+        binary.push(self.r#type);
+        binary.push(self.major_version);
+        binary.push(self.minor_version);
+        binary.push(self.patch_version);
+        binary.extend_from_slice(&self.name.to_le_bytes());
+        
+        binary.extend_from_slice(&[0u8; 3]); // padding of 3 bytes
+        
+        
+        
+        binary
+    }
+    
+    
+}
