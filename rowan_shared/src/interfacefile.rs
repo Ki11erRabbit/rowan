@@ -1,4 +1,4 @@
-use crate::classfile::{BytecodeEntry, BytecodeIndex, Member, SignatureEntry, StaticMethods, StringEntry, StringIndex, VTable, VTableEntry};
+use crate::classfile::{BytecodeEntry, SignatureEntry, StringEntry, StringIndex, VTable, VTableEntry};
 
 #[derive(PartialEq, Debug)]
 pub struct InterfaceFile {
@@ -196,11 +196,45 @@ impl InterfaceFile {
         binary.extend_from_slice(&self.name.to_le_bytes());
         
         binary.extend_from_slice(&[0u8; 3]); // padding of 3 bytes
-        
-        
+
+        binary.extend_from_slice(&self.vtable.class_name.to_le_bytes());
+        binary.extend_from_slice(&self.vtable.sub_class_name.to_le_bytes());
+        binary.extend_from_slice(&(self.vtable.functions.len() as u64).to_le_bytes());
+        for function in &self.vtable.functions {
+            binary.extend_from_slice(&function.name.to_le_bytes());
+            binary.extend_from_slice(&function.signature.to_le_bytes());
+            binary.extend_from_slice(&function.bytecode.to_le_bytes());
+        }
+        binary.extend_from_slice(&(self.bytecode_table.len() as u64).to_le_bytes());
+        for bytecode in &self.bytecode_table {
+            binary.extend_from_slice(&(bytecode.code.len() as u64).to_le_bytes());
+            binary.extend_from_slice(&bytecode.code);
+        }
+        binary.extend_from_slice(&(self.string_table.len() as u64).to_le_bytes());
+        for string in &self.string_table {
+            binary.extend_from_slice(&(string.value.len() as u64).to_le_bytes());
+            binary.extend_from_slice(&string.value);
+        }
+        binary.extend_from_slice(&(self.signature_table.len() as u64).to_le_bytes());
+        for signature in &self.signature_table {
+            binary.extend_from_slice(&(signature.types.len() as u64).to_le_bytes());
+            for type_tag in &signature.types {
+                binary.push(type_tag.as_byte());
+            }
+        }        
         
         binary
     }
-    
-    
+}
+
+impl From<&[u8]> for InterfaceFile {
+    fn from(binary: &[u8]) -> Self {
+        InterfaceFile::new(binary)
+    }
+}
+
+impl Into<Vec<u8>> for InterfaceFile {
+    fn into(self) -> Vec<u8> {
+        self.as_binary()
+    }
 }
