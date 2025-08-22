@@ -170,10 +170,15 @@ pub enum Bytecode {
     /// The second Symbol is the Method Name
     /// This is for tail recursion
     InvokeStaticTail(Symbol, Symbol),
-    /// Get a static method from a class and construct an object with the method `call`
-    /// The first Symbol is the class name
+    /// Invoke an Interface Method on an Object
+    /// The first Symbol is the interface name
     /// The second Symbol is the Method Name
-    GetStaticMethod(Symbol, Symbol),
+    InvokeInterface(Symbol, Symbol),
+    /// Invoke an Interface Method on an Object
+    /// The first Symbol is the interface name
+    /// The second Symbol is the Method Name
+    /// This is for tail recursion
+    InvokeInterfaceTail(Symbol, Symbol),
     /// Access a static field on a class and get its value
     /// The Symbol is the class
     /// The u64 is the index of the static member

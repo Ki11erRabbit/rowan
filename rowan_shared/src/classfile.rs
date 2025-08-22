@@ -566,7 +566,7 @@ impl BytecodeEntry {
 }
 
 /// Represents a string entry in the string table
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq)]
 pub struct StringEntry {
     pub value: Vec<u8>
 }
@@ -576,6 +576,14 @@ impl StringEntry {
         StringEntry {
             value: string.as_ref().to_vec()
         }
+    }
+}
+
+impl std::fmt::Debug for StringEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let value = unsafe { std::str::from_utf8_unchecked(&self.value) };
+        
+        write!(f, "StringEntry({})", value)
     }
 }
 

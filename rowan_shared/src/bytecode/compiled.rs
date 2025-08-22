@@ -174,10 +174,15 @@ pub enum Bytecode {
     /// The second StringIndex is the Method Name
     /// This is for tail recursion
     InvokeStaticTail(StringIndex, StringIndex),
-    /// Get a static method from a class and construct an object with the method `call`
-    /// The first StringIndex is the class name
+    /// Invoke an interface method on an object
+    /// The first StringIndex is the Interface name
     /// The second StringIndex is the Method Name
-    GetStaticMethod(StringIndex, StringIndex),
+    InvokeInterface(StringIndex, StringIndex),
+    /// Invoke an interface method on an object
+    /// The first StringIndex is the Interface name
+    /// The second StringIndex is the Method Name
+    /// This is for tail recursion
+    InvokeInterfaceTail(StringIndex, StringIndex),
     /// Access a static field on a class and get its value
     /// The StringIndex is the class name
     /// The u64 is the index of the static member
@@ -496,7 +501,7 @@ impl Bytecode {
                     result.push(Bytecode::InvokeStaticTail(class_name, method_name));
                 },
                 72 => {
-                    let class_name = u64::from_le_bytes([
+                    let interface_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -508,9 +513,24 @@ impl Bytecode {
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                     ]);
-                    result.push(Bytecode::GetStaticMethod(class_name, method_name));
+                    result.push(Bytecode::InvokeInterface(interface_name, method_name));
                 },
                 73 => {
+                    let interface_name = u64::from_le_bytes([
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    let method_name = u64::from_le_bytes([
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                        *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
+                    ]);
+                    result.push(Bytecode::InvokeInterfaceTail(interface_name, method_name));
+                },
+                74 => {
                     let class_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -526,7 +546,7 @@ impl Bytecode {
                     let type_tag = TypeTag::from(*iter.next().ok_or("Expected TypeTag")?);
                     result.push(Bytecode::GetStaticMember(class_name, index, type_tag));
                 }
-                74 => {
+                75 => {
                     let class_name = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -542,7 +562,7 @@ impl Bytecode {
                     let type_tag = TypeTag::from(*iter.next().ok_or("Expected TypeTag")?);
                     result.push(Bytecode::SetStaticMember(class_name, index, type_tag));
                 }
-                75 => {
+                76 => {
                     let index = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -551,9 +571,9 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::GetStrRef(index));
                 },
-                76 => result.push(Bytecode::Return),
-                77 => result.push(Bytecode::ReturnVoid),
-                78 => {
+                77 => result.push(Bytecode::Return),
+                78 => result.push(Bytecode::ReturnVoid),
+                79 => {
                     let index = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -568,7 +588,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::RegisterException(index, offset))
                 }
-                79 => {
+                80 => {
                     let index = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -577,8 +597,8 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::UnregisterException(index))
                 }
-                80 => result.push(Bytecode::Throw),
-                81 => {
+                81 => result.push(Bytecode::Throw),
+                82 => {
                     let id = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -587,7 +607,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::StartBlock(id));
                 },
-                82 => {
+                83 => {
                     let offset = i64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -596,7 +616,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::Goto(offset));
                 },
-                83 => {
+                84 => {
                     let true_offset = i64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -611,7 +631,7 @@ impl Bytecode {
                     ]);
                     result.push(Bytecode::If(true_offset, false_offset));
                 },
-                84 => {
+                85 => {
                     let cases_len = u64::from_le_bytes([
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
                         *iter.next().ok_or("Expected u8 value")?, *iter.next().ok_or("Expected u8 value")?,
@@ -816,54 +836,59 @@ impl Bytecode {
                 result.extend_from_slice(&class_name.to_le_bytes());
                 result.extend_from_slice(&method_name.to_le_bytes());
             },
-            Bytecode::GetStaticMethod(class_name, method_name) => {
+            Bytecode::InvokeInterface(interface_name, method_name) => {
                 result.push(72);
-                result.extend_from_slice(&class_name.to_le_bytes());
+                result.extend_from_slice(&interface_name.to_le_bytes());
+                result.extend_from_slice(&method_name.to_le_bytes());
+            },
+            Bytecode::InvokeInterfaceTail(interface_name, method_name) => {
+                result.push(73);
+                result.extend_from_slice(&interface_name.to_le_bytes());
                 result.extend_from_slice(&method_name.to_le_bytes());
             },
             Bytecode::GetStaticMember(class_name, index, tag) => {
-                result.push(73);
-                result.extend_from_slice(&class_name.to_le_bytes());
-                result.extend_from_slice(&index.to_le_bytes());
-                result.push(tag.as_byte());
-            }
-            Bytecode::SetStaticMember(class_name, index, tag) => {
                 result.push(74);
                 result.extend_from_slice(&class_name.to_le_bytes());
                 result.extend_from_slice(&index.to_le_bytes());
                 result.push(tag.as_byte());
             }
-            Bytecode::GetStrRef(index) => {
+            Bytecode::SetStaticMember(class_name, index, tag) => {
                 result.push(75);
+                result.extend_from_slice(&class_name.to_le_bytes());
+                result.extend_from_slice(&index.to_le_bytes());
+                result.push(tag.as_byte());
+            }
+            Bytecode::GetStrRef(index) => {
+                result.push(76);
                 result.extend_from_slice(&index.to_le_bytes());
             },
-            Bytecode::Return => result.push(76),
-            Bytecode::ReturnVoid => result.push(77),
+            Bytecode::Return => result.push(77),
+            Bytecode::ReturnVoid => result.push(78),
             Bytecode::RegisterException(index, block_id) => {
-                result.push(78);
+                result.push(79);
                 result.extend_from_slice(&index.to_le_bytes());
                 result.extend_from_slice(&block_id.to_le_bytes());
             }
             Bytecode::UnregisterException(index) => {
-                result.push(79);
+                result.push(80);
                 result.extend_from_slice(&index.to_le_bytes());
             }
-            Bytecode::Throw => result.push(80),
+            Bytecode::Throw => result.push(81),
             Bytecode::StartBlock(id) => {
-                result.push(81);
+                result.push(82);
                 result.extend_from_slice(&id.to_le_bytes());
             },
             Bytecode::Goto(offset) => {
-                result.push(82);
+                result.push(83);
                 result.extend_from_slice(&offset.to_le_bytes());
             },
             Bytecode::If(true_offset, false_offset) => {
-                result.push(83);
+                result.push(84);
                 result.extend_from_slice(&true_offset.to_le_bytes());
                 result.extend_from_slice(&false_offset.to_le_bytes());
             },
             Bytecode::Switch(cases, default) => {
-                result.push(84);
+                result.push(85);
                 result.extend_from_slice(&(cases.len() as u64).to_le_bytes());
                 for case in cases {
                     result.extend_from_slice(&case.to_le_bytes());
