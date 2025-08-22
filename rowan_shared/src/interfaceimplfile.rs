@@ -1,7 +1,8 @@
 use crate::classfile::{BytecodeEntry, SignatureEntry, StringEntry, StringIndex, VTable, VTableEntry};
+use crate::interfacefile::InterfaceFile;
 
 #[derive(PartialEq, Debug)]
-pub struct InterfaceFile {
+pub struct InterfaceImplFile {
     /// Magic number to identify the file
     pub magic: u8,
     /// Type of Class File, (Class, Interface, or InterfaceImpl)
@@ -13,7 +14,9 @@ pub struct InterfaceFile {
     /// Major, minor, and patch version numbers
     pub patch_version: u8,
     /// Interface name
-    pub name: StringIndex,
+    pub interface_name: StringIndex,
+    /// Class Name
+    pub implementer_name: StringIndex,
     /// Virtual tables
     pub vtable: VTable,
     /// Where the bytecode is stored
@@ -27,43 +30,50 @@ pub struct InterfaceFile {
     pub signature_table: Vec<SignatureEntry>,
 }
 
-impl InterfaceFile {
+impl InterfaceImplFile {
     pub fn new_from_parts(
-        name: StringIndex, 
-        vtable: VTable, 
+        interface_name: StringIndex,
+        implementer_name: StringIndex,
+        vtable: VTable,
         bytecode_table: Vec<BytecodeEntry>,
         string_table: Vec<StringEntry>,
         signature_table: Vec<SignatureEntry>,
     ) -> Self {
-        InterfaceFile {
+        InterfaceImplFile {
             magic: 0,
             r#type: 1,
             major_version: 0,
             minor_version: 0,
             patch_version: 0,
-            name,
+            interface_name,
+            implementer_name,
             vtable,
             bytecode_table,
             string_table,
             signature_table,
         }
     }
-    
+
     pub fn new(binary: &[u8]) -> Self {
         let mut index = 0;
         let magic = binary[0];
-        // asserting that we are indeed a Interface file and not an Class or InterfaceImpl
-        assert_eq!(binary[1], 1);
+        // asserting that we are indeed a InterfaceImpl file and not an Class or Interface
+        assert_eq!(binary[1], 2);
         let major_version = binary[2];
         let minor_version = binary[3];
         let patch_version = binary[4];
         index += 5;
-        let name = u64::from_le_bytes([
+        let interface_name = u64::from_le_bytes([
             binary[4], binary[5], binary[6], binary[7],
             binary[8], binary[9], binary[10], binary[11]
         ]);
         index += 8;
-        
+        let implementer_name = u64::from_le_bytes([
+            binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+            binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
+        ]);
+        index += 8;
+
         index += 3; // padding of 3 bytes
 
         let class_name = u64::from_le_bytes([
@@ -170,21 +180,22 @@ impl InterfaceFile {
                 types
             });
         }
-        
-        InterfaceFile {
+
+        InterfaceImplFile {
             magic,
-            r#type: 1,
+            r#type: 2,
             major_version,
             minor_version,
             patch_version,
-            name,
+            interface_name,
+            implementer_name,
             vtable,
             bytecode_table,
             string_table,
             signature_table
         }
     }
-    
+
     #[inline]
     pub fn as_binary(&self) -> Vec<u8> {
         let mut binary = Vec::new();
@@ -193,8 +204,9 @@ impl InterfaceFile {
         binary.push(self.major_version);
         binary.push(self.minor_version);
         binary.push(self.patch_version);
-        binary.extend_from_slice(&self.name.to_le_bytes());
-        
+        binary.extend_from_slice(&self.interface_name.to_le_bytes());
+        binary.extend_from_slice(&self.implementer_name.to_le_bytes());
+
         binary.extend_from_slice(&[0u8; 3]); // padding of 3 bytes
 
         binary.extend_from_slice(&self.vtable.class_name.to_le_bytes());
@@ -221,19 +233,19 @@ impl InterfaceFile {
             for type_tag in &signature.types {
                 binary.push(type_tag.as_byte());
             }
-        }        
-        
+        }
+
         binary
     }
 }
 
-impl From<&[u8]> for InterfaceFile {
+impl From<&[u8]> for InterfaceImplFile {
     fn from(binary: &[u8]) -> Self {
-        InterfaceFile::new(binary)
+        InterfaceImplFile::new(binary)
     }
 }
 
-impl Into<Vec<u8>> for InterfaceFile {
+impl Into<Vec<u8>> for InterfaceImplFile {
     fn into(self) -> Vec<u8> {
         self.as_binary()
     }

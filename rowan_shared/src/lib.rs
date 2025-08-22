@@ -1,6 +1,7 @@
 pub mod bytecode;
 pub mod classfile;
 mod interfacefile;
+mod interfaceimplfile;
 
 /// Represents a type tag for a member or parameter
 /// This represents all the primitive types
@@ -62,5 +63,21 @@ impl From<u8> for TypeTag {
             13 => TypeTag::Native,
             _ => unreachable!("unknown type"),
         }
+    }
+}
+
+pub enum FileType {
+    Class,
+    Interface,
+    InterfaceImpl,
+}
+
+pub fn identify_file(binary: &[u8]) -> FileType {
+    assert!(binary.len() >= 2, "Binary is too short for a class file");
+    match binary[0] {
+        0 => FileType::Class,
+        1 => FileType::Interface,
+        2 => FileType::InterfaceImpl,
+        _ => unreachable!(),
     }
 }
