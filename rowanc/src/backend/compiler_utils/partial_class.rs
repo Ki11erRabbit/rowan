@@ -6,7 +6,7 @@ use crate::backend::compiler_utils::{PartialClassError, PartialClassResult};
 use crate::native::NativeAttributes;
 
 /// Represents a member of a class
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub struct StaticMember {
     pub name: StringIndex,
     pub is_const: bool,
@@ -34,7 +34,7 @@ impl Into<Member> for StaticMember {
 
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PartialClass {
     name: StringIndex,
     /// Parent class names

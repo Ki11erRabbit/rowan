@@ -492,7 +492,7 @@ impl Into<Vec<u8>> for ClassFile {
 
 
 /// Represents a member of a class
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub struct Member {
     pub name: StringIndex,
     pub type_tag: TypeTag,
@@ -556,7 +556,7 @@ pub struct VTableEntry {
 
 /// Represents a bytecode entry
 /// This is a slice of bytes
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct BytecodeEntry {
     pub code: Vec<u8>, 
 }
@@ -570,7 +570,7 @@ impl BytecodeEntry {
 }
 
 /// Represents a string entry in the string table
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct StringEntry {
     pub value: Vec<u8>
 }

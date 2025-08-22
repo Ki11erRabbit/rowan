@@ -591,6 +591,7 @@ pub struct Compiler {
     closures_under_path: HashMap<String, usize>,
     pub interfaces: HashMap<Vec<String>, PartialInterface>,
     pub interface_impls: HashMap<Vec<String>, PartialInterfaceImpl>,
+    interface_parents: HashMap<Vec<String>, Vec<Vec<String>>>,
 }
 
 
@@ -611,6 +612,7 @@ impl Compiler {
             closures_under_path: HashMap::new(),
             interfaces: HashMap::new(),
             interface_impls: HashMap::new(),
+            interface_parents: HashMap::new(),
         }
     }
 
@@ -1007,9 +1009,9 @@ impl Compiler {
                     _ => Ordering::Equal,
                 }
             });*/
-            
+
             let (classes, interfaces, interface_impls) = self.load_parts(content)?;
-            
+
             self.alter_imports_if_needed();
             for class in classes {
                 self.compile_class(class)?;
@@ -1067,7 +1069,7 @@ impl Compiler {
         }
         Ok(())
     }
-    
+
     fn load_parts(&mut self, content: Vec<TopLevelStatement>) -> Result<(Vec<Class>, Vec<Trait>, Vec<TraitImpl>), CompilerError> {
         let mut class_names = Vec::new();
         let mut interface_names = Vec::new();
@@ -1094,7 +1096,7 @@ impl Compiler {
         }
         Ok((class_names, interface_names, interface_impl_names))
     }
-    
+
     fn load_class_part<'a>(&mut self, class: Class<'a>) -> Result<Vec<Class<'a>>, CompilerError> {
         let Class {
             name,
@@ -1102,13 +1104,13 @@ impl Compiler {
             parent,
             members,
             methods,
-            static_members, 
+            static_members,
             span,
 
         } = class.clone();
 
         let class_name = self.add_path_if_needed(name.to_string());
-        
+
         let mut classes_to_compile: Vec<Class> = Vec::new();
 
         if type_params.is_empty() {
@@ -1335,22 +1337,54 @@ impl Compiler {
         Ok(path_name)
     }
 
-    fn compile_class(&mut self, class: Class) -> Result<(), CompilerError> {
-        let Class {
+    fn load_trait_part<'a>(&mut self, r#trait: Trait<'a>) -> Result<Vec<Trait<'a>>, CompilerError> {
+        let Trait {
             name,
-            type_params,
-            parent,
-            members,
+            parents,
             methods,
-            static_members,
-            ..
-        } = class;
+            type_params,
+            span,
+        } = r#trait;
+        let path_name = self.add_path_if_needed(name.to_string());
 
-        let class_name = self.add_path_if_needed(name.to_string());
+        let mut traits = Vec::new();
 
         if type_params.is_empty() {
-            let new_parents = self.create_new_parent(&parent);
-            self.compile_class_inner(&class_name, &new_parents, &methods, &members, &static_members)?;
+            self.load_trait_inner(&path_name, &methods)?;
+            let parent_paths = parents.iter().map(|p| {
+                let name = match p {
+                    Type::Object(name, ..) => name.to_string(),
+                    Type::TypeArg(obj, args, ..) => {
+                        let Type::Object(name, ..) = obj.as_ref() else {
+                            unreachable!("Trait parent TypeArg can only be object")
+                        };
+                        let mut name = name.to_string();
+                        for arg in args {
+                            match arg {
+                                Type::U8 | Type::I8 | Type::Boolean => name.push('8'),
+                                Type::U16 | Type::I16 => name.push_str("16"),
+                                Type::U32 | Type::I32 => name.push_str("32"),
+                                Type::U64 | Type::I64 => name.push_str("64"),
+                                Type::F32  => name.push_str("f32"),
+                                Type::F64 => name.push_str("f64"),
+                                _ => name.push_str("object")
+                            }
+                        }
+
+                        name
+                    }
+                    _ => unreachable!("Trait parent Parent can only be Object or TypeArg"),
+                };
+                self.add_path_if_needed(name)
+            }).collect::<Vec<_>>();
+            self.interface_parents.insert(path_name.clone(), parent_paths);
+            traits.push(Trait {
+                name: Text::Owned(path_name.join("::")),
+                parents,
+                methods,
+                type_params,
+                span
+            });
         } else {
             let mut name_order = Vec::new();
             for type_param in type_params.iter() {
@@ -1388,19 +1422,85 @@ impl Compiler {
                     modifier_string.push_str(modifier);
                 }
 
-                let new_parents = self.create_new_parent(&parent);
-
-                self.imports_to_change.entry(class_name.last().unwrap().to_string())
-                    .or_insert(Vec::new())
-                    .push(format!("{}{modifier_string}", class_name.last().unwrap()));
-
-                let mut new_path = class_name.clone();
+                let mut new_path = path_name.clone();
                 new_path.last_mut().unwrap().push_str(&modifier_string);
 
-                self.compile_class_inner(&new_path, &new_parents, &methods, &members, &static_members)?;
+                let parent_paths = parents.iter().map(|p| {
+                    let name = match p {
+                        Type::Object(name, ..) => name.to_string(),
+                        Type::TypeArg(obj, args) => {
+                            let Type::Object(name, ..) = obj.as_ref() else {
+                                unreachable!("Trait parent TypeArg can only be object")
+                            };
+                            let mut name = name.to_string();
+                            
+                            for (arg, typ_arg) in args.iter().zip(permutation.iter()) {
+                                match (arg, typ_arg) {
+                                    (Type::U8, TypeTag::U8) => name.push('8'),
+                                    (Type::U16, TypeTag::U16) => name.push_str("16"),
+                                    (Type::U32, TypeTag::U32) => name.push_str("32"),
+                                    (Type::U64, TypeTag::U64) => name.push_str("64"),
+                                    (Type::I8, TypeTag::I8) => name.push_str("8"),
+                                    (Type::I16, TypeTag::I16) => name.push_str("16"),
+                                    (Type::I32, TypeTag::I32) => name.push_str("32"),
+                                    (Type::I64, TypeTag::I64) => name.push_str("64"),
+                                    (Type::F32, TypeTag::F32) => name.push_str("f32"),
+                                    (Type::F64, TypeTag::F64) => name.push_str("f64"),
+                                    (_, TypeTag::Object) => name.push_str("object"),
+                                }
+                            }
+                            
+                            name
+                        }
+                        _ => unreachable!("Trait parent Parent can only be Object or TypeArg"),
+                    };
+                    self.add_path_if_needed(name)
+                }).collect::<Vec<_>>();
+
+                self.load_trait_inner(&new_path, &methods)?;
+                self.interface_parents.insert(path_name.clone(), parent_paths);
+                traits.push(Trait {
+                    name: Text::Owned(path_name.join("::")),
+                    parents: parents.clone(),
+                    methods: methods.clone(),
+                    type_params: Vec::new(),
+                    span
+                });
             }
         }
-        
+
+        Ok(traits)
+    }
+
+    fn load_trait_inner(&mut self, name: &Vec<String>, methods: &Vec<Method>) -> Result<(), CompilerError> {
+        let mut partial_interface = PartialInterface::new();
+
+        let (
+            _,
+            names,
+            signatures,
+            _,
+            _,
+        ) = self.construct_vtable(&name, &methods)?;
+
+        partial_interface.add_functions(&names, &signatures);
+
+        self.interfaces.insert(name.clone(), partial_interface);
+
+        Ok(())
+    }
+
+    fn compile_class(&mut self, class: Class) -> Result<(), CompilerError> {
+        let Class {
+            name,
+            methods,
+            ..
+        } = class;
+
+        let class_name = self.add_path_if_needed(name.to_string());
+
+        self.compile_class_inner(&class_name, &methods)?;
+
         Ok(())
     }
 
@@ -1446,159 +1546,15 @@ impl Compiler {
     fn compile_class_inner(
         &mut self,
         name: &Vec<String>,
-        parent: &Option<ParentDec>,
         methods: &Vec<Method>,
-        members: &Vec<ir::Member>,
-        static_members: &Vec<ir::StaticMember>,
     ) -> Result<(), CompilerError> {
-        for method in methods.iter() {
-            let Method {
-                parameters,
-                ..
-            } = method;
-            parameters.iter().for_each(|param| {
-                match param {
-                    Parameter::Pattern { ty, .. } => {
-                        match ty {
-                            Type::Function(..) => {
-                                self.create_function_class_from_type(ty);
-                            }
-                            _ => {}
-                        }
-                    }
-                    _ => {}
-                }
-            });
-        }
+
         
-        let mut partial_class = PartialClass::new();
-        let path_name = name.join("::");
-        partial_class.set_name(&path_name);
+        let mut partial_class = self.classes.get(name).cloned().unwrap();
 
-        let parent_vtables = parent.as_ref().map(|parent_name| {
-            let path = self.add_path_if_needed(parent_name.name.clone().to_string());
-            let partial_class = self.classes.get(&path).expect("Order of files is wrong");
-            let vtables = partial_class.get_vtables(&path);
-            vtables.into_iter().map(|(table, names, signatures)| {
-                let class_name = partial_class.index_string_table(table.class_name).split("::")
-                    .map(|name| name.to_string()).collect::<Vec<String>>();
-                let source_class = if table.sub_class_name == 0 {
-                    None
-                } else {
-                    Some(partial_class.index_string_table(table.sub_class_name))
-                };
-                (class_name, source_class, table, names, signatures)
-            }).collect::<Vec<_>>()
+        self.compile_methods(name, &mut partial_class, methods)?;
 
-        });
-        
-        parent.as_ref().map(|parent| {
-            let path = self.add_path_if_needed(parent.name.clone().to_string()).join("::");
-            partial_class.set_parent(&path);
-        });
-
-        let (
-            vtable,
-            names,
-            signatures,
-            static_method_map,
-            static_signatures,
-        ) = self.construct_vtable(&name, &methods)?;
-
-        partial_class.add_signatures(static_signatures);
-
-        partial_class.set_static_method_to_sig(static_method_map);
-
-        if vtable.functions.len() != 0 {
-            partial_class.add_vtable(&name, vtable, &names, &signatures);
-        } else {
-            drop(vtable);
-            drop(names);
-            drop(signatures);
-        }
-
-        if parent.is_none() {
-            let object_class = self.classes.get(&vec!["core".to_string(), "Object".to_string()]).expect("Object not added to known classes");
-
-            let vtables = object_class.get_vtables(&[
-                String::from("core"),
-                String::from("Object"),
-            ]);
-            let (vtable, names, signatures) = &vtables[0];
-            let names = names.iter()
-                .map(|n| n.clone())
-                .collect::<Vec<String>>();
-
-            let vtable = vtable.clone();
-
-            partial_class.add_vtable(&vec![String::from("core"), String::from("Object")], vtable, &names, signatures);
-            partial_class.set_parent("core::Object");
-        }
-
-        if let Some(vtables) = parent_vtables {
-            for (class_name, source_class, vtable, names, signatures) in vtables {
-                let names = names.into_iter()
-                    .map(|n| self.add_path_if_needed(n).join("::"))
-                    .collect::<Vec<String>>();
-                let class_name = if let Some(source) = source_class {
-                    let path = self.add_path_if_needed(source.to_string());
-                    path
-                } else {
-                    class_name
-                };
-                partial_class.add_vtable(&class_name, vtable.clone(), &names, &signatures);
-            }
-        }
-
-        members.into_iter().map(|member| {
-            (member.name.clone(), Member::new(self.convert_type(&member.ty)))
-        }).for_each(|(name, member)| {
-            partial_class.add_member(member, name);
-        });
-
-        let mut static_init_bytecode = Vec::new();
-        static_init_bytecode.push(Bytecode::StartBlock(0));
-
-        let class_name = name;
-        static_members.into_iter().map(|member| {
-            let new_ty = self.convert_type(&member.ty);
-            (&member.name, StaticMember::new(member.is_const, new_ty), &member.value)
-        })
-            .collect::<Vec<(&Text, StaticMember, &Option<Expression>)>>()
-            .into_iter()
-            .enumerate()
-            .flat_map(|(i, (name, member, value))| {
-                let ty = member.type_tag.clone();
-                let mut member_name = class_name.clone();
-                member_name.push(name.to_string());
-                let name = member_name.join("::");
-                partial_class.add_static_member(member, name);
-                value.as_ref().map(|value| {
-                    self.compile_expression(
-                        &class_name,
-                        &mut partial_class,
-                        &value,
-                        &mut static_init_bytecode,
-                        true
-                    ).map(|_| {
-                        let index = partial_class.add_string(&class_name.join("::"));
-                        static_init_bytecode.push(Bytecode::SetStaticMember(index, i as u64, ty));
-                        Ok::<(), CompilerError>(())
-                    })
-                })
-            }).collect::<Result<Result<(), CompilerError>, CompilerError>>()??;
-
-        static_init_bytecode.push(Bytecode::ReturnVoid);
-
-        let static_init_bytecode = static_init_bytecode.into_iter().flat_map(|code| {
-            code.into_binary()
-        }).collect::<Vec<_>>();
-
-        partial_class.attach_static_init_bytecode(static_init_bytecode).expect("attaching bytecode error");
-
-        self.compile_methods(&class_name, &mut partial_class, methods)?;
-
-        self.classes.insert(class_name.clone(), partial_class);
+        self.classes.insert(name.clone(), partial_class);
 
         Ok(())
     }
