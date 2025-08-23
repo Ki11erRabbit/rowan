@@ -238,10 +238,12 @@ impl<'a> CurrentCompilationUnit<'a> {
                 class.get_method_entry(method_name.as_ref())
             }
             CurrentCompilationUnit::Interface(interface) => {
-                interface.get_method_entry(method_name.as_ref()).ok_or(PartialClassError::MethodNotNotFound(method_name.as_ref().to_string()))
+                interface.get_method_entry(method_name.as_ref())
+                    .ok_or(PartialClassError::MethodNotNotFound(method_name.as_ref().to_string()))
             }
             CurrentCompilationUnit::InterfaceImpl(r#impl) => {
-                r#impl.get_method_entry(method_name.as_ref()).ok_or(PartialClassError::MethodNotNotFound(method_name.as_ref().to_string()))
+                r#impl.get_method_entry(method_name.as_ref())
+                    .ok_or(PartialClassError::MethodNotNotFound(method_name.as_ref().to_string()))
             }
         }
     }

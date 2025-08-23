@@ -122,6 +122,7 @@ impl PartialClass {
     }
 
     pub fn get_method_entry(&self, method_name: impl AsRef<str>) -> Result<VTableEntry, PartialClassError> {
+        //println!("{}: {:#?}", method_name.as_ref(), self.method_to_function);
         let vtable = self.get_vtable(method_name.as_ref())?;
 
         let vtable_indices = self.method_to_function.get(method_name.as_ref()).ok_or(PartialClassError::MethodNotNotFound(method_name.as_ref().to_string()))?;

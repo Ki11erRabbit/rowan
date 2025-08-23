@@ -508,6 +508,14 @@ impl TypeChecker {
     }
 
     fn check_files<'a>(&mut self, mut files: Vec<File<'a>>) -> Result<Vec<File<'a>>, TypeCheckerError> {
+        // Load all files into the typechecker
+        for file in files.iter() {
+            let module: Vec<String> = file.path.segments.iter().map(ToString::to_string).collect();
+            self.active_module = module.clone();
+
+            self.load_content(file.content.iter(), &module)?;
+        }
+        
         for file in files.iter_mut() {
             self.check_file(file)?;
             self.active_paths.clear();
@@ -548,7 +556,7 @@ impl TypeChecker {
         });
         self.active_module = module.clone();
 
-        self.load_content(file.content.iter(), &module)?;
+        //self.load_content(file.content.iter(), &module)?;
 
         for content in file.content.iter_mut() {
             match content {
@@ -610,6 +618,8 @@ impl TypeChecker {
                         _ => todo!("allow for more types to be in trait impl implementer slot"),
                     };
                     
+                    println!("{:?}", trait_path);
+                    println!("{:#?}", self.trait_decl);
                     let (parents, attrs) = self.trait_decl.get(&trait_path)
                         .expect("TODO: handle missing trait decl");
                     let parents = parents.iter()

@@ -162,10 +162,10 @@ fn main() {
 
 
 
-    /*class_files.iter().for_each(|(path, file, _)| {
+    class_files.iter().for_each(|(path, file, _)| {
         println!("path: {:?}", path);
         //println!("file: {:#?}", file);
-    });*/
+    });
 
     let class_files = class_files.into_iter().map(|(_, file, _)| file).collect();
 

@@ -691,7 +691,6 @@ impl Compiler {
             module
         } else if let Some(class) = self.classes.get(&vec![class.clone()]) {
             let result = class.get_class_name();
-            println!("{result:?}");
             result
         } else {
             let mut module = self.current_module.clone();
@@ -1455,6 +1454,8 @@ impl Compiler {
                     };
                     modifier_string.push_str(modifier);
                 }
+                
+                let name = format!("{name}{modifier_string}");
 
                 let mut new_path = path_name.clone();
                 new_path.last_mut().unwrap().push_str(&modifier_string);
@@ -1489,13 +1490,15 @@ impl Compiler {
                         }
                         _ => unreachable!("Trait parent Parent can only be Object or TypeArg"),
                     };
+                    println!("name: {}", name);
                     self.add_path_if_needed(name)
                 }).collect::<Vec<_>>();
+                
 
                 self.load_trait_inner(&new_path, &methods)?;
-                self.interface_parents.insert(path_name.clone(), parent_paths);
+                self.interface_parents.insert(new_path.clone(), parent_paths);
                 traits.push((Trait {
-                    name: Text::Owned(path_name.join("::")),
+                    name: Text::Owned(new_path.join("::")),
                     parents: parents.clone(),
                     methods: methods.clone(),
                     type_params: Vec::new(),
@@ -1819,7 +1822,7 @@ impl Compiler {
 
 
 
-                self.load_trait_impl_inner(&implementer_name, &trait_name, &methods)?;
+                self.load_trait_impl_inner(&trait_name, &implementer_name, &methods)?;
                 trait_impls.push((TraitImpl {
                     r#trait: Type::Object(Text::Owned(trait_name.join("::")), Span::new(0,0)),
                     implementer: Type::Object(Text::Owned(implementer_name.join("::")), Span::new(0,0)),
@@ -2204,7 +2207,6 @@ impl Compiler {
                     self.compile_expression(class_name, partial_class, &expr, output, false)?;
                 }
                 Statement::Let { bindings, value, .. } => {
-                    println!("{value:?}");
                     self.compile_expression(class_name, partial_class, &value, output, false)?;
                     match bindings {
                         Pattern::Variable(var, _, _) => {
@@ -2856,7 +2858,7 @@ impl Compiler {
         let (class_name, parent_name) = if class.contains_field(field.to_string().as_str()) {
             (class.get_class_name(), Vec::new())
         } else {
-            println!("object: {object:?} field: {field}");
+            //println!("object: {object:?} field: {field}");
             let Some((name, parent)) = class.find_class_with_field(self, field.to_string().as_str()) else {
                 todo!("report error about being unable to find field")
             };
@@ -2949,9 +2951,7 @@ impl Compiler {
             _ => todo!("report error about method output not being an object: {:?} {:?}", object, field),
         };
 
-        println!("name: {:?}", name);
         let class = self.classes.get(&name).unwrap();
-        println!("{field}");
         let (class_name, parent_name) = if class.contains_field(field.to_string().as_str()) {
             (class.get_class_name(), Vec::new())
         } else {
@@ -2994,7 +2994,6 @@ impl Compiler {
         let (name, ty) = 'setup_args: loop {
             let (name, ty, var): (&PathName, Vec<String>, Text) = match name.as_ref() {
                 Expression::MemberAccess { object, field, .. } => {
-                    println!("{field}");
                     match object.as_ref() {
                         Expression::Variable(var, Type::Object(ty, _), _) => {
                             let path = self.add_path_if_needed(ty.to_string());
@@ -3280,14 +3279,13 @@ impl Compiler {
             output.push(Bytecode::StoreArgument(args.len() as u8));
         }
 
-        println!("{ty:?} {class_name:?}");
-        if ty == *class_name {
+        //println!("{ty:?} {class_name:?}");
+        if ty == partial_class.get_class_name() {
 
             let mut method_name = class_name.clone();
             method_name.push(name.to_string());
 
             let name = method_name.join("::");
-
             let vtable = partial_class.get_vtable(&name).expect("add proper handling of missing vtable").clone();
             let method_entry = partial_class.get_method_entry(&name).expect("add proper handling of missing method");
 
