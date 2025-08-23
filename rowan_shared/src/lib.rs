@@ -1,3 +1,7 @@
+use crate::classfile::ClassFile;
+use crate::interfacefile::InterfaceFile;
+use crate::interfaceimplfile::InterfaceImplFile;
+
 pub mod bytecode;
 pub mod classfile;
 pub mod interfacefile;
@@ -79,5 +83,37 @@ pub fn identify_file(binary: &[u8]) -> FileType {
         1 => FileType::Interface,
         2 => FileType::InterfaceImpl,
         _ => unreachable!(),
+    }
+}
+
+pub enum RowanClassFile {
+    ClassFile(ClassFile),
+    InterfaceFile(InterfaceFile),
+    InterfaceImplFile(InterfaceImplFile),
+}
+
+impl From<ClassFile> for RowanClassFile {
+    fn from(file: ClassFile) -> Self {
+        Self::ClassFile(file)
+    }
+}
+
+impl From<InterfaceFile> for RowanClassFile {
+    fn from(file: InterfaceFile) -> Self {
+        Self::InterfaceFile(file)
+    }
+}
+
+impl From<InterfaceImplFile> for RowanClassFile {
+    fn from(file: InterfaceImplFile) -> Self {
+        Self::InterfaceImplFile(file)
+    }
+}
+
+pub fn load_binary(binary: &[u8]) -> RowanClassFile {
+    match identify_file(binary) {
+        FileType::Class => RowanClassFile::from(ClassFile::from(binary)),
+        FileType::Interface => RowanClassFile::from(InterfaceFile::from(binary)),
+        FileType::InterfaceImpl => RowanClassFile::from(InterfaceImplFile::from(binary)),
     }
 }

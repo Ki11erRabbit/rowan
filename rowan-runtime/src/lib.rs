@@ -1,6 +1,7 @@
 use std::{collections::HashMap, io::Read};
 use std::path::PathBuf;
 use rowan_shared::classfile::ClassFile;
+use rowan_shared::RowanClassFile;
 use runtime::{core, Runtime};
 use crate::context::BytecodeContext;
 use crate::runtime::garbage_collection::{GarbageCollection};
@@ -24,13 +25,25 @@ pub extern "C" fn rowan_main() {
         return
     }
 
-    let (classes, paths): (Vec<ClassFile>, Vec<PathBuf>) = args[1..].iter().map(|f| {
+    let (class_files, paths): (Vec<RowanClassFile>, Vec<PathBuf>) = args[1..].iter().map(|f| {
         //println!("{}", f);
         let mut file = std::fs::File::open(f).unwrap();
         let mut output = Vec::new();
         file.read_to_end(&mut output).unwrap();
-        (ClassFile::new(&output), PathBuf::from(f))
+        (rowan_shared::load_binary(&output), PathBuf::from(f))
     }).unzip();
+    
+    let mut classes = Vec::new();
+    let mut interfaces = Vec::new();
+    let mut interface_impls = Vec::new();
+    
+    for class_file in class_files {
+        match class_file {
+            RowanClassFile::ClassFile(class) => classes.push(class),
+            RowanClassFile::InterfaceFile(interface) => interfaces.push(interface),
+            RowanClassFile::InterfaceImplFile(interface_impl) => interface_impls.push(interface_impl),
+        }
+    }
 
     let paths = paths.into_iter()
         .map(|mut f| {
