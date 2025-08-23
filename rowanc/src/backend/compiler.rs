@@ -1052,6 +1052,53 @@ impl Compiler {
                 file.write_all(&bytes).unwrap();
             }
         }
+
+        for (path, file) in self.interfaces.into_iter() {
+            let file = file.create_interface_file();
+            let mut file_path = PathBuf::new();
+            file_path.push("output");
+            let path_len = path.len();
+            for (i, item) in path.into_iter().enumerate() {
+                if i < path_len - 1 {
+                    file_path.push(item);
+                } else {
+                    file_path.push(format!("{}.class", item));
+                }
+            }
+            
+            let bytes = file.as_binary();
+            if let Some(parents) = file_path.parent() {
+                let _ = std::fs::create_dir_all(parents);
+            }
+            let _ = std::fs::remove_file(&file_path);
+            let mut file = std::fs::File::create(file_path).unwrap();
+            file.write_all(&bytes).unwrap();
+        }
+
+        for (path, impls) in self.interface_impls.into_iter() {
+            
+            for (r#trait, file) in impls.into_iter() {
+                let file = file.create_interface_file();
+                let last_path = path.last().unwrap();
+                let last_trait = r#trait.last().unwrap();
+                
+                let last_file = format!("{last_trait}{last_path}.class");
+                let mut file_path = PathBuf::new();
+                file_path.push("output");
+                for item in path[0..(path.len() - 1)].iter() {
+                    file_path.push(item);
+                }
+                file_path.push(last_file);
+
+                let bytes = file.as_binary();
+                if let Some(parents) = file_path.parent() {
+                    let _ = std::fs::create_dir_all(parents);
+                }
+                let _ = std::fs::remove_file(&file_path);
+                let mut file = std::fs::File::create(file_path).unwrap();
+                file.write_all(&bytes).unwrap();
+            }
+        }
         Ok(())
     }
 
@@ -1872,7 +1919,7 @@ impl Compiler {
         name: &Vec<String>,
         methods: &Vec<Method>,
     ) -> Result<(), CompilerError> {
-        
+
         let mut partial_class = self.classes.get(name).cloned().unwrap();
 
         self.compile_methods(name, &mut CurrentCompilationUnit::Class(&mut partial_class), methods)?;
@@ -1881,24 +1928,24 @@ impl Compiler {
 
         Ok(())
     }
-    
+
     fn compile_interface(&mut self, interface: Trait, type_args: HashMap<String, TypeTag>) -> Result<(), CompilerError> {
         let Trait {
-            name, 
-            methods, 
+            name,
+            methods,
             ..
         } = interface;
-        
+
         let name = self.add_path_if_needed(name.to_string());
-        
+
         let mut partial_interface = self.interfaces.get(&name).cloned().unwrap();
-        
+
         self.current_type_args = type_args;
-        
+
         self.compile_methods(&name, &mut CurrentCompilationUnit::Interface(&mut partial_interface), &methods)?;
-        
+
         self.interfaces.insert(name.clone(), partial_interface);
-        
+
         Ok(())
     }
 
@@ -1910,6 +1957,7 @@ impl Compiler {
             ..
         } = interface;
         
+
         let Type::Object(trait_name, ..) = r#trait else {
             unreachable!("There should only be objects here");
         };
@@ -2223,7 +2271,7 @@ impl Compiler {
     fn compile_expression<'a>(
         &mut self,
         class_name: &Vec<String>,
-        partial_class: &mut CurrentCompilationUnit, 
+        partial_class: &mut CurrentCompilationUnit,
         expr: &'a Expression,
         output: &mut Vec<Bytecode>,
         lhs : bool,
@@ -3440,7 +3488,7 @@ impl Compiler {
         let current_block: u64 = self.current_block;
         let method_returned: bool = self.method_returned;
         let current_block_returned: bool = self.current_block_returned;
-        
+
         let mut results = self.load_class_part(class)?;
         let Some((class, type_args)) = results.pop() else {
             unreachable!("we should have gotten at least one class")

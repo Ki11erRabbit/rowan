@@ -2,6 +2,8 @@ module main;
 
 import std::console::Console;
 
+trait Test {}
+
 class Main {
 
     static thing: u64 = 66666666666;
@@ -48,3 +50,5 @@ class Main {
     }
 
 }
+
+impl Test for Main {}
