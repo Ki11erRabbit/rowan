@@ -71,6 +71,7 @@ impl PartialInterface {
     pub fn set_name(&mut self, name: &str) {
         self.name = self.add_string(name);
         self.vtable.class_name = self.name;
+        self.vtable.sub_class_name = self.name;
     }
 
     pub fn get_interface_name<'a>(&'a self) -> Vec<String> {
@@ -107,7 +108,9 @@ impl PartialInterface {
                 name,
                 signature: index,
                 bytecode: 0,
-            })
+            });
+            
+            self.method_to_function.insert(names[i].as_ref().to_string(), self.vtable.functions.len() - 1);
         }
     }
     

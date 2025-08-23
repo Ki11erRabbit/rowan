@@ -123,7 +123,9 @@ impl PartialInterfaceImpl {
                 name,
                 signature: index,
                 bytecode: 0,
-            })
+            });
+
+            self.method_to_function.insert(names[i].as_ref().to_string(), self.vtable.functions.len() - 1);
         }
     }
 
