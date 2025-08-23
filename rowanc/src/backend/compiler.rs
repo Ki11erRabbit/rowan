@@ -9,7 +9,7 @@ use crate::backend::compiler_utils::partial_interface::PartialInterface;
 use crate::backend::compiler_utils::partial_interface_impl::PartialInterfaceImpl;
 use crate::trees::ir::{ClosureParameter, IfExpression, ParentDec, Trait};
 use crate::trees::{BinaryOperator, PathName, Type, UnaryOperator, Text, Annotation, Span, Visibility};
-use crate::trees::ast::TraitImpl;
+use crate::trees::ir::TraitImpl;
 use super::compiler_utils::{ClassMap, partial_class::{PartialClass, StaticMember}};
 
 
@@ -590,7 +590,7 @@ pub struct Compiler {
     functions: HashMap<String, Vec<String>>,
     closures_under_path: HashMap<String, usize>,
     pub interfaces: HashMap<Vec<String>, PartialInterface>,
-    pub interface_impls: HashMap<Vec<String>, PartialInterfaceImpl>,
+    pub interface_impls: HashMap<Vec<String>, Vec<PartialInterfaceImpl>>,
     interface_parents: HashMap<Vec<String>, Vec<Vec<String>>>,
 }
 
@@ -1013,29 +1013,14 @@ impl Compiler {
             let (classes, interfaces, interface_impls) = self.load_parts(content)?;
 
             self.alter_imports_if_needed();
-            for class in classes {
-                self.compile_class(class)?;
+            for (class, type_args) in classes {
+                self.compile_class(class, type_args)?;
             }
-            for interface in interfaces {
-                self.comfile_interface(interface)?;
+            for (interface, type_args) in interfaces {
+                self.compile_interface(interface, type_args)?;
             }
-            for r#impl in interface_impls {
-                self.compile_interface_impl(r#impl)?;
-            }
-
-            for statement in content {
-                match statement {
-                    TopLevelStatement::Class(class) => {
-                        self.alter_imports_if_needed();
-                        self.compile_class(class)?;
-                    }
-                    TopLevelStatement::Trait(r#trait) => {
-                        
-                    }
-                    TopLevelStatement::TraitImpl(trait_impl) => {
-                        
-                    }
-                }
+            for (r#impl, type_args) in interface_impls {
+                self.compile_interface_impl(r#impl, type_args)?;
             }
         }
 
@@ -1070,7 +1055,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn load_parts(&mut self, content: Vec<TopLevelStatement>) -> Result<(Vec<Class>, Vec<Trait>, Vec<TraitImpl>), CompilerError> {
+    fn load_parts<'a>(&mut self, content: Vec<TopLevelStatement<'a>>) -> Result<(Vec<(Class<'a>, HashMap<String, TypeTag>)>, Vec<(Trait<'a>, HashMap<String, TypeTag>)>, Vec<(TraitImpl<'a>, HashMap<String, TypeTag>)>), CompilerError> {
         let mut class_names = Vec::new();
         let mut interface_names = Vec::new();
         let mut interface_impl_names = Vec::new();
@@ -1090,14 +1075,15 @@ impl Compiler {
                 }
                 TopLevelStatement::Import(import) => {
                     let path = import.path.segments.iter().map(ToString::to_string).collect();
-                    self.active_imports.insert(import.path.segments.last().map(ToString::to_string).unwrap(), path);
+                    let last_part = import.path.segments.last().map(ToString::to_string).unwrap();
+                    self.active_imports.insert(last_part, path);
                 }
             }
         }
         Ok((class_names, interface_names, interface_impl_names))
     }
 
-    fn load_class_part<'a>(&mut self, class: Class<'a>) -> Result<Vec<Class<'a>>, CompilerError> {
+    fn load_class_part<'a>(&mut self, class: Class<'a>) -> Result<Vec<(Class<'a>, HashMap<String, TypeTag>)>, CompilerError> {
         let Class {
             name,
             type_params,
@@ -1111,12 +1097,12 @@ impl Compiler {
 
         let class_name = self.add_path_if_needed(name.to_string());
 
-        let mut classes_to_compile: Vec<Class> = Vec::new();
+        let mut classes_to_compile = Vec::new();
 
         if type_params.is_empty() {
             let new_parents = self.create_new_parent(&parent);
             let name = self.load_class_part_inner(&class_name, &new_parents, &methods, &members, &static_members)?;
-            classes_to_compile.push(class);
+            classes_to_compile.push((class, HashMap::new()));
         } else {
             let mut name_order = Vec::new();
             for type_param in type_params.iter() {
@@ -1164,7 +1150,7 @@ impl Compiler {
                 new_path.last_mut().unwrap().push_str(&modifier_string);
 
                 let name = self.load_class_part_inner(&new_path, &new_parents, &methods, &members, &static_members)?;
-                classes_to_compile.push(Class {
+                classes_to_compile.push((Class {
                     name: Text::Owned(name),
                     parent,
                     members: members.clone(),
@@ -1172,7 +1158,7 @@ impl Compiler {
                     static_members: static_members.clone(),
                     type_params: Vec::new(),
                     span,
-                });
+                }, self.current_type_args.clone()));
             }
         }
 
@@ -1337,7 +1323,7 @@ impl Compiler {
         Ok(path_name)
     }
 
-    fn load_trait_part<'a>(&mut self, r#trait: Trait<'a>) -> Result<Vec<Trait<'a>>, CompilerError> {
+    fn load_trait_part<'a>(&mut self, r#trait: Trait<'a>) -> Result<Vec<(Trait<'a>, HashMap<String, TypeTag>)>, CompilerError> {
         let Trait {
             name,
             parents,
@@ -1378,13 +1364,13 @@ impl Compiler {
                 self.add_path_if_needed(name)
             }).collect::<Vec<_>>();
             self.interface_parents.insert(path_name.clone(), parent_paths);
-            traits.push(Trait {
+            traits.push((Trait {
                 name: Text::Owned(path_name.join("::")),
                 parents,
                 methods,
                 type_params,
                 span
-            });
+            }, HashMap::new()));
         } else {
             let mut name_order = Vec::new();
             for type_param in type_params.iter() {
@@ -1403,11 +1389,11 @@ impl Compiler {
 
             for permutation in permutations {
                 let mut modifier_string = String::new();
-                for (name, typ) in name_order.iter().zip(permutation.into_iter()) {
+                for (name, typ) in name_order.iter().zip(permutation.iter()) {
                     if let Some(value) = self.current_type_args.get_mut(name) {
-                        *value = typ;
+                        *value = typ.clone();
                     } else {
-                        self.current_type_args.insert(name.to_string(), typ);
+                        self.current_type_args.insert(name.to_string(), typ.clone());
                     }
                     let modifier = match typ {
                         TypeTag::I8 => "8",
@@ -1428,7 +1414,7 @@ impl Compiler {
                 let parent_paths = parents.iter().map(|p| {
                     let name = match p {
                         Type::Object(name, ..) => name.to_string(),
-                        Type::TypeArg(obj, args) => {
+                        Type::TypeArg(obj, args, ..) => {
                             let Type::Object(name, ..) = obj.as_ref() else {
                                 unreachable!("Trait parent TypeArg can only be object")
                             };
@@ -1447,6 +1433,7 @@ impl Compiler {
                                     (Type::F32, TypeTag::F32) => name.push_str("f32"),
                                     (Type::F64, TypeTag::F64) => name.push_str("f64"),
                                     (_, TypeTag::Object) => name.push_str("object"),
+                                    _ => unreachable!("bizarre possible type"),
                                 }
                             }
                             
@@ -1459,13 +1446,13 @@ impl Compiler {
 
                 self.load_trait_inner(&new_path, &methods)?;
                 self.interface_parents.insert(path_name.clone(), parent_paths);
-                traits.push(Trait {
+                traits.push((Trait {
                     name: Text::Owned(path_name.join("::")),
                     parents: parents.clone(),
                     methods: methods.clone(),
                     type_params: Vec::new(),
                     span
-                });
+                }, self.current_type_args.clone()));
             }
         }
 
@@ -1474,6 +1461,8 @@ impl Compiler {
 
     fn load_trait_inner(&mut self, name: &Vec<String>, methods: &Vec<Method>) -> Result<(), CompilerError> {
         let mut partial_interface = PartialInterface::new();
+        
+        partial_interface.set_name(&name.join("::"));
 
         let (
             _,
@@ -1489,8 +1478,337 @@ impl Compiler {
 
         Ok(())
     }
+    
+    fn load_trait_impl_part<'a>(&mut self, r#impl: TraitImpl<'a>) -> Result<Vec<(TraitImpl<'a>, HashMap<String, TypeTag>)>, CompilerError> {
+        let mut trait_impls = Vec::new();
+        
+        let TraitImpl {
+            r#trait, 
+            implementer, 
+            methods, 
+            type_params, 
+            span
+        } = r#impl;
+        
+        if type_params.is_empty() {
+            let (implementer_name, trait_name) = match (implementer, r#trait) {
+                (Type::Object(r#impl, ..), Type::Object(r#trait, ..)) => {
+                    (self.add_path_if_needed(r#impl.to_string()), self.add_path_if_needed(r#trait.to_string()))
+                }
+                (Type::Object(r#impl, ..), Type::TypeArg(object, args, ..)) => {
+                    let Type::Object(r#trait, ..) = object.as_ref() else {
+                        unreachable!("trait name TypeArg can only be Object");
+                    };
+                    let mut r#trait = r#trait.to_string();
+                    for arg in args.iter() {
+                        match arg {
+                            Type::U8 | Type::I8 | Type::Boolean => {
+                                r#trait.push('8');
+                            }
+                            Type::U16 | Type::I16 => {
+                                r#trait.push_str("16");
+                            }
+                            Type::U32 | Type::I32 => {
+                                r#trait.push_str("32");
+                            }
+                            Type::U64 | Type::I64 => {
+                                r#trait.push_str("64");
+                            }
+                            Type::F32 => {
+                                r#trait.push_str("f32");
+                            }
+                            Type::F64 => {
+                                r#trait.push_str("f64");
+                            }
+                            _ => {
+                                r#trait.push_str("object");
+                            }
+                        }
+                    }
 
-    fn compile_class(&mut self, class: Class) -> Result<(), CompilerError> {
+                    (self.add_path_if_needed(r#impl.to_string()), self.add_path_if_needed(r#trait.to_string()))
+                }
+                _ => unreachable!("weird state for trait impl to be in"),
+            };
+
+            self.load_trait_impl_inner(&trait_name, &implementer_name, &methods)?;
+            trait_impls.push((TraitImpl {
+                r#trait: Type::Object(Text::Owned(trait_name.join("::")), Span::new(0,0)),
+                implementer: Type::Object(Text::Owned(implementer_name.join("::")), Span::new(0,0)),
+                methods,
+                type_params,
+                span,
+            }, HashMap::new()));
+        } else {
+            let mut name_order = Vec::new();
+            for type_param in type_params.iter() {
+                name_order.push(type_param.name.to_string());
+            }
+
+            let permutations = vec![
+                TypeTag::I8,
+                TypeTag::I16,
+                TypeTag::I32,
+                TypeTag::I64,
+                TypeTag::F32,
+                TypeTag::F64,
+                TypeTag::Object,
+            ].into_iter().permutations(type_params.len()).collect::<Vec<_>>();
+
+            for permutation in permutations {
+                let mut modifier_string = String::new();
+                for (name, typ) in name_order.iter().zip(permutation.iter()) {
+                    if let Some(value) = self.current_type_args.get_mut(name) {
+                        *value = typ.clone();
+                    } else {
+                        self.current_type_args.insert(name.to_string(), typ.clone());
+                    }
+                    let modifier = match typ {
+                        TypeTag::I8 => "8",
+                        TypeTag::I16 => "16",
+                        TypeTag::I32 => "32",
+                        TypeTag::I64 => "64",
+                        TypeTag::F32 => "f32",
+                        TypeTag::F64 => "f64",
+                        TypeTag::Object => "object",
+                        _ => unreachable!("bizarre possible type"),
+                    };
+                    modifier_string.push_str(modifier);
+                }
+
+                let (implementer_name, trait_name) = match (implementer.clone(), r#trait.clone()) {
+                    (Type::Object(r#impl, ..), Type::Object(r#trait, ..)) => {
+                        (self.add_path_if_needed(r#impl.to_string()), self.add_path_if_needed(r#trait.to_string()))
+                    }
+                    (Type::Object(r#impl, ..), Type::TypeArg(object, args, ..)) => {
+                        let Type::Object(r#trait, ..) = object.as_ref() else {
+                            unreachable!("trait name TypeArg can only be Object");
+                        };
+                        let mut r#trait = r#trait.to_string();
+                        for arg in args.iter() {
+                            match arg {
+                                Type::U8 | Type::I8 | Type::Boolean => {
+                                    r#trait.push('8');
+                                }
+                                Type::U16 | Type::I16 => {
+                                    r#trait.push_str("16");
+                                }
+                                Type::U32 | Type::I32 => {
+                                    r#trait.push_str("32");
+                                }
+                                Type::U64 | Type::I64 => {
+                                    r#trait.push_str("64");
+                                }
+                                Type::F32 => {
+                                    r#trait.push_str("f32");
+                                }
+                                Type::F64 => {
+                                    r#trait.push_str("f64");
+                                }
+                                Type::Object(name, ..) => {
+                                    if let Some(type_arg) = self.current_type_args.get(name.as_str()) {
+                                        match type_arg {
+                                            TypeTag::U8 | TypeTag::I8 => {
+                                                r#trait.push('8');
+                                            }
+                                            TypeTag::U16 | TypeTag::I16 => {
+                                                r#trait.push_str("16");
+                                            }
+                                            TypeTag::U32 | TypeTag::I32 => {
+                                                r#trait.push_str("32");
+                                            }
+                                            TypeTag::U64 | TypeTag::I64 => {
+                                                r#trait.push_str("64");
+                                            }
+                                            TypeTag::F32 => {
+                                                r#trait.push_str("f32");
+                                            }
+                                            TypeTag::F64 => {
+                                                r#trait.push_str("f64");
+                                            }
+                                            TypeTag::Object => {
+                                                r#trait.push_str("object");
+                                            }
+                                            _ => unreachable!("bizarre possible type"),
+                                        }
+                                    } else {
+                                        r#trait.push_str("object");
+                                    }
+                                }
+                                _ => {
+                                    r#trait.push_str("object");
+                                }
+                            }
+                        }
+
+                        (self.add_path_if_needed(r#impl.to_string()), self.add_path_if_needed(r#trait.to_string()))
+                    }
+                    (Type::TypeArg(impl_obj, impl_args, ..), Type::TypeArg(trait_object, trait_args, ..)) => {
+                        let Type::Object(r#impl, ..) = impl_obj.as_ref() else {
+                            unreachable!("Trait Impl parent can only be object in TypeArg");
+                        };
+                        let mut r#impl = r#impl.to_string();
+                        for arg in impl_args.iter() {
+                            match arg {
+                                Type::U8 | Type::I8 | Type::Boolean => {
+                                    r#impl.push('8');
+                                }
+                                Type::U16 | Type::I16 => {
+                                    r#impl.push_str("16");
+                                }
+                                Type::U32 | Type::I32 => {
+                                    r#impl.push_str("32");
+                                }
+                                Type::U64 | Type::I64 => {
+                                    r#impl.push_str("64");
+                                }
+                                Type::F32 => {
+                                    r#impl.push_str("f32");
+                                }
+                                Type::F64 => {
+                                    r#impl.push_str("f64");
+                                }
+                                Type::Object(name, ..) => {
+                                    if let Some(type_arg) = self.current_type_args.get(name.as_str()) {
+                                        match type_arg {
+                                            TypeTag::U8 | TypeTag::I8 => {
+                                                r#impl.push('8');
+                                            }
+                                            TypeTag::U16 | TypeTag::I16 => {
+                                                r#impl.push_str("16");
+                                            }
+                                            TypeTag::U32 | TypeTag::I32 => {
+                                                r#impl.push_str("32");
+                                            }
+                                            TypeTag::U64 | TypeTag::I64 => {
+                                                r#impl.push_str("64");
+                                            }
+                                            TypeTag::F32 => {
+                                                r#impl.push_str("f32");
+                                            }
+                                            TypeTag::F64 => {
+                                                r#impl.push_str("f64");
+                                            }
+                                            TypeTag::Object => {
+                                                r#impl.push_str("object");
+                                            }
+                                            _ => unreachable!("bizarre possible type"),
+                                        }
+                                    } else {
+                                        r#impl.push_str("object");
+                                    }
+                                }
+                                _ => {
+                                    r#impl.push_str("object");
+                                }
+                            }
+                        }
+                        
+                        let Type::Object(r#trait, ..) = trait_object.as_ref() else {
+                            unreachable!("trait name TypeArg can only be Object");
+                        };
+                        let mut r#trait = r#trait.to_string();
+                        for arg in trait_args.iter() {
+                            match arg {
+                                Type::U8 | Type::I8 | Type::Boolean => {
+                                    r#trait.push('8');
+                                }
+                                Type::U16 | Type::I16 => {
+                                    r#trait.push_str("16");
+                                }
+                                Type::U32 | Type::I32 => {
+                                    r#trait.push_str("32");
+                                }
+                                Type::U64 | Type::I64 => {
+                                    r#trait.push_str("64");
+                                }
+                                Type::F32 => {
+                                    r#trait.push_str("f32");
+                                }
+                                Type::F64 => {
+                                    r#trait.push_str("f64");
+                                }
+                                Type::Object(name, ..) => {
+                                    if let Some(type_arg) = self.current_type_args.get(name.as_str()) {
+                                        match type_arg {
+                                            TypeTag::U8 | TypeTag::I8 => {
+                                                r#trait.push('8');
+                                            }
+                                            TypeTag::U16 | TypeTag::I16 => {
+                                                r#trait.push_str("16");
+                                            }
+                                            TypeTag::U32 | TypeTag::I32 => {
+                                                r#trait.push_str("32");
+                                            }
+                                            TypeTag::U64 | TypeTag::I64 => {
+                                                r#trait.push_str("64");
+                                            }
+                                            TypeTag::F32 => {
+                                                r#trait.push_str("f32");
+                                            }
+                                            TypeTag::F64 => {
+                                                r#trait.push_str("f64");
+                                            }
+                                            TypeTag::Object => {
+                                                r#trait.push_str("object");
+                                            }
+                                            _ => unreachable!("bizarre possible type"),
+                                        }
+                                    } else {
+                                        r#trait.push_str("object");
+                                    }
+                                }
+                                _ => {
+                                    r#trait.push_str("object");
+                                }
+                            }
+                        }
+
+                        (self.add_path_if_needed(r#impl.to_string()), self.add_path_if_needed(r#trait.to_string()))
+                    }
+                    _ => unreachable!("weird state for trait impl to be in"),
+                };
+                
+                
+
+                self.load_trait_impl_inner(&implementer_name, &trait_name, &methods)?;
+                trait_impls.push((TraitImpl {
+                    r#trait: Type::Object(Text::Owned(trait_name.join("::")), Span::new(0,0)),
+                    implementer: Type::Object(Text::Owned(implementer_name.join("::")), Span::new(0,0)),
+                    methods: methods.clone(),
+                    type_params: Vec::new(),
+                    span
+                }, self.current_type_args.clone()));
+            }
+        }
+        
+        Ok(trait_impls)
+    }
+    
+    fn load_trait_impl_inner(&mut self, trait_name: &Vec<String>, implementer_name: &Vec<String>, methods: &Vec<Method>) -> Result<(), CompilerError> {
+        let mut partial_interface_impl = PartialInterfaceImpl::new();
+        
+        partial_interface_impl.set_implementer_name(&implementer_name.join("::"));
+        partial_interface_impl.set_interface_name(&trait_name.join("::"));
+
+        let (
+            _,
+            names,
+            signatures,
+            _,
+            _,
+        ) = self.construct_vtable(&trait_name, &methods)?;
+
+        partial_interface_impl.add_functions(&names, &signatures);
+
+        self.interface_impls.entry(implementer_name.clone())
+            .and_modify(|interfaces| interfaces.push(partial_interface_impl.clone()))
+            .or_insert(vec![partial_interface_impl]);
+        
+        Ok(())
+    }
+
+    fn compile_class(&mut self, class: Class, type_args: HashMap<String, TypeTag>) -> Result<(), CompilerError> {
         let Class {
             name,
             methods,
@@ -1498,6 +1816,7 @@ impl Compiler {
         } = class;
 
         let class_name = self.add_path_if_needed(name.to_string());
+        self.current_type_args = type_args;
 
         self.compile_class_inner(&class_name, &methods)?;
 

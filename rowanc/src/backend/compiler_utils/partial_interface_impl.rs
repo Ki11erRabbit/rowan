@@ -3,7 +3,7 @@ use std::io::BufRead;
 use rowan_shared::classfile::{BytecodeEntry, BytecodeIndex, SignatureEntry, SignatureIndex, StringEntry, StringIndex, VTable, VTableEntry};
 use rowan_shared::interfaceimplfile::InterfaceImplFile;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PartialInterfaceImpl {
     interface_name: StringIndex,
     implementer_name: StringIndex,
