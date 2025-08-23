@@ -3,7 +3,7 @@ use itertools::Itertools;
 use rowan_shared::classfile::{BytecodeEntry, BytecodeIndex, SignatureEntry, SignatureIndex, StringEntry, StringIndex, VTable, VTableEntry};
 use rowan_shared::interfacefile::InterfaceFile;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PartialInterface {
     name: StringIndex,
     /// Virtual tables

@@ -590,7 +590,7 @@ pub struct Compiler {
     functions: HashMap<String, Vec<String>>,
     closures_under_path: HashMap<String, usize>,
     pub interfaces: HashMap<Vec<String>, PartialInterface>,
-    pub interface_impls: HashMap<Vec<String>, Vec<PartialInterfaceImpl>>,
+    pub interface_impls: HashMap<Vec<String>, HashMap<Vec<String>, PartialInterfaceImpl>>,
     interface_parents: HashMap<Vec<String>, Vec<Vec<String>>>,
 }
 
@@ -1419,7 +1419,7 @@ impl Compiler {
                                 unreachable!("Trait parent TypeArg can only be object")
                             };
                             let mut name = name.to_string();
-                            
+
                             for (arg, typ_arg) in args.iter().zip(permutation.iter()) {
                                 match (arg, typ_arg) {
                                     (Type::U8, TypeTag::U8) => name.push('8'),
@@ -1436,7 +1436,7 @@ impl Compiler {
                                     _ => unreachable!("bizarre possible type"),
                                 }
                             }
-                            
+
                             name
                         }
                         _ => unreachable!("Trait parent Parent can only be Object or TypeArg"),
@@ -1461,7 +1461,7 @@ impl Compiler {
 
     fn load_trait_inner(&mut self, name: &Vec<String>, methods: &Vec<Method>) -> Result<(), CompilerError> {
         let mut partial_interface = PartialInterface::new();
-        
+
         partial_interface.set_name(&name.join("::"));
 
         let (
@@ -1478,18 +1478,18 @@ impl Compiler {
 
         Ok(())
     }
-    
+
     fn load_trait_impl_part<'a>(&mut self, r#impl: TraitImpl<'a>) -> Result<Vec<(TraitImpl<'a>, HashMap<String, TypeTag>)>, CompilerError> {
         let mut trait_impls = Vec::new();
-        
+
         let TraitImpl {
-            r#trait, 
-            implementer, 
-            methods, 
-            type_params, 
+            r#trait,
+            implementer,
+            methods,
+            type_params,
             span
         } = r#impl;
-        
+
         if type_params.is_empty() {
             let (implementer_name, trait_name) = match (implementer, r#trait) {
                 (Type::Object(r#impl, ..), Type::Object(r#trait, ..)) => {
@@ -1703,7 +1703,7 @@ impl Compiler {
                                 }
                             }
                         }
-                        
+
                         let Type::Object(r#trait, ..) = trait_object.as_ref() else {
                             unreachable!("trait name TypeArg can only be Object");
                         };
@@ -1768,8 +1768,8 @@ impl Compiler {
                     }
                     _ => unreachable!("weird state for trait impl to be in"),
                 };
-                
-                
+
+
 
                 self.load_trait_impl_inner(&implementer_name, &trait_name, &methods)?;
                 trait_impls.push((TraitImpl {
@@ -1781,13 +1781,13 @@ impl Compiler {
                 }, self.current_type_args.clone()));
             }
         }
-        
+
         Ok(trait_impls)
     }
-    
+
     fn load_trait_impl_inner(&mut self, trait_name: &Vec<String>, implementer_name: &Vec<String>, methods: &Vec<Method>) -> Result<(), CompilerError> {
         let mut partial_interface_impl = PartialInterfaceImpl::new();
-        
+
         partial_interface_impl.set_implementer_name(&implementer_name.join("::"));
         partial_interface_impl.set_interface_name(&trait_name.join("::"));
 
@@ -1801,10 +1801,14 @@ impl Compiler {
 
         partial_interface_impl.add_functions(&names, &signatures);
 
+        let mut starting_map = HashMap::new();
+        starting_map.insert(trait_name.clone(), partial_interface_impl.clone());
         self.interface_impls.entry(implementer_name.clone())
-            .and_modify(|interfaces| interfaces.push(partial_interface_impl.clone()))
-            .or_insert(vec![partial_interface_impl]);
-        
+            .and_modify(|interfaces| {
+                interfaces.insert(trait_name.clone(), partial_interface_impl.clone());
+            })
+            .or_insert(starting_map);
+
         Ok(())
     }
 
@@ -1874,6 +1878,59 @@ impl Compiler {
         self.compile_methods(name, &mut partial_class, methods)?;
 
         self.classes.insert(name.clone(), partial_class);
+
+        Ok(())
+    }
+    
+    fn compile_interface(&mut self, interface: Trait, type_args: HashMap<String, TypeTag>) -> Result<(), CompilerError> {
+        let Trait {
+            name, 
+            methods, 
+            ..
+        } = interface;
+        
+        let name = self.add_path_if_needed(name.to_string());
+        
+        let partial_interface = self.interfaces.get(&name).cloned().unwrap();
+        
+        self.current_type_args = type_args;
+        
+        self.compile_methods(&name, &mut partial_interface, &methods)?;
+        
+        self.interfaces.insert(name.clone(), partial_interface);
+        
+        Ok(())
+    }
+
+    fn compile_interface_impl(&mut self, interface: TraitImpl, type_args: HashMap<String, TypeTag>) -> Result<(), CompilerError> {
+        let TraitImpl {
+            r#trait,
+            implementer,
+            methods,
+            ..
+        } = interface;
+        
+        let Type::Object(trait_name, ..) = r#trait else {
+            unreachable!("There should only be objects here");
+        };
+        let Type::Object(implementer_name, ..) = implementer else {
+            unreachable!("There should only be objects here");
+        };
+
+        let trait_name = self.add_path_if_needed(trait_name.to_string());
+        let impl_name = self.add_path_if_needed(implementer_name.to_string());
+
+        let partial_interface_impl = self.interface_impls.get(&impl_name)
+            .unwrap()
+            .get(&trait_name)
+            .cloned()
+            .unwrap();
+
+        self.current_type_args = type_args;
+
+        self.compile_methods(&impl_name, &mut partial_interface_impl, &methods)?;
+
+        self.interface_impls.get_mut(&impl_name).unwrap().insert(trait_name, partial_interface_impl);
 
         Ok(())
     }
