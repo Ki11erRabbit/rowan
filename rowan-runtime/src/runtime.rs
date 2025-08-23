@@ -27,8 +27,12 @@ pub mod core;
 pub mod linker;
 pub mod jit;
 pub mod garbage_collection;
+mod interface;
+
 pub use tables::FunctionDetails;
 use crate::runtime::core::StringBuffer;
+use crate::runtime::interface::Interface;
+use crate::runtime::tables::interface_table::InterfaceTable;
 use crate::runtime::tables::native_object_table::NativeObjectTable;
 
 pub type Symbol = usize;
@@ -82,7 +86,7 @@ static JIT_CONTROLLER: LazyLock<RwLock<JITController>> = LazyLock::new(|| {
     RwLock::new(jit_controller)
 });
 
-static CLASS_MAPPER: LazyLock<RwLock<HashMap<String, Symbol>>> = LazyLock::new(|| {
+static CLASS_MAPPER: LazyLock<RwLock<HashMap<&'static str, Symbol>>> = LazyLock::new(|| {
     let map = HashMap::new();
     RwLock::new(map)
 });
@@ -92,9 +96,14 @@ static LIBRARY_TABLE: LazyLock<RwLock<NativeObjectTable>> = LazyLock::new(|| {
     RwLock::new(table)
 });
 
-static STRING_MAP: LazyLock<RwLock<HashMap<String, Symbol>>> = LazyLock::new(|| {
+static STRING_MAP: LazyLock<RwLock<HashMap<&'static str, Symbol>>> = LazyLock::new(|| {
     let map = HashMap::new();
     RwLock::new(map)
+});
+
+static INTERFACE_TABLE: LazyLock<RwLock<InterfaceTable>> = LazyLock::new(|| {
+    let table = InterfaceTable::new();
+    RwLock::new(table)
 });
 
 pub trait StaticMemberAccess<T>: Sized + Default {
@@ -515,6 +524,8 @@ impl Runtime {
         classes: Vec<ClassFile>,
         class_locations: Vec<PathBuf>,
         pre_class_table: &mut Vec<TableEntry<Class>>,
+        pre_interface_table: &mut Vec<TableEntry<Interface>>,
+        interface_map: &mut HashMap<&'static str, Symbol>,
         // The first hashmap is the class symbol which the vtable comes from.
         // The second hashmap is the class that has a custom version of the vtable
         // For example, two matching symbols means that that is the vtable of that particular class
@@ -550,9 +561,11 @@ impl Runtime {
             pre_class_table,
             &mut string_table,
             &mut vtable_tables,
+            pre_interface_table,
             vtables_map,
             &mut string_map,
             class_map.borrow_mut(),
+            interface_map,
             &mut library_table,
         ).unwrap();
 

@@ -2146,8 +2146,11 @@ impl BytecodeContext {
             Bytecode::InvokeStaticTail(..) => {
                 todo!("Tail Recursion Static")
             }
-            Bytecode::GetStaticMethod(..) => {
-                todo!("conversion of a static method into an object")
+            Bytecode::InvokeInterface(..) => {
+                todo!("InvokeInterface")
+            }
+            Bytecode::InvokeInterfaceTail(..) => {
+                todo!("Tail Recursion Interface")
             }
             Bytecode::GetStaticMember(class, index, ty) => {
                 match ty {

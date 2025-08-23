@@ -84,10 +84,18 @@ pub extern "C" fn rowan_main() {
 
     let mut pre_class_table = Vec::new();
     let mut vtables_map = HashMap::new();
+    let mut pre_interface_table = Vec::new();
+    let mut interfaces_map = HashMap::new();
 
     Runtime::link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map);
 
-    let (main_symbol, main_method_symbol) = Runtime::link_classes(classes, paths, &mut pre_class_table, &mut vtables_map);
+    let (main_symbol, main_method_symbol) = Runtime::link_classes(
+        classes, 
+        paths, 
+        &mut pre_class_table, 
+        &mut pre_interface_table,
+        &mut interfaces_map,
+        &mut vtables_map);
 
     Runtime::finish_linking_classes(pre_class_table);
 

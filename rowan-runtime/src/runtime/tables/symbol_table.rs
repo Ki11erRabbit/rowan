@@ -4,6 +4,7 @@ use crate::runtime::Symbol;
 pub enum SymbolEntry {
     StringRef(usize),
     ClassRef(usize),
+    InterfaceRef(usize),
 }
 
 
@@ -28,6 +29,12 @@ impl SymbolTable {
     pub fn add_class(&mut self, index: usize) -> Symbol {
         let out = self.table.len();
         self.table.push(SymbolEntry::ClassRef(index));
+        out
+    }
+    
+    pub fn add_interface(&mut self, index: usize) -> Symbol {
+        let out = self.table.len();
+        self.table.push(SymbolEntry::InterfaceRef(index));
         out
     }
 }

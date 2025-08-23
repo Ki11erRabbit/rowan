@@ -5,6 +5,7 @@ use fxhash::FxHashMap;
 use rowan_shared::classfile::{ClassFile, VTableEntry};
 use rowan_shared::{bytecode, classfile, TypeTag};
 use crate::runtime::class::{ClassMember, ClassMemberData};
+use crate::runtime::interface::{Interface, InterfaceImpl};
 use crate::runtime::object::Object;
 use crate::runtime::tables::native_object_table::NativeObjectTable;
 use super::{class::{self, Class, MemberInfo}, jit::JITController, core::{VMClass, VMMember, VMMethod, VMVTable}, tables::{string_table::StringTable, symbol_table::{SymbolEntry, SymbolTable}, vtable::{Function, FunctionValue, VTable, VTables}}, Symbol, VTableIndex};
@@ -33,12 +34,14 @@ pub fn link_class_files(
     class_table: &mut Vec<TableEntry<Class>>,
     string_table: &mut StringTable,
     vtables_table: &mut VTables,
+    interface_table: &mut Vec<TableEntry<Interface>>,
     // The first hashmap is the class symbol which the vtable comes from.
     // The second hashmap is the class that has a custom version of the vtable
     // For example, two matching symbols means that that is the vtable of that particular class
     vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<TypeTag>, MethodLocation, Box<[bytecode::linked::Bytecode]>, FunctionValue, Signature)>>>,
-    string_map: &mut HashMap<String, Symbol>,
-    class_map: &mut HashMap<String, Symbol>,
+    string_map: &mut HashMap<&'static str, Symbol>,
+    class_map: &mut HashMap<&'static str, Symbol>,
+    interface_map: &mut HashMap<&'static str, Symbol>,
     library_table: &mut NativeObjectTable,
 ) -> Result<(Symbol, Symbol), ()> {
 
@@ -52,14 +55,15 @@ pub fn link_class_files(
             *symbol
         } else {
             let string_table_index = string_table.add_string(name_str);
+            let name_str = string_table.get_string(string_table_index);
             let symbol = symbol_table.add_string(string_table_index);
-            string_map.insert(String::from(name_str), symbol);
+            string_map.insert(name_str, symbol);
 
             let class_table_index = class_table.len();
             class_table.push(TableEntry::Hole);
             let symbol = symbol_table.add_class(class_table_index);
             
-            class_map.insert(String::from(name_str), symbol);
+            class_map.insert(name_str, symbol);
 
             symbol
         };
@@ -79,14 +83,15 @@ pub fn link_class_files(
                     *symbol
                 } else {
                     let string_table_index = string_table.add_string(sub_class_str);
+                    let sub_class_str = string_table.get_string(string_table_index);
                     let symbol = symbol_table.add_string(string_table_index);
-                    string_map.insert(String::from(sub_class_str), symbol);
+                    string_map.insert(sub_class_str, symbol);
 
                     let class_table_index = class_table.len();
                     class_table.push(TableEntry::Hole);
                     let symbol = symbol_table.add_class(class_table_index);
 
-                    class_map.insert(String::from(sub_class_str), symbol);
+                    class_map.insert(sub_class_str, symbol);
                     symbol
                 }
             } else {
@@ -94,14 +99,15 @@ pub fn link_class_files(
                     *symbol
                 } else {
                     let string_table_index = string_table.add_string(class_name_str);
+                    let class_name_str = string_table.get_string(string_table_index);
                     let symbol = symbol_table.add_string(string_table_index);
-                    string_map.insert(String::from(class_name_str), symbol);
+                    string_map.insert(class_name_str, symbol);
 
                     let class_table_index = class_table.len();
                     class_table.push(TableEntry::Hole);
                     let symbol = symbol_table.add_class(class_table_index);
 
-                    class_map.insert(String::from(class_name_str), symbol);
+                    class_map.insert(class_name_str, symbol);
                     symbol
                 }
             };
@@ -111,14 +117,15 @@ pub fn link_class_files(
                     Some(*symbol)
                 } else {
                     let string_table_index = string_table.add_string(sub_class_name_str);
+                    let sub_class_name_str = string_table.get_string(string_table_index);
                     let symbol = symbol_table.add_string(string_table_index);
-                    string_map.insert(String::from(sub_class_name_str), symbol);
+                    string_map.insert(sub_class_name_str, symbol);
 
                     let class_table_index = class_table.len();
                     class_table.push(TableEntry::Hole);
                     let symbol = symbol_table.add_class(class_table_index);
 
-                    class_map.insert(String::from(sub_class_name_str), symbol);
+                    class_map.insert(sub_class_name_str, symbol);
                     Some(symbol)
                 };
                 (Some(sub_class_name_str), symbol)
@@ -134,8 +141,9 @@ pub fn link_class_files(
                     *symbol
                 } else {
                     let string_table_index = string_table.add_string(name_str);
+                    let name_str = string_table.get_string(string_table_index);
                     let symbol = symbol_table.add_string(string_table_index);
-                    string_map.insert(String::from(name_str), symbol);
+                    string_map.insert(name_str, symbol);
                     symbol
                 };
 
@@ -189,8 +197,9 @@ pub fn link_class_files(
                 *symbol
             } else {
                 let string_table_index = string_table.add_string(name_str);
+                let name_str = string_table.get_string(string_table_index);
                 let symbol = symbol_table.add_string(string_table_index);
-                string_map.insert(String::from(name_str), symbol);
+                string_map.insert(name_str, symbol);
                 symbol
             };
 
@@ -242,8 +251,9 @@ pub fn link_class_files(
                 *symbol
             } else {
                 let string_table_index = string_table.add_string(name_str);
+                let name_str = string_table.get_string(string_table_index);
                 let symbol = symbol_table.add_string(string_table_index);
-                string_map.insert(String::from(name_str), symbol);
+                string_map.insert(name_str, symbol);
                 symbol
             };
 
@@ -277,14 +287,15 @@ pub fn link_class_files(
                     *symbol
                 } else {
                     let string_table_index = string_table.add_string(sub_class_str);
+                    let sub_class_str = string_table.get_string(string_table_index);
                     let symbol = symbol_table.add_string(string_table_index);
-                    string_map.insert(String::from(sub_class_str), symbol);
+                    string_map.insert(sub_class_str, symbol);
 
                     let class_table_index = class_table.len();
                     class_table.push(TableEntry::Hole);
                     let symbol = symbol_table.add_class(class_table_index);
 
-                    class_map.insert(String::from(sub_class_str), symbol);
+                    class_map.insert(sub_class_str, symbol);
                     symbol
                 }
             } else {
@@ -292,14 +303,15 @@ pub fn link_class_files(
                     *symbol
                 } else {
                     let string_table_index = string_table.add_string(class_name_str);
+                    let class_name_str = string_table.get_string(string_table_index);
                     let symbol = symbol_table.add_string(string_table_index);
-                    string_map.insert(String::from(class_name_str), symbol);
+                    string_map.insert(class_name_str, symbol);
 
                     let class_table_index = class_table.len();
                     class_table.push(TableEntry::Hole);
                     let symbol = symbol_table.add_class(class_table_index);
 
-                    class_map.insert(String::from(class_name_str), symbol);
+                    class_map.insert(class_name_str, symbol);
                     symbol
                 }
             };
@@ -324,8 +336,9 @@ pub fn link_class_files(
                     *symbol
                 } else {
                     let string_table_index = string_table.add_string(name_str);
+                    let name_str = string_table.get_string(string_table_index);
                     let symbol = symbol_table.add_string(string_table_index);
-                    string_map.insert(String::from(name_str), symbol);
+                    string_map.insert(name_str, symbol);
                     symbol
                 };
 
@@ -382,7 +395,7 @@ pub fn link_class_files(
 
                             let (bytecode, value, sig) = match method_location {
                                 MethodLocation::Bytecode(bytecode) => {
-                                    let bytecode = link_bytecode(class, &bytecode, string_map, class_map, string_table, symbol_table, class_table);
+                                    let bytecode = link_bytecode(class, &bytecode, string_map, class_map, string_table, symbol_table, class_table, interface_table, interface_map);
                                     let value = FunctionValue::Bytecode(func_id);
                                     (bytecode.into(), value, sig)
                                 }
@@ -480,7 +493,7 @@ pub fn link_class_files(
                                     let name = &string_table[*name_index];
                                     let func_id = jit_controller.declare_function(name, &sig).expect("Failed to declare function");
 
-                                    let bytecode = link_bytecode(class, &bytecode, string_map, class_map, string_table, symbol_table, class_table);
+                                    let bytecode = link_bytecode(class, &bytecode, string_map, class_map, string_table, symbol_table, class_table, interface_table, interface_map);
                                     let value = FunctionValue::Bytecode(func_id);
                                     (bytecode.into(), value)
                                 }
@@ -610,7 +623,7 @@ pub fn link_class_files(
                                 (Box::new([]) as Box<[rowan_shared::bytecode::linked::Bytecode]>, value, cranelift_sig)
                             },
                             MethodLocation::Bytecode(code) => {
-                                let bytecode = link_bytecode(class, &code, string_map, class_map, string_table, symbol_table, class_table);
+                                let bytecode = link_bytecode(class, &code, string_map, class_map, string_table, symbol_table, class_table, interface_table, interface_map);
                                 let value = FunctionValue::Bytecode(func_id);
                                 (bytecode.into(), value, cranelift_sig)
                             }
@@ -628,7 +641,7 @@ pub fn link_class_files(
             let vtable_index = vtables_table.add_vtable(vtable);
 
             let static_init = if !static_init.is_empty() {
-                let bytecode = link_bytecode(&class, &static_init, string_map, class_map, string_table, symbol_table, class_table);
+                let bytecode = link_bytecode(&class, &static_init, string_map, class_map, string_table, symbol_table, class_table, interface_table, interface_map);
                 Some(bytecode.into_boxed_slice())
             } else {
                 None
@@ -718,11 +731,13 @@ fn convert_type(tag: &rowan_shared::TypeTag) -> class::TypeTag {
 fn link_bytecode(
     class_file: &ClassFile,
     bytecode: &[u8],
-    string_map: &mut HashMap<String, Symbol>,
-    class_map: &mut HashMap<String, Symbol>,
+    string_map: &mut HashMap<&'static str, Symbol>,
+    class_map: &mut HashMap<&'static str, Symbol>,
     string_table: &mut StringTable,
     symbol_table: &mut SymbolTable,
     class_table: &mut Vec<TableEntry<Class>>,
+    interface_table: &mut Vec<TableEntry<Interface>>,
+    interface_map: &mut HashMap<&'static str, Symbol>,
 ) -> Vec<rowan_shared::bytecode::linked::Bytecode> {
     let mut output = Vec::new();
     let compiled_code: Vec<rowan_shared::bytecode::compiled::Bytecode> =
@@ -1010,10 +1025,8 @@ fn link_bytecode(
 
                 output.push(linked::Bytecode::InvokeStaticTail(class_symbol as u64, method_symbol as u64));
             }
-            compiled::Bytecode::GetStaticMethod(class_index, method_index) => {
-                let class_str = class_file.index_string_table(class_index);
-                let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
-
+            compiled::Bytecode::InvokeInterface(interface_index, method_index) => {
+                let interface_str = class_file.index_string_table(interface_index);
                 let method_str = class_file.index_string_table(method_index);
                 let method_symbol: Symbol = if let Some(index) = string_map.get(method_str) {
                     *index
@@ -1022,8 +1035,43 @@ fn link_bytecode(
                     let symbol = symbol_table.add_string(index);
                     symbol
                 };
-
-                output.push(linked::Bytecode::GetStaticMethod(class_symbol as u64, method_symbol as u64));
+                if let Some(interface_symbol) = interface_map.get(interface_str) {
+                    output.push(linked::Bytecode::InvokeInterface(*interface_symbol as u64, method_symbol as u64));
+                } else {
+                    let index = interface_table.len();
+                    interface_table.push(TableEntry::Hole);
+                    let string_index = string_table.add_string(interface_str);
+                    let const_str = string_table.get_string(string_index);
+                    let string_symbol = symbol_table.add_string(string_index);
+                    let symbol = symbol_table.add_interface(index);
+                    string_map.insert(const_str, string_symbol);
+                    interface_map.insert(const_str, symbol);
+                    output.push(linked::Bytecode::InvokeInterface(symbol as u64, method_symbol as u64));
+                }
+            }
+            compiled::Bytecode::InvokeInterfaceTail(interface_index, method_index) => {
+                let interface_str = class_file.index_string_table(interface_index);
+                let method_str = class_file.index_string_table(method_index);
+                let method_symbol: Symbol = if let Some(index) = string_map.get(method_str) {
+                    *index
+                } else {
+                    let index = string_table.add_string(method_str);
+                    let symbol = symbol_table.add_string(index);
+                    symbol
+                };
+                if let Some(interface_symbol) = interface_map.get(interface_str) {
+                    output.push(linked::Bytecode::InvokeInterfaceTail(*interface_symbol as u64, method_symbol as u64));
+                } else {
+                    let index = interface_table.len();
+                    interface_table.push(TableEntry::Hole);
+                    let string_index = string_table.add_string(interface_str);
+                    let const_str = string_table.get_string(string_index);
+                    let string_symbol = symbol_table.add_string(string_index);
+                    let symbol = symbol_table.add_interface(index);
+                    string_map.insert(const_str, string_symbol);
+                    interface_map.insert(const_str, symbol);
+                    output.push(linked::Bytecode::InvokeInterfaceTail(symbol as u64, method_symbol as u64));
+                }
             }
             compiled::Bytecode::GetStaticMember(class_index, member_index, type_tag) => {
                 let class_str = class_file.index_string_table(class_index);
@@ -1031,14 +1079,15 @@ fn link_bytecode(
                     *symbol
                 } else {
                     let string_table_index = string_table.add_string(class_str);
+                    let class_str = string_table.get_string(string_table_index);
                     let symbol = symbol_table.add_string(string_table_index);
-                    string_map.insert(String::from(class_str), symbol);
+                    string_map.insert(class_str, symbol);
 
                     let class_table_index = class_table.len();
                     class_table.push(TableEntry::Hole);
                     let symbol = symbol_table.add_class(class_table_index);
 
-                    class_map.insert(String::from(class_str), symbol);
+                    class_map.insert(class_str, symbol);
                     symbol
                 };
 
@@ -1050,14 +1099,15 @@ fn link_bytecode(
                     *symbol
                 } else {
                     let string_table_index = string_table.add_string(class_str);
+                    let class_str = string_table.get_string(string_table_index);
                     let symbol = symbol_table.add_string(string_table_index);
-                    string_map.insert(String::from(class_str), symbol);
+                    string_map.insert(class_str, symbol);
 
                     let class_table_index = class_table.len();
                     class_table.push(TableEntry::Hole);
                     let symbol = symbol_table.add_class(class_table_index);
 
-                    class_map.insert(String::from(class_str), symbol);
+                    class_map.insert(class_str, symbol);
                     symbol
                 };
 
@@ -1126,11 +1176,11 @@ pub fn link_vm_classes(
     // The second hashmap is the class that has a custom version of the vtable
     // For example, two matching symbols means that that is the vtable of that particular class
     vtables_map: &mut HashMap<Symbol, HashMap<Symbol, Vec<(Symbol, Vec<rowan_shared::TypeTag>, MethodLocation, Box<[rowan_shared::bytecode::linked::Bytecode]>, FunctionValue, Signature)>>>,
-    string_map: &mut HashMap<String, Symbol>,
-    class_map: &mut HashMap<String, Symbol>
+    string_map: &mut HashMap<&'static str, Symbol>,
+    class_map: &mut HashMap<&'static str, Symbol>
 ) {
 
-    let mut class_parts: Vec<(&str, Symbol, Symbol, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, FunctionValue, Signature)>, Vec<Symbol>, Vec<ClassMember>)> = Vec::new();
+    let mut class_parts: Vec<(&'static str, Symbol, Symbol, Vec<MemberInfo>, Vec<(Symbol, Vec<TypeTag>, FunctionValue, Signature)>, Vec<Symbol>, Vec<ClassMember>)> = Vec::new();
     for class in classes {
         let VMClass {
             name,
@@ -1148,7 +1198,7 @@ pub fn link_vm_classes(
                 let index = string_table.add_static_string(name);
                 let symbol = symbol_table.add_string(index);
 
-                string_map.insert(String::from(name), symbol);
+                string_map.insert(name, symbol);
 
                 if let Some(symbol) = class_map.get(name) {
                     *symbol
@@ -1156,7 +1206,7 @@ pub fn link_vm_classes(
                     let index = class_table.len();
                     class_table.push(TableEntry::Hole);
                     let symbol = symbol_table.add_class(index);
-                    class_map.insert(String::from(name), symbol);
+                    class_map.insert(name, symbol);
 
                     symbol
                 }
@@ -1172,7 +1222,7 @@ pub fn link_vm_classes(
                 let index = string_table.add_static_string(parent);
                 let symbol = symbol_table.add_string(index);
 
-                string_map.insert(String::from(parent), symbol);
+                string_map.insert(parent, symbol);
 
                 if let Some(symbol) = class_map.get(parent) {
                     *symbol
@@ -1180,7 +1230,7 @@ pub fn link_vm_classes(
                     let index = class_table.len();
                     class_table.push(TableEntry::Hole);
                     let symbol = symbol_table.add_class(index);
-                    class_map.insert(String::from(parent), symbol);
+                    class_map.insert(parent, symbol);
 
                     symbol
                 }
@@ -1211,7 +1261,7 @@ pub fn link_vm_classes(
                 } else {
                     let index = string_table.add_static_string(method.name);
                     let symbol = symbol_table.add_string(index);
-                    string_map.insert(method.name.to_string(), symbol);
+                    string_map.insert(method.name, symbol);
                     symbol
                 };
 
@@ -1232,7 +1282,7 @@ pub fn link_vm_classes(
                     let index = string_table.add_static_string(source_class);
                     let symbol = symbol_table.add_string(index);
 
-                    string_map.insert(String::from(class), symbol);
+                    string_map.insert(class, symbol);
 
                     if let Some(symbol) = class_map.get(class) {
                         *symbol
@@ -1240,7 +1290,7 @@ pub fn link_vm_classes(
                         let index = class_table.len();
                         class_table.push(TableEntry::Hole);
                         let symbol = symbol_table.add_class(index);
-                        class_map.insert(String::from(source_class), symbol);
+                        class_map.insert(source_class, symbol);
 
                         symbol
                     }
@@ -1252,7 +1302,7 @@ pub fn link_vm_classes(
                     let index = string_table.add_static_string(class);
                     let symbol = symbol_table.add_string(index);
 
-                    string_map.insert(String::from(class), symbol);
+                    string_map.insert(class, symbol);
 
                     if let Some(symbol) = class_map.get(class) {
                         *symbol
@@ -1260,7 +1310,7 @@ pub fn link_vm_classes(
                         let index = class_table.len();
                         class_table.push(TableEntry::Hole);
                         let symbol = symbol_table.add_class(index);
-                        class_map.insert(String::from(class), symbol);
+                        class_map.insert(class, symbol);
 
                         symbol
                     }
@@ -1277,7 +1327,7 @@ pub fn link_vm_classes(
                     let index = string_table.add_static_string(name);
                     let symbol = symbol_table.add_string(index);
 
-                    string_map.insert(String::from(name), symbol);
+                    string_map.insert(name, symbol);
 
                     symbol
                 };
@@ -1465,7 +1515,7 @@ pub fn link_vm_classes(
             } else {
                 let index = string_table.add_string(name_string);
                 let symbol = symbol_table.add_string(index);
-                string_map.insert(String::from(name_string), symbol);
+                string_map.insert(name_string, symbol);
                 
                 symbol
             };
