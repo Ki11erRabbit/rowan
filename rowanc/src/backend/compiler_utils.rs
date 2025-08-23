@@ -4,6 +4,7 @@ pub mod partial_interface_impl;
 
 use std::collections::HashMap;
 use std::io::BufRead;
+use rowan_shared::classfile::{StringIndex, VTable, VTableEntry};
 use crate::backend::compiler_utils::partial_class::PartialClass;
 use crate::backend::compiler_utils::partial_interface::PartialInterface;
 use crate::backend::compiler_utils::partial_interface_impl::PartialInterfaceImpl;
@@ -136,8 +137,112 @@ impl Frame {
 }
 
 
+
 pub enum CurrentCompilationUnit<'a> {
     Class(&'a mut PartialClass),
     Interface(&'a mut PartialInterface),
     InterfaceImpl(&'a mut PartialInterfaceImpl),
+}
+
+impl<'a> CurrentCompilationUnit<'a> {
+    pub fn get_class_name(&self) -> Vec<String> {
+        match self {
+            CurrentCompilationUnit::Class(class) => class.get_class_name(),
+            CurrentCompilationUnit::Interface(interface) => interface.get_interface_name(),
+            CurrentCompilationUnit::InterfaceImpl(r#impl) => r#impl.get_interface_name(),
+        }
+    }
+    
+    pub fn add_static_method<B: AsRef<[u8]>>(
+        &mut self, 
+        name: impl AsRef<str>,
+        bytecode: B,
+        is_native: bool,
+        
+    ) {
+        match self {
+            CurrentCompilationUnit::Class(class) => {
+                class.add_static_method(name.as_ref(), bytecode.as_ref(), is_native);
+            }
+            CurrentCompilationUnit::Interface(_) | CurrentCompilationUnit::InterfaceImpl(_) => {
+                unreachable!("Interfaces and InterfaceImpls do not support static methods")
+            }
+        }
+    } 
+    
+    pub fn get_vtable(&self, method_name: impl AsRef<str>) -> Result<&VTable, PartialClassError> {
+        match self {
+            CurrentCompilationUnit::Class(class) => {
+                class.get_vtable(method_name.as_ref())
+            }
+            CurrentCompilationUnit::Interface(interface) => {
+                Ok(interface.get_vtable())
+            }
+            CurrentCompilationUnit::InterfaceImpl(r#impl) => {
+                Ok(r#impl.get_vtable())
+            }
+        }
+    }
+    
+    pub fn index_string_table(&self, index: StringIndex) -> &str {
+        match self {
+            CurrentCompilationUnit::Class(class) => {
+                class.index_string_table(index)
+            }
+            CurrentCompilationUnit::Interface(interface) => {
+                interface.index_string_table(index)
+            }
+            CurrentCompilationUnit::InterfaceImpl(r#impl) => {
+                r#impl.index_string_table(index)
+            }
+        }
+    }
+    
+    pub fn attach_bytecode(
+        &mut self, 
+        method_class_name: &Vec<String>,
+        method_name: impl AsRef<str>,
+        bytecode: impl AsRef<[u8]>,
+        is_native: bool,
+    ) -> PartialClassResult<()> {
+        match self {
+            CurrentCompilationUnit::Class(class) => {
+                class.attach_bytecode(method_class_name, method_name, bytecode, is_native)
+            }
+            CurrentCompilationUnit::Interface(interface) => {
+                Ok(interface.attach_bytecode(method_name.as_ref(), bytecode.as_ref()))
+            }
+            CurrentCompilationUnit::InterfaceImpl(r#impl) => {
+                Ok(r#impl.attach_bytecode(method_name.as_ref(), bytecode.as_ref()))
+            }
+        }
+    }
+    
+    pub fn add_string(&mut self, string: impl AsRef<str>) -> StringIndex {
+        match self {
+            CurrentCompilationUnit::Class(class) => {
+                class.add_string(string)
+            }
+            CurrentCompilationUnit::Interface(interface) => {
+                interface.add_string(string)
+            }
+            CurrentCompilationUnit::InterfaceImpl(r#impl) => {
+                r#impl.add_string(string)
+            }
+        }
+    }
+    
+    pub fn get_method_entry(&self, method_name: impl AsRef<str>) -> PartialClassResult<VTableEntry> {
+        match self {
+            CurrentCompilationUnit::Class(class) => {
+                class.get_method_entry(method_name.as_ref())
+            }
+            CurrentCompilationUnit::Interface(interface) => {
+                interface.get_method_entry(method_name.as_ref()).ok_or(PartialClassError::MethodNotNotFound(method_name.as_ref().to_string()))
+            }
+            CurrentCompilationUnit::InterfaceImpl(r#impl) => {
+                r#impl.get_method_entry(method_name.as_ref()).ok_or(PartialClassError::MethodNotNotFound(method_name.as_ref().to_string()))
+            }
+        }
+    }
 }

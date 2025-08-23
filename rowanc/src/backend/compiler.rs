@@ -10,7 +10,7 @@ use crate::backend::compiler_utils::partial_interface_impl::PartialInterfaceImpl
 use crate::trees::ir::{ClosureParameter, IfExpression, ParentDec, Trait};
 use crate::trees::{BinaryOperator, PathName, Type, UnaryOperator, Text, Annotation, Span, Visibility};
 use crate::trees::ir::TraitImpl;
-use super::compiler_utils::{ClassMap, partial_class::{PartialClass, StaticMember}};
+use super::compiler_utils::{ClassMap, partial_class::{PartialClass, StaticMember}, CurrentCompilationUnit};
 
 
 
@@ -1140,6 +1140,7 @@ impl Compiler {
                     modifier_string.push_str(modifier);
                 }
 
+                let parent = parent.clone();
                 let new_parents = self.create_new_parent(&parent);
 
                 self.imports_to_change.entry(class_name.last().unwrap().to_string())
@@ -1298,7 +1299,7 @@ impl Compiler {
                 value.as_ref().map(|value| {
                     self.compile_expression(
                         &class_name,
-                        &mut partial_class,
+                        &mut CurrentCompilationUnit::Class(&mut partial_class),
                         &value,
                         &mut static_init_bytecode,
                         true
@@ -1871,11 +1872,10 @@ impl Compiler {
         name: &Vec<String>,
         methods: &Vec<Method>,
     ) -> Result<(), CompilerError> {
-
         
         let mut partial_class = self.classes.get(name).cloned().unwrap();
 
-        self.compile_methods(name, &mut partial_class, methods)?;
+        self.compile_methods(name, &mut CurrentCompilationUnit::Class(&mut partial_class), methods)?;
 
         self.classes.insert(name.clone(), partial_class);
 
@@ -1891,11 +1891,11 @@ impl Compiler {
         
         let name = self.add_path_if_needed(name.to_string());
         
-        let partial_interface = self.interfaces.get(&name).cloned().unwrap();
+        let mut partial_interface = self.interfaces.get(&name).cloned().unwrap();
         
         self.current_type_args = type_args;
         
-        self.compile_methods(&name, &mut partial_interface, &methods)?;
+        self.compile_methods(&name, &mut CurrentCompilationUnit::Interface(&mut partial_interface), &methods)?;
         
         self.interfaces.insert(name.clone(), partial_interface);
         
@@ -1920,7 +1920,7 @@ impl Compiler {
         let trait_name = self.add_path_if_needed(trait_name.to_string());
         let impl_name = self.add_path_if_needed(implementer_name.to_string());
 
-        let partial_interface_impl = self.interface_impls.get(&impl_name)
+        let mut partial_interface_impl = self.interface_impls.get(&impl_name)
             .unwrap()
             .get(&trait_name)
             .cloned()
@@ -1928,7 +1928,7 @@ impl Compiler {
 
         self.current_type_args = type_args;
 
-        self.compile_methods(&impl_name, &mut partial_interface_impl, &methods)?;
+        self.compile_methods(&impl_name, &mut CurrentCompilationUnit::InterfaceImpl(&mut partial_interface_impl), &methods)?;
 
         self.interface_impls.get_mut(&impl_name).unwrap().insert(trait_name, partial_interface_impl);
 
@@ -2039,7 +2039,7 @@ impl Compiler {
     }
 
 
-    pub fn compile_methods(&mut self, class_name: &Vec<String>, partial_class: &mut PartialClass, methods: &Vec<Method>) -> Result<(), CompilerError> {
+    pub fn compile_methods(&mut self, class_name: &Vec<String>, partial_file: &mut CurrentCompilationUnit, methods: &Vec<Method>) -> Result<(), CompilerError> {
 
         for method in methods {
             self.method_returned = false;
@@ -2064,7 +2064,7 @@ impl Compiler {
             }
             
             
-            let mut bytecode = self.compile_method_body(class_name, partial_class, body)?;
+            let mut bytecode = self.compile_method_body(class_name, partial_file, body)?;
 
             if !self.method_returned {
                 bytecode.push(Bytecode::ReturnVoid);
@@ -2075,10 +2075,10 @@ impl Compiler {
             }).collect::<Vec<_>>();
 
             if is_static {
-                let mut class_name = partial_class.get_class_name();
+                let mut class_name = partial_file.get_class_name();
                 class_name.push(name.to_string());
                 let name = class_name.join("::");
-                partial_class.add_static_method(name, bytecode, *is_native);
+                partial_file.add_static_method(name, bytecode, *is_native);
             } else {
                 //println!("{}", name);
                 let path_name = if name.contains("::") {
@@ -2089,8 +2089,8 @@ impl Compiler {
                     path_name.join("::")
                 };
 
-                let vtable = partial_class.get_vtable(&path_name).unwrap();
-                let method_class_name = partial_class.index_string_table(vtable.sub_class_name).split("::")
+                let vtable = partial_file.get_vtable(&path_name).unwrap();
+                let method_class_name = partial_file.index_string_table(vtable.sub_class_name).split("::")
                     .map(|name| name.to_string())
                     .collect::<Vec<String>>();
                 //println!("{}", method_class_name);
@@ -2103,7 +2103,7 @@ impl Compiler {
                     method_name.join("::")
                 };
 
-                partial_class.attach_bytecode(&method_class_name, method_name, bytecode, *is_native).expect("Handle partial class error");
+                partial_file.attach_bytecode(&method_class_name, method_name, bytecode, *is_native).expect("Handle partial class error");
             }
 
             self.pop_scope();
@@ -2126,7 +2126,7 @@ impl Compiler {
         }
     }
 
-    fn compile_method_body(&mut self, class_name: &Vec<String>, partial_class: &mut PartialClass, body: &Vec<Statement>) -> Result<Vec<Bytecode>, CompilerError> {
+    fn compile_method_body(&mut self, class_name: &Vec<String>, partial_class: &mut CurrentCompilationUnit, body: &Vec<Statement>) -> Result<Vec<Bytecode>, CompilerError> {
         let mut output = Vec::new();
         //output.push(Bytecode::StartBlock(block));
         //output.push(Bytecode::Goto(1));
@@ -2140,7 +2140,7 @@ impl Compiler {
     fn compile_block(
         &mut self,
         class_name: &Vec<String>,
-        partial_class: &mut PartialClass,
+        partial_class: &mut CurrentCompilationUnit,
         body: &Vec<Statement>,
         output: &mut Vec<Bytecode>
     ) -> Result<(), CompilerError> {
@@ -2223,7 +2223,7 @@ impl Compiler {
     fn compile_expression<'a>(
         &mut self,
         class_name: &Vec<String>,
-        partial_class: &mut PartialClass, 
+        partial_class: &mut CurrentCompilationUnit, 
         expr: &'a Expression,
         output: &mut Vec<Bytecode>,
         lhs : bool,
@@ -2668,7 +2668,7 @@ impl Compiler {
     fn compile_if_expression(
         &mut self,
         class_name: &Vec<String>,
-        partial_class: &mut PartialClass,
+        partial_class: &mut CurrentCompilationUnit,
         expr: &IfExpression,
         output: &mut Vec<Bytecode>,
         lhs: bool,
@@ -2724,7 +2724,7 @@ impl Compiler {
     fn compile_member_get<'a>(
         &mut self,
         class_name: &Vec<String>,
-        partial_class: &mut PartialClass,
+        partial_class: &mut CurrentCompilationUnit,
         expr: &'a Expression<'a>,
         output: &mut Vec<Bytecode>
     ) -> Result<(), CompilerError> {
@@ -2755,7 +2755,7 @@ impl Compiler {
                     }
                 };
                 let path = partial_class.add_string(class_name.join("::"));
-                let class = self.classes.get(&class_name).unwrap_or(partial_class);
+                let class = self.classes.get(&class_name).unwrap();
                 let mut field_name = class.get_class_name();
                 field_name.push(field.segments.last().unwrap().to_string());
                 let (member_index, member_type) = class.get_static_member_offset(&field_name.join("::"));
@@ -2800,7 +2800,10 @@ impl Compiler {
 
         let class = match self.classes.get(&name) {
             Some(class) => class,
-            _ => partial_class,
+            _ => match partial_class {
+                CurrentCompilationUnit::Class(class) => class,
+                _ => unreachable!("it is impossible to get from something other than a class")
+            },
         };
         let (class_name, parent_name) = if class.contains_field(field.to_string().as_str()) {
             (class.get_class_name(), Vec::new())
@@ -2831,7 +2834,7 @@ impl Compiler {
     fn compile_member_set<'a>(
         &mut self,
         class_name: &Vec<String>,
-        partial_class: &mut PartialClass,
+        partial_class: &mut CurrentCompilationUnit,
         expr: &'a Expression<'a>,
         output: &mut Vec<Bytecode>
     ) -> Result<Option<Box<dyn Fn(&mut Vec<Bytecode>) + 'a>>, CompilerError> {
@@ -2856,7 +2859,7 @@ impl Compiler {
                         .collect::<Vec<_>>()
                 };
                 let path = partial_class.add_string(class_name.join("::"));
-                let class = self.classes.get(&class_name).unwrap_or(partial_class);
+                let class = self.classes.get(&class_name).unwrap();
                 let (member_index, member_type) = class.get_static_member_offset(field.segments.last().unwrap().as_str());
 
                 return Ok(Some(Box::new(move |output: &mut Vec<Bytecode>| {
@@ -2899,7 +2902,7 @@ impl Compiler {
         };
 
         println!("name: {:?}", name);
-        let class = self.classes.get(&name).unwrap_or(partial_class);
+        let class = self.classes.get(&name).unwrap();
         println!("{field}");
         let (class_name, parent_name) = if class.contains_field(field.to_string().as_str()) {
             (class.get_class_name(), Vec::new())
@@ -2932,7 +2935,7 @@ impl Compiler {
     fn compile_call_expression<'a>(
         &mut self,
         class_name: &Vec<String>,
-        partial_class: &mut PartialClass,
+        partial_class: &mut CurrentCompilationUnit,
         expr: &'a Expression<'a>,
         output: &mut Vec<Bytecode>,
         lhs : bool,
@@ -3279,7 +3282,7 @@ impl Compiler {
     fn compile_closure_expression<'a>(
         &mut self,
         class_name: &Vec<String>,
-        partial_class: &mut PartialClass,
+        partial_class: &mut CurrentCompilationUnit,
         closure_name: String,
         params: &[ClosureParameter<'a>],
         return_type: &Type,
@@ -3437,8 +3440,13 @@ impl Compiler {
         let current_block: u64 = self.current_block;
         let method_returned: bool = self.method_returned;
         let current_block_returned: bool = self.current_block_returned;
+        
+        let mut results = self.load_class_part(class)?;
+        let Some((class, type_args)) = results.pop() else {
+            unreachable!("we should have gotten at least one class")
+        };
 
-        self.compile_class(class)?;
+        self.compile_class(class, type_args)?;
         self.load_scopes(frames);
         self.current_block = current_block;
         self.method_returned = method_returned;
