@@ -1,6 +1,7 @@
 module main;
 
 import std::console::Console;
+import std::collections::arraylist::ArrayList;
 
 
 class Main {
@@ -21,6 +22,8 @@ class Main {
             return x + 2;
         })
         printer.println-int(q)
+        let list: ArrayList[u64] = ArrayList::create()
+        list.add(q)
     }
 
     fn fib(n: u64) -> u64 {

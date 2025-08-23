@@ -3306,19 +3306,36 @@ impl Compiler {
             let class_name_path = class.get_class_name();
             let mut field_path = self.add_path_if_needed(class_name_path.join("::"));
             field_path.push(name.to_string());
-            let vtable = class.get_vtable(field_path.join("::")).expect("add proper handling of missing vtable");
-            let method_entry = class.get_method_entry(field_path.join("::")).expect("add proper handling of missing method");
+            
+            if let Ok(vtable) = class.get_vtable(field_path.join("::")) {
+                let method_entry = class.get_method_entry(field_path.join("::")).expect("add proper handling of missing method");
 
-            //println!("{}", class.index_string_table(vtable.class_name));
+                //println!("{}", class.index_string_table(vtable.class_name));
 
-            let class_name = class.index_string_table(vtable.class_name);
-            let vtable_class_name = partial_class.add_string(class_name);
+                let class_name = class.index_string_table(vtable.class_name);
+                let vtable_class_name = partial_class.add_string(class_name);
 
-            let method_name = class.index_string_table(method_entry.name);
-            let method_name = partial_class.add_string(method_name);
+                let method_name = class.index_string_table(method_entry.name);
+                let method_name = partial_class.add_string(method_name);
 
 
-            output.push(Bytecode::InvokeVirt(vtable_class_name, method_name));
+                output.push(Bytecode::InvokeVirt(vtable_class_name, method_name));
+            } else {
+                let interface_impl = self.interface_impls.get(&class.get_class_name())
+                    .expect("TODO: report there not being a interface for this class that could have this method");
+                for (interface, r#impl) in interface_impl {
+                    let Some(method_entry) = r#impl.get_method_entry(field_path.join("::")) else {
+                        continue;
+                    };
+                    let interface_name = interface.join("::");
+                    let method_name = r#impl.index_string_table(method_entry.name);
+                    
+                    let interface_name = partial_class.add_string(interface_name);
+                    let method_name = partial_class.add_string(method_name);
+                    
+                    output.push(Bytecode::InvokeInterface(interface_name, method_name));
+                }
+            }
         } else {
             panic!("Classes are in a bad order of compiling")
         }
