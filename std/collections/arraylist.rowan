@@ -1,5 +1,7 @@
 module std::collections::arraylist;
 
+import std::collections::List;
+
 class ArrayList[T] {
     buffer: [T];
     length: u64;
@@ -82,5 +84,11 @@ class ArrayList[T] {
         let out: T = self.buffer[self.length - 1];
         self.length = self.length - 1;
         return out;
+    }
+}
+
+impl[T] List[T] for ArrayList[T] {
+    fn add(self, item: T) {
+        self.push(item)
     }
 }

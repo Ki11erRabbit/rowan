@@ -2,9 +2,6 @@ module main;
 
 import std::console::Console;
 
-trait Test {
-    fn test(self)
-}
 
 class Main {
 
@@ -51,10 +48,4 @@ class Main {
         return out;
     }
 
-}
-
-impl Test for Main {
-    fn test(self) {
-
-    }
 }

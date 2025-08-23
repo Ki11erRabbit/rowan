@@ -1,0 +1,5 @@
+module std::collections;
+
+trait List[T] {
+    fn add(self, item: T)
+}
