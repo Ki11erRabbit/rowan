@@ -104,7 +104,7 @@ impl PartialInterfaceImpl {
             return *index;
         }
         self.string_table.push(StringEntry::new(string.as_ref()));
-        let out =self.string_table.len() as u64;
+        let out = self.string_table.len() as u64;
 
         self.string_to_index.insert(String::from(string.as_ref()), out);
         out

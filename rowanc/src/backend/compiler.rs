@@ -873,7 +873,7 @@ impl Compiler {
         };
         let mut types = vec![ret_type, TypeTag::Object];
         for param in args {
-            match ty {
+            match param {
                 Type::I8 => {
                     types.push(TypeTag::I8);
                     closure_name.push_str("i8")
@@ -1024,9 +1024,11 @@ impl Compiler {
         }
 
         for (path, file) in self.classes.into_iter() {
-            /*if file.is_printable() && file.get_class_name().contains(&String::from("Closure0")) {
-                println!("closure: {file:#?}");
+            /*if file.is_printable() {
+                println!("Path: {}", path.join("/"));
+                let class_name = file.get_class_name();
             }*/
+            
             if let Some((file, native_definitions)) = file.create_class_file() {
                 if !native_definitions.is_empty() {
                     let path = format!("output/{}.h", path.join("/"));
@@ -1064,7 +1066,7 @@ impl Compiler {
                     file_path.push(format!("{}.class", item));
                 }
             }
-            
+
             let bytes = file.as_binary();
             if let Some(parents) = file_path.parent() {
                 let _ = std::fs::create_dir_all(parents);
@@ -1075,12 +1077,12 @@ impl Compiler {
         }
 
         for (path, impls) in self.interface_impls.into_iter() {
-            
+
             for (r#trait, file) in impls.into_iter() {
                 let file = file.create_interface_file();
                 let last_path = path.last().unwrap();
                 let last_trait = r#trait.last().unwrap();
-                
+
                 let last_file = format!("{last_trait}{last_path}.class");
                 let mut file_path = PathBuf::new();
                 file_path.push("output");
@@ -1454,7 +1456,7 @@ impl Compiler {
                     };
                     modifier_string.push_str(modifier);
                 }
-                
+
                 let name = format!("{name}{modifier_string}");
 
                 let mut new_path = path_name.clone();
@@ -1493,7 +1495,7 @@ impl Compiler {
                     println!("name: {}", name);
                     self.add_path_if_needed(name)
                 }).collect::<Vec<_>>();
-                
+
 
                 self.load_trait_inner(&new_path, &methods)?;
                 self.interface_parents.insert(new_path.clone(), parent_paths);
@@ -1959,7 +1961,7 @@ impl Compiler {
             methods,
             ..
         } = interface;
-        
+
 
         let Type::Object(trait_name, ..) = r#trait else {
             unreachable!("There should only be objects here");
@@ -3306,7 +3308,7 @@ impl Compiler {
             let class_name_path = class.get_class_name();
             let mut field_path = self.add_path_if_needed(class_name_path.join("::"));
             field_path.push(name.to_string());
-            
+
             if let Ok(vtable) = class.get_vtable(field_path.join("::")) {
                 let method_entry = class.get_method_entry(field_path.join("::")).expect("add proper handling of missing method");
 
@@ -3329,10 +3331,10 @@ impl Compiler {
                     };
                     let interface_name = interface.join("::");
                     let method_name = r#impl.index_string_table(method_entry.name);
-                    
+
                     let interface_name = partial_class.add_string(interface_name);
                     let method_name = partial_class.add_string(method_name);
-                    
+
                     output.push(Bytecode::InvokeInterface(interface_name, method_name));
                 }
             }

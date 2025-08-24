@@ -53,7 +53,7 @@ pub fn link_class_files(
     let mut main_class_symbol = None;
     let mut main_method_symbol = None;
 
-    for class in classes.iter() {
+    for (i, class) in classes.iter().enumerate() {
         let ClassFile { name, parent, vtables, .. } = class;
         let name_str = class.index_string_table(*name);
         let class_symbol = if let Some(symbol) = class_map.get(name_str) {
@@ -1002,6 +1002,7 @@ fn link_bytecode(
             }
             compiled::Bytecode::InvokeStatic(class_index, method_index) => {
                 let class_str = class_file.index_string_table(class_index);
+                println!("{class_str}");
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let method_str = class_file.index_string_table(method_index);

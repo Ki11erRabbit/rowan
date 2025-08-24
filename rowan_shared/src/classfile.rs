@@ -159,8 +159,8 @@ impl ClassFile {
         let patch_version = binary[4];
         index += 5;
         let name = u64::from_le_bytes([
-            binary[4], binary[5], binary[6], binary[7],
-            binary[8], binary[9], binary[10], binary[11]
+            binary[5], binary[6], binary[7], binary[8],
+            binary[9], binary[10], binary[11], binary[12]
         ]);
         index += size_of::<StringIndex>();
 
