@@ -682,9 +682,11 @@ impl Compiler {
     }
 
     fn add_path_if_needed(&self, class: String) -> Vec<String> {
+        //println!("class {:?}", class);
         if class.contains("::") {
             return class.split("::").map(|s| s.to_string()).collect();
         }
+        //println!("active_imports: {:?}", self.active_imports);
         let path = self.active_imports.get(&class);
         if let Some(path) = path {
             let module = path.clone();
@@ -692,11 +694,14 @@ impl Compiler {
         } else if let Some(class) = self.classes.get(&vec![class.clone()]) {
             let result = class.get_class_name();
             result
+        } else if let Some(interface) = self.interfaces.get(&vec![class.clone()]) {
+            let result = interface.get_interface_name();
+            result
         } else {
             //panic!("We should have loaded the value already {class}");
             let mut module = self.current_module.clone();
             module.push(class);
-            if module.contains(&String::from("main")) && module.contains(&String::from("ArrayList")) {
+            if module.contains(&String::from("arraylist")) && module.contains(&String::from("List64")) {
                 panic!()
             }
             module
@@ -1001,21 +1006,20 @@ impl Compiler {
             self.current_module = path.segments.into_iter().map(|x| x.to_string()).collect();
             let mut content = content;
 
-            /*content.sort_by(|a, b| {
+            content.sort_by(|a, b| {
                 match (a, b) {
-                    (TopLevelStatement::Class(_), TopLevelStatement::Import(_)) => {
+                    (_, TopLevelStatement::Import(_)) => {
                         Ordering::Greater
                     }
-                    (TopLevelStatement::Import(_), TopLevelStatement::Class(_)) => {
+                    (TopLevelStatement::Import(_), _) => {
                         Ordering::Less
                     }
                     _ => Ordering::Equal,
                 }
-            });*/
+            });
 
             let (classes, interfaces, interface_impls) = self.load_parts(content)?;
 
-            self.alter_imports_if_needed();
             for (class, type_args) in classes {
                 self.compile_class(class, type_args)?;
             }
@@ -1032,7 +1036,7 @@ impl Compiler {
                 println!("Path: {}", path.join("/"));
                 let class_name = file.get_class_name();
             }*/
-            
+
             if let Some((file, native_definitions)) = file.create_class_file() {
                 if !native_definitions.is_empty() {
                     let path = format!("output/{}.h", path.join("/"));
@@ -1114,14 +1118,20 @@ impl Compiler {
         for statement in content {
             match statement {
                 TopLevelStatement::Class(class) => {
+                    self.alter_imports_if_needed();
+
                     let mut result = self.load_class_part(class)?;
                     class_names.append(&mut result);
                 }
                 TopLevelStatement::Trait(r#trait) => {
+                    self.alter_imports_if_needed();
+
                     let mut result = self.load_trait_part(r#trait)?;
                     interface_names.append(&mut result);
                 }
                 TopLevelStatement::TraitImpl(r#impl) => {
+                    self.alter_imports_if_needed();
+
                     let mut result = self.load_trait_impl_part(r#impl)?;
                     interface_impl_names.append(&mut result);
                 }
@@ -1414,7 +1424,8 @@ impl Compiler {
                     }
                     _ => unreachable!("Trait parent Parent can only be Object or TypeArg"),
                 };
-                self.add_path_if_needed(name)
+                let name = self.add_path_if_needed(name);
+                name
             }).collect::<Vec<_>>();
             self.interface_parents.insert(path_name.clone(), parent_paths);
             traits.push((Trait {
@@ -1465,6 +1476,10 @@ impl Compiler {
 
                 let mut new_path = path_name.clone();
                 new_path.last_mut().unwrap().push_str(&modifier_string);
+                self.imports_to_change.entry(path_name.last().cloned().unwrap())
+                    .and_modify(|path| {
+                        path.push(name.clone());
+                    }).or_insert(vec![name]);
 
                 let parent_paths = parents.iter().map(|p| {
                     let name = match p {
@@ -1496,8 +1511,9 @@ impl Compiler {
                         }
                         _ => unreachable!("Trait parent Parent can only be Object or TypeArg"),
                     };
-                    println!("name: {}", name);
-                    self.add_path_if_needed(name)
+                    
+                    let new_path = self.add_path_if_needed(name);
+                    new_path
                 }).collect::<Vec<_>>();
 
 
@@ -1531,6 +1547,9 @@ impl Compiler {
 
         partial_interface.add_functions(&names, &signatures);
 
+        if name.contains(&String::from("List64")) {
+            println!("{name:?}");
+        }
         self.interfaces.insert(name.clone(), partial_interface);
 
         Ok(())
@@ -1825,8 +1844,6 @@ impl Compiler {
                     }
                     _ => unreachable!("weird state for trait impl to be in"),
                 };
-
-
 
                 self.load_trait_impl_inner(&trait_name, &implementer_name, &methods)?;
                 trait_impls.push((TraitImpl {
@@ -3343,7 +3360,7 @@ impl Compiler {
                 }
             }
         } else {
-            panic!("Classes are in a bad order of compiling")
+            panic!("Classes are in a bad order of compiling {ty:?} {class_name:?}");
         }
         Ok(())
     }

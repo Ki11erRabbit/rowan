@@ -116,21 +116,30 @@ fn main() {
             }).collect::<Vec<_>>();
 
         for import in imports {
-            //println!("{import}");
+            println!("import {import}");
             edges.push((i as u32, *index.get(&import).expect("import not found") as u32));
         }
     }
     let mut class_files = class_files.into_iter().map(Some).collect::<Vec<_>>();
     drop(index);
+    for edge in edges.iter() {
+        println!("{edge:?}");
+    }
 
     // Use Strongly Connected Components algo to figure out the propper order of compiling
     let graph = UnGraph::<u32, ()>::from_edges(edges);
 
-    let sccs = petgraph::algo::kosaraju_scc(&graph);
+    let sccs = petgraph::algo::tarjan_scc(&graph);
+    for group in sccs.iter() {
+        for node in group {
+            print!("{node:?}");
+        }
+        println!();
+    }
     let mut seen_indicies = HashSet::new();
     let mut new_class_files = Vec::new();
     for scc in sccs {
-        for index in scc.into_iter().rev() {
+        for index in scc.into_iter() {
             if seen_indicies.contains(&index.index()) {
                 continue;
             }
@@ -140,7 +149,6 @@ fn main() {
         }
     }
 
-    // Somehow the above process removes some files for some unknown reason
     for class_file in class_files {
         if class_file.is_some() {
             new_class_files.push(class_file.unwrap());

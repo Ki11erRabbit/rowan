@@ -1618,13 +1618,14 @@ pub fn link_interfaces(
 ) {
     for interface in interfaces.iter() {
         let InterfaceFile {
-            name, 
+            name,
             vtable,
             signature_table,
             ..
         } = interface;
-        
+
         let name = interface.index_string_table(*name);
+        println!("\t interface name: {name:?}");
         let (name, name_symbol) = if let Some(symbol) = string_map.get(name) {
             let SymbolEntry::StringRef(index) = symbol_table[*symbol] else {
                 unreachable!("Symbol table should have been a string reference");
@@ -1638,17 +1639,17 @@ pub fn link_interfaces(
             string_map.insert(name, name_symbol);
             (name, name_symbol)
         };
-        
+
         let classfile::VTable { functions, .. } = vtable;
-        
+
         let mut functions_to_add = Vec::with_capacity(functions.len());
         let mut vtable_mapper = HashMap::new();
-        
+
         for function in functions.iter() {
-            let VTableEntry { 
-                name, 
-                signature, 
-                bytecode 
+            let VTableEntry {
+                name,
+                signature,
+                bytecode
             } = function;
             let method_name = interface.index_string_table(*name);
             let method_name_symbol = if let Some(symbol) = string_map.get(method_name) {
@@ -1673,7 +1674,7 @@ pub fn link_interfaces(
             let return_type = convert_type(&signature_entry.types[0]);
 
             let index = functions_to_add.len();
-            
+
             if *bytecode != 0 {
                 let bytecode_entry = interface.index_bytecode_table(*bytecode);
 
@@ -1693,7 +1694,7 @@ pub fn link_interfaces(
                 let bytecode = bytecode.into_boxed_slice();
                 let func_id = jit_controller.declare_function(method_name, &signature).unwrap();
                 let function_value = FunctionValue::Bytecode(func_id);
-                
+
                 functions_to_add.push(Function::new(method_name_symbol, bytecode, function_value, args, return_type, signature, block_positions));
                 vtable_mapper.insert(method_name_symbol, index);
             } else {
@@ -1703,12 +1704,12 @@ pub fn link_interfaces(
         }
         let vtable = VTable::new(functions_to_add, vtable_mapper);
         let vtable_index = vtables_table.add_vtable(vtable);
-        
+
         let interface = Interface {
             name: name_symbol,
             vtable: vtable_index,
         };
-        
+
         if let Some(symbol) = interface_map.get(name) {
             let SymbolEntry::InterfaceRef(index) = &symbol_table[*symbol] else {
                 unreachable!("Interface symbol should have been a symbol to a interface");
@@ -1721,7 +1722,7 @@ pub fn link_interfaces(
             interface_map.insert(name, symbol);
         }
     }
-    
+
     for interface in interface_pre_table {
         match interface {
             TableEntry::Hole => {
@@ -1733,17 +1734,19 @@ pub fn link_interfaces(
         }
     }
     let mut interface_pre_table = Vec::new();
-    
+
     for r#impl in interface_impls {
         let InterfaceImplFile {
-            interface_name, 
-            implementer_name, 
-            vtable, 
+            interface_name,
+            implementer_name,
+            vtable,
             signature_table,
             ..
         } = &r#impl;
-        
+
         let interface_name = r#impl.index_string_table(*interface_name);
+        println!("interface name: {}", interface_name);
+        println!("interface_map: {:#?}", interface_map);
         let (interface_name, interface_symbol, interface_vtable) = if let Some(symbol) = interface_map.get(interface_name) {
             let SymbolEntry::InterfaceRef(index) = &symbol_table[*symbol] else {
                 unreachable!("Interface symbol should have been a symbol to a interface");
@@ -1756,17 +1759,17 @@ pub fn link_interfaces(
             let interface_name = string_table.get_string(*index);
             (interface_name, *symbol, interface.vtable)
         } else {
-            unreachable!("There is a missing interface somewhere")
+            unreachable!("There is a missing interface somewhere: {interface_name:?}")
         };
-        
+
         let classfile::VTable { functions, .. } = vtable;
-        
+
         let mut vtable = vtables_table[interface_vtable].clone();
-        
+
         for (i, function) in functions.iter().enumerate() {
             let VTableEntry {
-                name, 
-                signature, 
+                name,
+                signature,
                 bytecode
             } = function;
 
@@ -1780,7 +1783,7 @@ pub fn link_interfaces(
                 string_map.insert(method_name, symbol);
                 symbol
             };
-            
+
             if *bytecode != 0 {
                 let bytecode_entry = r#impl.index_bytecode_table(*bytecode);
 
@@ -1810,14 +1813,14 @@ pub fn link_interfaces(
 
                 let return_type = convert_type(&signature_entry.types[0]);
 
-                
+
                 vtable.table[i] = Arc::new(
                     Function::new(method_name_symbol, bytecode, function_value, args, return_type, signature, block_positions)
                 );
                 vtable.symbol_mapper.insert(method_name_symbol, i);
-            }  
+            }
         }
-        
+
         let vtable_index = vtables_table.add_vtable(vtable);
 
         let implementer_name = r#impl.index_string_table(*implementer_name);
@@ -1830,10 +1833,10 @@ pub fn link_interfaces(
         let TableEntry::Entry(class) = &mut class_table[*index] else {
             unreachable!("There is a missing class somewhere")
         };
-        
+
         class.add_interface(interface_symbol, vtable_index);
-        
-        
+
+
     }
-    
+
 }
