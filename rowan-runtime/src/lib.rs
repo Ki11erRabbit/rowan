@@ -97,6 +97,14 @@ pub extern "C" fn rowan_main() {
         &mut interfaces_map,
         &mut vtables_map);
 
+    Runtime::link_interfaces(
+        interfaces, 
+        interface_impls, 
+        pre_interface_table,
+        interfaces_map,
+        &mut pre_class_table
+    );
+    
     Runtime::finish_linking_classes(pre_class_table);
 
     let (jit_sender, jit_receiver) = std::sync::mpsc::channel();

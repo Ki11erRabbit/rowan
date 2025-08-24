@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex};
+use std::sync::{Arc, Mutex};
 use cranelift::prelude::Signature;
 use cranelift_module::FuncId;
 use fxhash::FxHashMap;
@@ -19,16 +19,17 @@ pub struct FunctionDetails {
     pub block_positions: &'static FxHashMap<usize, usize>,
 }
 
+#[derive(Clone)]
 pub struct VTable {
     pub symbol_mapper: HashMap<Symbol, Index>,
-    pub table: Vec<Function>,
+    pub table: Vec<Arc<Function>>,
 }
 
 impl VTable {
     pub fn new(table: Vec<Function>, mapper: HashMap<Symbol, Index>) -> Self {
         VTable {
             symbol_mapper: mapper,
-            table
+            table: table.into_iter().map(|f| Arc::new(f)).collect(),
         }
     }
 

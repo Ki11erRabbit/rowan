@@ -1,4 +1,4 @@
-use crate::classfile::ClassFile;
+use crate::classfile::{BytecodeEntry, BytecodeIndex, ClassFile, StringIndex};
 use crate::interfacefile::InterfaceFile;
 use crate::interfaceimplfile::InterfaceImplFile;
 
@@ -116,4 +116,9 @@ pub fn load_binary(binary: &[u8]) -> RowanClassFile {
         FileType::Interface => RowanClassFile::from(InterfaceFile::from(binary)),
         FileType::InterfaceImpl => RowanClassFile::from(InterfaceImplFile::from(binary)),
     }
+}
+
+pub trait RowanClassFileUtils {
+    fn index_string_table(&self, index: StringIndex) -> &str;
+    fn index_bytecode_table(&self, index: BytecodeIndex) -> &BytecodeEntry;
 }

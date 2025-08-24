@@ -1,5 +1,6 @@
-use crate::classfile::{BytecodeEntry, SignatureEntry, StringEntry, StringIndex, VTable, VTableEntry};
+use crate::classfile::{BytecodeEntry, BytecodeIndex, SignatureEntry, StringEntry, StringIndex, VTable, VTableEntry};
 use crate::interfacefile::InterfaceFile;
+use crate::RowanClassFileUtils;
 
 #[derive(PartialEq, Debug)]
 pub struct InterfaceImplFile {
@@ -31,6 +32,16 @@ pub struct InterfaceImplFile {
 }
 
 impl InterfaceImplFile {
+
+    pub fn index_string_table(&self, index: StringIndex) -> &str {
+        assert_ne!(index, 0, "string index should not be zero");
+        std::str::from_utf8(&self.string_table[(index - 1) as usize].value).unwrap()
+    }
+
+    pub fn index_bytecode_table(&self, index: BytecodeIndex) -> &BytecodeEntry {
+        assert_ne!(index, 0, "bytecode index should not be zero");
+        &self.bytecode_table[(index - 1) as usize]
+    }
     pub fn new_from_parts(
         interface_name: StringIndex,
         implementer_name: StringIndex,
@@ -248,5 +259,14 @@ impl From<&[u8]> for InterfaceImplFile {
 impl Into<Vec<u8>> for InterfaceImplFile {
     fn into(self) -> Vec<u8> {
         self.as_binary()
+    }
+}
+
+impl RowanClassFileUtils for InterfaceImplFile {
+    fn index_string_table(&self, index: StringIndex) -> &str {
+        self.index_string_table(index)
+    }
+    fn index_bytecode_table(&self, index: BytecodeIndex) -> &BytecodeEntry {
+        self.index_bytecode_table(index)
     }
 }

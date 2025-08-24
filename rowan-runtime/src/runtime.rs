@@ -16,6 +16,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32};
 use fxhash::FxHashMap;
 use rowan_shared::bytecode::linked::Bytecode;
+use rowan_shared::interfacefile::InterfaceFile;
+use rowan_shared::interfaceimplfile::InterfaceImplFile;
 use crate::context::{BytecodeContext, MethodName, WrappedReference};
 use crate::fake_lock::FakeLock;
 use crate::runtime::class::{ClassMember, ClassMemberData};
@@ -31,7 +33,7 @@ mod interface;
 
 pub use tables::FunctionDetails;
 use crate::runtime::core::StringBuffer;
-use crate::runtime::interface::Interface;
+use crate::runtime::interface::{Interface, InterfaceImpl};
 use crate::runtime::tables::interface_table::InterfaceTable;
 use crate::runtime::tables::native_object_table::NativeObjectTable;
 
@@ -612,6 +614,51 @@ impl Runtime {
             vtables_map,
             &mut string_map,
             class_map.borrow_mut(),
+        );
+    }
+
+    pub fn link_interfaces(
+        interfaces: Vec<InterfaceFile>,
+        interface_impls: Vec<InterfaceImplFile>,
+        pre_interface_table: Vec<TableEntry<Interface>>,
+        interface_map: HashMap<&'static str, Symbol>,
+        pre_class_table: &mut Vec<TableEntry<Class>>,
+    ) {
+        let Ok(mut string_table) = STRING_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut symbol_table) = SYMBOL_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut vtable_tables) = VTABLES.write() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut class_map) = CLASS_MAPPER.write() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut string_map) = STRING_MAP.write() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(mut interface_table) = INTERFACE_TABLE.write() else {
+            panic!("Lock poisoned");
+        };
+
+        linker::link_interfaces(
+            interfaces,
+            interface_impls,
+            pre_interface_table,
+            &mut jit_controller,
+            &mut symbol_table,
+            pre_class_table,
+            &mut string_table,
+            &mut vtable_tables,
+            &mut interface_table,
+            &mut string_map,
+            &mut class_map,
+            interface_map
         );
     }
 

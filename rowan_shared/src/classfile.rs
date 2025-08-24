@@ -67,7 +67,7 @@
 //! }
 //! ```
 //!
-use crate::TypeTag;
+use crate::{RowanClassFileUtils, TypeTag};
 
 
 
@@ -487,6 +487,15 @@ impl From<&[u8]> for ClassFile {
 impl Into<Vec<u8>> for ClassFile {
     fn into(self) -> Vec<u8> {
         self.as_binary()
+    }
+}
+
+impl RowanClassFileUtils for ClassFile {
+    fn index_string_table(&self, index: StringIndex) -> &str {
+        self.index_string_table(index)
+    }
+    fn index_bytecode_table(&self, index: BytecodeIndex) -> &BytecodeEntry {
+        self.index_bytecode_table(index)
     }
 }
 

@@ -109,6 +109,7 @@ pub struct Class {
     pub class_members: Vec<ClassMember>,
     pub init_function: Option<Box<[Bytecode]>>,
     pub drop_function: Option<extern "C" fn(&mut Object)>,
+    pub interfaces: Vec<VTableIndex>,
 }
 
 impl Class {
@@ -132,6 +133,7 @@ impl Class {
             class_members,
             init_function,
             drop_function,
+            interfaces: Vec::new(),
         }
     }
     
@@ -183,6 +185,11 @@ impl Class {
                 _ => {}
             }
         }
+    }
+    
+    pub fn add_interface(&mut self, symbol: Symbol, interface_vtable: VTableIndex) {
+        self.interfaces.push(interface_vtable);
+        self.vtables.insert(symbol, interface_vtable);
     }
 }
 
