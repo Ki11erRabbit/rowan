@@ -999,7 +999,7 @@ impl Compiler {
         mut self, 
         files: Vec<File>,
     ) -> Result<(), CompilerError> {
-        
+
         let mut all_classes = Vec::new();
         let mut all_interfaces = Vec::new();
         let mut all_interface_impls = Vec::new();
@@ -1022,12 +1022,12 @@ impl Compiler {
             });
 
             let (mut classes, mut interfaces, mut interface_impls) = self.load_parts(content)?;
-            
+
             all_classes.append(&mut classes);
             all_interfaces.append(&mut interfaces);
             all_interface_impls.append(&mut interface_impls);
         }
-        
+
         self.alter_imports_if_needed();
 
         for (interface, type_args) in all_interfaces {
@@ -2978,7 +2978,7 @@ impl Compiler {
             }
             _ => todo!("report error about method output not being an object: {:?} {:?}", object, field),
         };
-        
+
         let this_class = match partial_class {
             CurrentCompilationUnit::Class(class) => class,
             _ => unreachable!(),
@@ -3338,7 +3338,7 @@ impl Compiler {
             let class_name_path = class.get_class_name();
             let mut field_path = self.add_path_if_needed(class_name_path.join("::"));
             field_path.push(name.to_string());
-
+            
             if let Ok(vtable) = class.get_vtable(field_path.join("::")) {
                 let method_entry = class.get_method_entry(field_path.join("::")).expect("add proper handling of missing method");
 
@@ -3356,7 +3356,9 @@ impl Compiler {
                 let interface_impl = self.interface_impls.get(&class.get_class_name())
                     .expect("TODO: report there not being a interface for this class that could have this method");
                 for (interface, r#impl) in interface_impl {
-                    let Some(method_entry) = r#impl.get_method_entry(field_path.join("::")) else {
+                    let mut interface_path = interface.clone();
+                    interface_path.push(field_path.last().unwrap().to_string());
+                    let Some(method_entry) = r#impl.get_method_entry(interface_path.join("::")) else {
                         continue;
                     };
                     let interface_name = interface.join("::");
@@ -3364,8 +3366,9 @@ impl Compiler {
 
                     let interface_name = partial_class.add_string(interface_name);
                     let method_name = partial_class.add_string(method_name);
-
+                    
                     output.push(Bytecode::InvokeInterface(interface_name, method_name));
+                    break
                 }
             }
         } else {
