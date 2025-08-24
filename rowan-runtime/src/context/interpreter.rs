@@ -370,6 +370,36 @@ impl BytecodeContext {
         self.call_function(details, method_name, return_slot)
     }
 
+    pub fn invoke_interface(
+        &mut self,
+        interface_name: runtime::Symbol,
+        method_name: runtime::Symbol,
+        return_slot: Option<&mut StackValue>,
+    ) -> CallContinueState {
+        let object = self.call_args[0];
+        let object = match object {
+            StackValue::Reference(object) => object,
+            _ => todo!("report error that first call arg must be an object.")
+        };
+        let object = unsafe {
+            object.as_ref().expect("report null pointer")
+        };
+        let details = Runtime::get_interface_method_details(
+            object.class,
+            interface_name,
+            method_name,
+        );
+        //println!("bytecode: {:#?}", details.bytecode);
+
+        let method_name = MethodName::InterfaceMethod {
+            class_symbol: object.class,
+            interface_symbol: interface_name,
+            method_name
+        };
+
+        self.call_function(details, method_name, return_slot)
+    }
+
     pub fn call_function(
         &mut self,
         details: FunctionDetails,
@@ -477,6 +507,24 @@ impl BytecodeContext {
         return_slot: Option<&mut StackValue>,
     ) -> bool {
         let result = self.invoke_static(class_name, method_name, return_slot);
+        match result {
+            CallContinueState::Success => false,
+            CallContinueState::Return => true,
+            CallContinueState::ExecuteFunction => {
+                self.main_loop();
+                true
+            }
+            CallContinueState::Error => false,
+        }
+    }
+
+    pub fn invoke_interface_extern(
+        &mut self,
+        interface_name: runtime::Symbol,
+        method_name: runtime::Symbol,
+        return_slot: Option<&mut StackValue>,
+    ) -> bool {
+        let result = self.invoke_interface(interface_name, method_name, return_slot);
         match result {
             CallContinueState::Success => false,
             CallContinueState::Return => true,
@@ -2128,33 +2176,40 @@ impl BytecodeContext {
                 self.push_value(StackValue::from(result as u8));
             }
             Bytecode::InvokeVirt(specified, method_name) => {
-                match self.invoke_virtual(
+                return match self.invoke_virtual(
                     *specified as runtime::Symbol,
                     *method_name as runtime::Symbol,
                     None
                 ) {
-                    CallContinueState::Error => return false,
-                    _ => return true,
+                    CallContinueState::Error => false,
+                    _ => true,
                 }
             }
             Bytecode::InvokeVirtTail(..) => {
                 todo!("Tail Recursion Virtual")
             }
             Bytecode::InvokeStatic(class_name, method_name) => {
-                match self.invoke_static(
+                return match self.invoke_static(
                     *class_name as runtime::Symbol,
                     *method_name as runtime::Symbol,
                     None,
                 ) {
-                    CallContinueState::Error => return false,
-                    _ => return true,
+                    CallContinueState::Error => false,
+                    _ => true,
                 }
             }
             Bytecode::InvokeStaticTail(..) => {
                 todo!("Tail Recursion Static")
             }
-            Bytecode::InvokeInterface(..) => {
-                todo!("InvokeInterface")
+            Bytecode::InvokeInterface(interface_name, method_name) => {
+                return match self.invoke_interface(
+                    *interface_name as runtime::Symbol,
+                    *method_name as runtime::Symbol,
+                    None
+                ) {
+                    CallContinueState::Error => false,
+                    _ => true,
+                }
             }
             Bytecode::InvokeInterfaceTail(..) => {
                 todo!("Tail Recursion Interface")

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, TryLockError};
 use cranelift::prelude::Signature;
 use cranelift_module::FuncId;
 use fxhash::FxHashMap;
@@ -90,9 +90,22 @@ impl Function {
 
         // Tell the JIT Thread to compile this Function after 1000 accesses
         // TODO: make this configurable
+        
         if times_called == 1000 && !self.value.lock().unwrap().is_compiled() {
             //println!("Requesting JIT");
-            request_to_jit_method(name)
+            match self.value.try_lock() {
+                Ok(mut guard) => {
+                    if guard.is_compiled() {
+                        request_to_jit_method(name)
+                    }
+                }
+                Err(TryLockError::WouldBlock) => {}
+                Err(TryLockError::Poisoned(_)) => {
+                    panic!("Lock poisoned");
+                }
+            }
+            
+            
         }
 
         let bytecode_ptr = self.bytecode.as_ptr();
@@ -106,17 +119,24 @@ impl Function {
             std::slice::from_raw_parts(arguments_ptr, arguments_len)
         };
 
-        let fn_ptr = match &*self.value.lock().unwrap() {
-            FunctionValue::Builtin(ptr) => {
-                NonNull::new(*ptr as *mut ())
+        
+        let fn_ptr = match self.value.try_lock() {
+            Ok(mut guard) => {
+                match &*guard {
+                    FunctionValue::Builtin(ptr) => {
+                        NonNull::new(*ptr as *mut ())
+                    }
+                    FunctionValue::Compiled(ptr, _) => {
+                        NonNull::new(*ptr as *mut ())
+                    }
+                    FunctionValue::Native(ptr) => {
+                        NonNull::new(*ptr as *mut ())
+                    }
+                    _ => None,
+                }
             }
-            FunctionValue::Compiled(ptr, _) => {
-                NonNull::new(*ptr as *mut ())
-            }
-            FunctionValue::Native(ptr) => {
-                NonNull::new(*ptr as *mut ())
-            }
-            _ => None,
+            Err(TryLockError::WouldBlock) => None,
+            Err(TryLockError::Poisoned(_)) => panic!("Lock poisoned"),
         };
 
         let block_positions = &*self.block_positions as *const FxHashMap<usize, usize>;

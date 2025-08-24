@@ -3338,7 +3338,7 @@ impl Compiler {
             let class_name_path = class.get_class_name();
             let mut field_path = self.add_path_if_needed(class_name_path.join("::"));
             field_path.push(name.to_string());
-            
+
             if let Ok(vtable) = class.get_vtable(field_path.join("::")) {
                 let method_entry = class.get_method_entry(field_path.join("::")).expect("add proper handling of missing method");
 
@@ -3366,7 +3366,7 @@ impl Compiler {
 
                     let interface_name = partial_class.add_string(interface_name);
                     let method_name = partial_class.add_string(method_name);
-                    
+
                     output.push(Bytecode::InvokeInterface(interface_name, method_name));
                     break
                 }

@@ -771,6 +771,44 @@ impl Runtime {
         })
     }
 
+    pub fn get_interface_method_details(
+        class_symbol: Symbol,
+        interface_symbol: Symbol,
+        method_name: Symbol,
+    ) -> FunctionDetails {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let SymbolEntry::ClassRef(object_class_index) = symbol_table[class_symbol] else {
+            panic!("class wasn't a class");
+        };
+
+        let class = &class_table[object_class_index];
+
+        let vtable_index = class.vtables.get(&interface_symbol).unwrap().clone();
+        drop(class_table);
+        let Ok(vtables_table) = VTABLES.read() else {
+            unreachable!("Lock poisoned");
+        };
+
+        let vtable = &vtables_table[vtable_index];
+        println!("getting interface method: {vtable_index}");
+        println!("mapper: {:#?}",vtable.symbol_mapper);
+        println!("method name: {}", method_name);
+        let function = vtable.get_function(method_name).expect("unable to get function");
+
+
+        function.create_details(MethodName::InterfaceMethod {
+            class_symbol,
+            interface_symbol,
+            method_name,
+        })
+    }
+
     pub fn jit_virtual_method(
         object_class_symbol: Symbol,
         class_symbol: Symbol,
@@ -862,6 +900,52 @@ impl Runtime {
         };
     }
 
+    pub fn jit_interface_method(
+        class_symbol: Symbol,
+        interface_symbol: Symbol,
+        method_name: Symbol,
+    ) {
+        let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let Ok(class_table) = CLASS_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let SymbolEntry::ClassRef(class_index) = symbol_table[class_symbol] else {
+            panic!("class wasn't a class");
+        };
+
+        let class = &class_table[class_index];
+        let vtable_index = if let Some(index) = class.get_vtable(&class_symbol) {
+            index
+        } else {
+            panic!("unable to find vtable");
+        };
+
+        let Ok(vtables_table) = VTABLES.read() else {
+            panic!("Lock poisoned");
+        };
+
+        let vtable = &vtables_table[vtable_index];
+        let function = vtable.get_function(method_name).unwrap();
+
+        let value = function.value.lock().unwrap();
+        match &*value {
+            FunctionValue::Bytecode(_) => {
+                drop(value);
+                let mut compiler = Runtime::create_jit_compiler();
+                let Ok(mut jit_controller) = JIT_CONTROLLER.write() else {
+                    panic!("Lock poisoned");
+                };
+
+                compiler.compile(function, &mut jit_controller.module).unwrap();
+            }
+            _ => {}
+        };
+    }
+
     pub fn create_jit_compiler() -> JITCompiler {
         let Ok(jit_controller) = JIT_CONTROLLER.write() else {
             panic!("Lock poisoned");
@@ -881,6 +965,7 @@ impl Runtime {
                 method_name,
                 ..
             } => method_name,
+            MethodName::InterfaceMethod { method_name, .. } => method_name,
         };
 
         let index = {
@@ -1119,6 +1204,49 @@ impl Runtime {
                     };
 
                     let class = &class_table[object_class_index];
+                    let vtable_index = if let Some(index) = class.get_vtable(&class_symbol) {
+                        index
+                    } else {
+                        panic!("unable to find vtable");
+                    };
+
+                    let Ok(vtables_table) = VTABLES.read() else {
+                        panic!("Lock poisoned");
+                    };
+
+                    let vtable = &vtables_table[vtable_index];
+                    let function = vtable.get_function(*method_name).expect("unable to find function");
+
+                    let value = &*function.value.lock().unwrap();
+                    let FunctionValue::Compiled(_, map) = value else {
+                        let Ok(string_table) = STRING_TABLE.read() else {
+                            unreachable!("we are trying to access the stack of a non-compiled function");
+                        };
+                        let SymbolEntry::StringRef(index) = symbol_table[*method_name] else {
+                            panic!("class wasn't a string");
+                        };
+                        let string = &string_table[index];
+                        unreachable!("we are trying to access the stack of a non-compiled function: {string}");
+                    };
+                    if let Some(offsets) = map.get(ip) {
+                        for offset in offsets {
+                            let pointer = (*sp + *offset as usize) as *mut Reference;
+                            unsafe {
+                                references.insert(WrappedReference(*pointer));
+                            }
+                        }
+                    }
+                }
+                MethodName::InterfaceMethod {
+                    class_symbol,
+                    interface_symbol,
+                    method_name
+                } => {
+                    let SymbolEntry::ClassRef(class_index) = symbol_table[*class_symbol] else {
+                        panic!("class wasn't a class");
+                    };
+
+                    let class = &class_table[class_index];
                     let vtable_index = if let Some(index) = class.get_vtable(&class_symbol) {
                         index
                     } else {

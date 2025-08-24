@@ -25,6 +25,11 @@ pub enum MethodName {
         object_class_symbol: Symbol,
         class_symbol: Symbol,
         method_name: Symbol,
+    },
+    InterfaceMethod {
+        class_symbol: Symbol,
+        interface_symbol: Symbol,
+        method_name: Symbol,
     }
 }
 

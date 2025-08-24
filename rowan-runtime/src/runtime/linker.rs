@@ -981,7 +981,9 @@ fn link_bytecode(
                     *symbol
                 } else {
                     let index = string_table.add_string(method_str);
+                    let method_str = string_table.get_string(index);
                     let symbol = symbol_table.add_string(index);
+                    string_map.insert(method_str, symbol);
                     symbol
                 };
 
@@ -996,7 +998,9 @@ fn link_bytecode(
                     *symbol
                 } else {
                     let index = string_table.add_string(method_str);
+                    let method_str = string_table.get_string(index);
                     let symbol = symbol_table.add_string(index);
+                    string_map.insert(method_str, symbol);
                     symbol
                 };
 
@@ -1012,7 +1016,9 @@ fn link_bytecode(
                     *symbol
                 } else {
                     let index = string_table.add_string(method_str);
+                    let method_str = string_table.get_string(index);
                     let symbol = symbol_table.add_string(index);
+                    string_map.insert(method_str, symbol);
                     symbol
                 };
 
@@ -1027,7 +1033,9 @@ fn link_bytecode(
                     *symbol
                 } else {
                     let index = string_table.add_string(method_str);
+                    let method_str = string_table.get_string(index);
                     let symbol = symbol_table.add_string(index);
+                    string_map.insert(method_str, symbol);
                     symbol
                 };
 
@@ -1040,7 +1048,9 @@ fn link_bytecode(
                     *index
                 } else {
                     let index = string_table.add_string(method_str);
+                    let method_str = string_table.get_string(index);
                     let symbol = symbol_table.add_string(index);
+                    string_map.insert(method_str, symbol);
                     symbol
                 };
                 if let Some(interface_symbol) = interface_map.get(interface_str) {
@@ -1064,7 +1074,9 @@ fn link_bytecode(
                     *index
                 } else {
                     let index = string_table.add_string(method_str);
+                    let method_str = string_table.get_string(index);
                     let symbol = symbol_table.add_string(index);
+                    string_map.insert(method_str, symbol);
                     symbol
                 };
                 if let Some(interface_symbol) = interface_map.get(interface_str) {
@@ -1812,12 +1824,10 @@ pub fn link_interfaces(
                     .into_boxed_slice();
 
                 let return_type = convert_type(&signature_entry.types[0]);
-
-
+                
                 vtable.table[i] = Arc::new(
                     Function::new(method_name_symbol, bytecode, function_value, args, return_type, signature, block_positions)
                 );
-                vtable.symbol_mapper.insert(method_name_symbol, i);
             }
         }
 
@@ -1835,8 +1845,5 @@ pub fn link_interfaces(
         };
 
         class.add_interface(interface_symbol, vtable_index);
-
-
     }
-
 }

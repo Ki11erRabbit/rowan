@@ -150,6 +150,13 @@ impl JITController {
                 } => {
                     Runtime::jit_virtual_method(object_class_symbol, class_symbol, method_name);
                 }
+                MethodName::InterfaceMethod {
+                    class_symbol, 
+                    interface_symbol, 
+                    method_name
+                } => {
+                    Runtime::jit_interface_method(class_symbol, interface_symbol, method_name);
+                }
             }
             //println!("done");
         }
