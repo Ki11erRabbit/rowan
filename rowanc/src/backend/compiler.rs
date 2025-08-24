@@ -686,7 +686,7 @@ impl Compiler {
         if class.contains("::") {
             return class.split("::").map(|s| s.to_string()).collect();
         }
-        //println!("active_imports: {:?}", self.active_imports);
+        println!("active_imports: {:#?}", self.active_imports);
         let path = self.active_imports.get(&class);
         if let Some(path) = path {
             let module = path.clone();
@@ -1000,6 +1000,10 @@ impl Compiler {
         mut self, 
         files: Vec<File>,
     ) -> Result<(), CompilerError> {
+        
+        let mut all_classes = Vec::new();
+        let mut all_interfaces = Vec::new();
+        let mut all_interface_impls = Vec::new();
 
         for file in files {
             let File { path, content, .. } = file;
@@ -1018,17 +1022,23 @@ impl Compiler {
                 }
             });
 
-            let (classes, interfaces, interface_impls) = self.load_parts(content)?;
+            let (mut classes, mut interfaces, mut interface_impls) = self.load_parts(content)?;
+            
+            all_classes.append(&mut classes);
+            all_interfaces.append(&mut interfaces);
+            all_interface_impls.append(&mut interface_impls);
+        }
+        
+        self.alter_imports_if_needed();
 
-            for (class, type_args) in classes {
-                self.compile_class(class, type_args)?;
-            }
-            for (interface, type_args) in interfaces {
-                self.compile_interface(interface, type_args)?;
-            }
-            for (r#impl, type_args) in interface_impls {
-                self.compile_interface_impl(r#impl, type_args)?;
-            }
+        for (interface, type_args) in all_interfaces {
+            self.compile_interface(interface, type_args)?;
+        }
+        for (class, type_args) in all_classes {
+            self.compile_class(class, type_args)?;
+        }
+        for (r#impl, type_args) in all_interface_impls {
+            self.compile_interface_impl(r#impl, type_args)?;
         }
 
         for (path, file) in self.classes.into_iter() {
@@ -1472,14 +1482,10 @@ impl Compiler {
                     modifier_string.push_str(modifier);
                 }
 
-                let name = format!("{name}{modifier_string}");
+                //let name = format!("{name}{modifier_string}");
 
                 let mut new_path = path_name.clone();
                 new_path.last_mut().unwrap().push_str(&modifier_string);
-                self.imports_to_change.entry(path_name.last().cloned().unwrap())
-                    .and_modify(|path| {
-                        path.push(name.clone());
-                    }).or_insert(vec![name]);
 
                 let parent_paths = parents.iter().map(|p| {
                     let name = match p {
@@ -1511,11 +1517,15 @@ impl Compiler {
                         }
                         _ => unreachable!("Trait parent Parent can only be Object or TypeArg"),
                     };
-                    
+
                     let new_path = self.add_path_if_needed(name);
                     new_path
                 }).collect::<Vec<_>>();
 
+                self.imports_to_change.entry(path_name.last().cloned().unwrap())
+                    .and_modify(|path| {
+                        path.push(new_path.last().cloned().unwrap());
+                    }).or_insert(vec![new_path.last().cloned().unwrap()]);
 
                 self.load_trait_inner(&new_path, &methods)?;
                 self.interface_parents.insert(new_path.clone(), parent_paths);
@@ -2974,7 +2984,13 @@ impl Compiler {
             _ => todo!("report error about method output not being an object: {:?} {:?}", object, field),
         };
 
-        let class = self.classes.get(&name).unwrap();
+        println!("name: {name:?}");
+        
+        let this_class = match partial_class {
+            CurrentCompilationUnit::Class(class) => class,
+            _ => unreachable!(),
+        };
+        let class = self.classes.get(&name).unwrap_or(this_class);
         let (class_name, parent_name) = if class.contains_field(field.to_string().as_str()) {
             (class.get_class_name(), Vec::new())
         } else {

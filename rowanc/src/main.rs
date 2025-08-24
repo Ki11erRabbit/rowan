@@ -120,7 +120,7 @@ fn main() {
             edges.push((i as u32, *index.get(&import).expect("import not found") as u32));
         }
     }
-    let mut class_files = class_files.into_iter().map(Some).collect::<Vec<_>>();
+    /*let mut class_files = class_files.into_iter().map(Some).collect::<Vec<_>>();
     drop(index);
     for edge in edges.iter() {
         println!("{edge:?}");
@@ -166,7 +166,7 @@ fn main() {
         }
     });
 
-    let class_files = new_class_files;
+    let class_files = new_class_files;*/
 
 
 
