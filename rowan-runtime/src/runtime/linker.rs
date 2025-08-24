@@ -56,6 +56,7 @@ pub fn link_class_files(
     for (i, class) in classes.iter().enumerate() {
         let ClassFile { name, parent, vtables, .. } = class;
         let name_str = class.index_string_table(*name);
+        println!("name: {}", name_str);
         let class_symbol = if let Some(symbol) = class_map.get(name_str) {
             *symbol
         } else {
@@ -960,6 +961,7 @@ fn link_bytecode(
             }
             compiled::Bytecode::SetField(index, _, pos, tag) => {
                 let class_str = class_file.index_string_table(index);
+                println!("{class_str}");
                 let symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet"); 
 
                 output.push(linked::Bytecode::SetField(symbol as u64, 0, pos, tag));

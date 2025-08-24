@@ -693,8 +693,12 @@ impl Compiler {
             let result = class.get_class_name();
             result
         } else {
+            //panic!("We should have loaded the value already {class}");
             let mut module = self.current_module.clone();
             module.push(class);
+            if module.contains(&String::from("main")) && module.contains(&String::from("ArrayList")) {
+                panic!()
+            }
             module
         }
     }
