@@ -56,7 +56,7 @@ pub fn link_class_files(
     for (i, class) in classes.iter().enumerate() {
         let ClassFile { name, parent, vtables, .. } = class;
         let name_str = class.index_string_table(*name);
-        println!("name: {}", name_str);
+        //println!("name: {}", name_str);
         let class_symbol = if let Some(symbol) = class_map.get(name_str) {
             *symbol
         } else {
@@ -961,7 +961,7 @@ fn link_bytecode(
             }
             compiled::Bytecode::SetField(index, _, pos, tag) => {
                 let class_str = class_file.index_string_table(index);
-                println!("{class_str}");
+                //println!("{class_str}");
                 let symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet"); 
 
                 output.push(linked::Bytecode::SetField(symbol as u64, 0, pos, tag));
@@ -1004,7 +1004,7 @@ fn link_bytecode(
             }
             compiled::Bytecode::InvokeStatic(class_index, method_index) => {
                 let class_str = class_file.index_string_table(class_index);
-                println!("{class_str}");
+                //println!("{class_str}");
                 let class_symbol: Symbol = *class_map.get(class_str).expect("Class not loaded yet");
 
                 let method_str = class_file.index_string_table(method_index);
@@ -1625,7 +1625,7 @@ pub fn link_interfaces(
         } = interface;
 
         let name = interface.index_string_table(*name);
-        println!("\t interface name: {name:?}");
+        //println!("\t interface name: {name:?}");
         let (name, name_symbol) = if let Some(symbol) = string_map.get(name) {
             let SymbolEntry::StringRef(index) = symbol_table[*symbol] else {
                 unreachable!("Symbol table should have been a string reference");
@@ -1745,8 +1745,8 @@ pub fn link_interfaces(
         } = &r#impl;
 
         let interface_name = r#impl.index_string_table(*interface_name);
-        println!("interface name: {}", interface_name);
-        println!("interface_map: {:#?}", interface_map);
+        //println!("interface name: {}", interface_name);
+        //println!("interface_map: {:#?}", interface_map);
         let (interface_name, interface_symbol, interface_vtable) = if let Some(symbol) = interface_map.get(interface_name) {
             let SymbolEntry::InterfaceRef(index) = &symbol_table[*symbol] else {
                 unreachable!("Interface symbol should have been a symbol to a interface");

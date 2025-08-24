@@ -871,6 +871,33 @@ impl Runtime {
         JITCompiler::new(context)
     }
 
+    pub fn get_method_name(method_name: MethodName) -> &'static str {
+        let symbol = match method_name {
+            MethodName::StaticMethod {
+                method_name,
+                ..
+            } => method_name,
+            MethodName::VirtualMethod {
+                method_name,
+                ..
+            } => method_name,
+        };
+
+        let index = {
+            let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+                panic!("Lock poisoned");
+            };
+            let SymbolEntry::StringRef(index) = symbol_table[symbol] else {
+                panic!("symbol wasn't a string");
+            };
+            index
+        };
+        let Ok(string_table) = STRING_TABLE.read() else {
+            panic!("Lock poisoned");
+        };
+        string_table.get_string(index)
+    }
+
     pub fn get_virtual_method_signature(class_symbol: Symbol, method_name: Symbol) -> (Signature, bool) {
         let Ok(symbol_table) = SYMBOL_TABLE.read() else {
             panic!("Lock poisoned");

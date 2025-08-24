@@ -273,6 +273,14 @@ impl BytecodeContext {
         &mut self.call_args
     }
 
+    pub fn args_len(&self) -> usize {
+        for (i, var) in self.call_args.iter().enumerate() {
+            if var.is_blank() {
+                return i;
+            }
+        }
+        self.call_args.len()
+    }
 
     pub fn is_current_exception_set(&self) -> bool {
         !self.current_exception.is_null()
@@ -281,16 +289,11 @@ impl BytecodeContext {
     pub fn push(&mut self, bytecode: &'static [Bytecode], is_for_bytecode: bool, method_name: MethodName, block_positions: &'static FxHashMap<usize, usize>) {
         self.active_bytecodes.push(bytecode);
         let args = self.get_args();
+        let name = Runtime::get_method_name(method_name);
         if is_for_bytecode {
-            self.active_frames.push(StackFrame::new_light(method_name));
-        } else {
             self.active_frames.push(StackFrame::new(args, method_name, block_positions));
-        }
-        for arg in self.get_args_mut() {
-            if arg.is_blank() {
-                break
-            }
-            *arg = StackValue::Blank;
+        } else {
+            self.active_frames.push(StackFrame::new_light(method_name));
         }
     }
 
@@ -394,13 +397,11 @@ impl BytecodeContext {
 
         self.push(details.bytecode, details.fn_ptr.is_none(), method_name, details.block_positions);
 
-        match details.fn_ptr {
+        let state = match details.fn_ptr {
             Some(fn_ptr) => {
                 //println!("calling function pointer");
-                let var_len = self.current_frame().vars_len();
-                let mut variables = self.current_frame()
-                    .variables()[..var_len]
-                    .to_vec();
+                let var_len = self.args_len();
+                let mut variables = self.call_args[0..var_len].to_vec();
                 let return_value = call_function_pointer(
                     self,
                     &mut variables,
@@ -421,8 +422,14 @@ impl BytecodeContext {
             _ => {
                 CallContinueState::ExecuteFunction
             }
+        };
+        for arg in self.get_args_mut() {
+            if arg.is_blank() {
+                break
+            }
+            *arg = StackValue::Blank;
         }
-
+        state
     }
 
     /// TODO: add way to pass in cmdline args

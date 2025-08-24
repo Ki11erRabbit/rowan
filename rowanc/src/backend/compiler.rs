@@ -686,7 +686,6 @@ impl Compiler {
         if class.contains("::") {
             return class.split("::").map(|s| s.to_string()).collect();
         }
-        println!("active_imports: {:#?}", self.active_imports);
         let path = self.active_imports.get(&class);
         if let Some(path) = path {
             let module = path.clone();
@@ -1556,10 +1555,6 @@ impl Compiler {
         ) = self.construct_vtable(&name, &methods)?;
 
         partial_interface.add_functions(&names, &signatures);
-
-        if name.contains(&String::from("List64")) {
-            println!("{name:?}");
-        }
         self.interfaces.insert(name.clone(), partial_interface);
 
         Ok(())
@@ -2983,8 +2978,6 @@ impl Compiler {
             }
             _ => todo!("report error about method output not being an object: {:?} {:?}", object, field),
         };
-
-        println!("name: {name:?}");
         
         let this_class = match partial_class {
             CurrentCompilationUnit::Class(class) => class,
