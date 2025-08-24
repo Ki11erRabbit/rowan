@@ -32,18 +32,23 @@ pub extern "C" fn rowan_main() {
         file.read_to_end(&mut output).unwrap();
         (rowan_shared::load_binary(&output), PathBuf::from(f))
     }).unzip();
-    
+
     let mut classes = Vec::new();
+    let mut class_paths = Vec::new();
     let mut interfaces = Vec::new();
     let mut interface_impls = Vec::new();
-    
-    for class_file in class_files {
+
+    for (class_file, path) in class_files.into_iter().zip(paths) {
         match class_file {
-            RowanClassFile::ClassFile(class) => classes.push(class),
+            RowanClassFile::ClassFile(class) => {
+                classes.push(class);
+                class_paths.push(path);
+            },
             RowanClassFile::InterfaceFile(interface) => interfaces.push(interface),
             RowanClassFile::InterfaceImplFile(interface_impl) => interface_impls.push(interface_impl),
         }
     }
+    let paths = class_paths;
 
     let paths = paths.into_iter()
         .map(|mut f| {
@@ -90,21 +95,21 @@ pub extern "C" fn rowan_main() {
     Runtime::link_vm_classes(vm_classes, &mut pre_class_table, &mut vtables_map);
 
     let (main_symbol, main_method_symbol) = Runtime::link_classes(
-        classes, 
-        paths, 
-        &mut pre_class_table, 
+        classes,
+        paths,
+        &mut pre_class_table,
         &mut pre_interface_table,
         &mut interfaces_map,
         &mut vtables_map);
 
     Runtime::link_interfaces(
-        interfaces, 
-        interface_impls, 
+        interfaces,
+        interface_impls,
         pre_interface_table,
         interfaces_map,
         &mut pre_class_table
     );
-    
+
     Runtime::finish_linking_classes(pre_class_table);
 
     let (jit_sender, jit_receiver) = std::sync::mpsc::channel();

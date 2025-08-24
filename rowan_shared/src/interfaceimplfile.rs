@@ -52,7 +52,7 @@ impl InterfaceImplFile {
     ) -> Self {
         InterfaceImplFile {
             magic: 0,
-            r#type: 1,
+            r#type: 2,
             major_version: 0,
             minor_version: 0,
             patch_version: 0,
@@ -68,15 +68,15 @@ impl InterfaceImplFile {
     pub fn new(binary: &[u8]) -> Self {
         let mut index = 0;
         let magic = binary[0];
-        // asserting that we are indeed a InterfaceImpl file and not an Class or Interface
+        // asserting that we are indeed a InterfaceImpl file and not a Class or Interface
         assert_eq!(binary[1], 2);
         let major_version = binary[2];
         let minor_version = binary[3];
         let patch_version = binary[4];
         index += 5;
         let interface_name = u64::from_le_bytes([
-            binary[4], binary[5], binary[6], binary[7],
-            binary[8], binary[9], binary[10], binary[11]
+            binary[5], binary[6], binary[7], binary[8],
+            binary[9], binary[10], binary[11], binary[12]
         ]);
         index += 8;
         let implementer_name = u64::from_le_bytes([

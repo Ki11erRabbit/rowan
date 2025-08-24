@@ -78,7 +78,7 @@ pub enum FileType {
 
 pub fn identify_file(binary: &[u8]) -> FileType {
     assert!(binary.len() >= 2, "Binary is too short for a class file");
-    match binary[0] {
+    match binary[1] {
         0 => FileType::Class,
         1 => FileType::Interface,
         2 => FileType::InterfaceImpl,

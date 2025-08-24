@@ -70,10 +70,10 @@ impl InterfaceFile {
         let patch_version = binary[4];
         index += 5;
         let name = u64::from_le_bytes([
-            binary[4], binary[5], binary[6], binary[7],
-            binary[8], binary[9], binary[10], binary[11]
+            binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
+            binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
         ]);
-        index += 8;
+        index += size_of::<u64>();
         
         index += 3; // padding of 3 bytes
 
@@ -110,14 +110,15 @@ impl InterfaceFile {
             binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
             binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
         ]);
-        index += 8;
+        index += size_of::<u64>();
 
         for _ in 0..bytecode_table_size {
             let code_size = u64::from_le_bytes([
                 binary[index], binary[index + 1], binary[index + 2], binary[index + 3],
                 binary[index + 4], binary[index + 5], binary[index + 6], binary[index + 7]
             ]);
-            index += 8;
+            index += size_of::<u64>();
+            assert!(code_size < binary.len() as u64, "Code size is too too large");
             let code = unsafe {
                 std::slice::from_raw_parts(
                     binary.as_ptr().add(index),
