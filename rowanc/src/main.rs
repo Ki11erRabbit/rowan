@@ -20,7 +20,7 @@ pub struct Args {
     pub directory: String,
 
     #[arg(short, long)]
-    pub stdlib_path: String,
+    pub stdlib_path: Option<String>,
 }
 
 fn explore_directories<P: AsRef<Path>>(path: P, files: &mut Vec<(String, Vec<String>, String)>) {
@@ -85,7 +85,9 @@ fn main() {
 
     let mut files = Vec::new();
 
-    explore_directories(&args.stdlib_path, &mut files);
+    if let Some(stdlib_path) = args.stdlib_path {
+        explore_directories(&stdlib_path, &mut files);
+    }
 
     explore_directories_start(&args.directory, &mut files);
 

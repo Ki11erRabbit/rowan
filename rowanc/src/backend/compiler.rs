@@ -1950,7 +1950,7 @@ impl Compiler {
         name: &Vec<String>,
         methods: &Vec<Method>,
     ) -> Result<(), CompilerError> {
-
+        
         let mut partial_class = self.classes.get(name).cloned().unwrap();
 
         self.compile_methods(name, &mut CurrentCompilationUnit::Class(&mut partial_class), methods)?;
