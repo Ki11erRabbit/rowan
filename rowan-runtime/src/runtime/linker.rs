@@ -1824,7 +1824,7 @@ pub fn link_interfaces(
                     .into_boxed_slice();
 
                 let return_type = convert_type(&signature_entry.types[0]);
-                
+
                 vtable.table[i] = Arc::new(
                     Function::new(method_name_symbol, bytecode, function_value, args, return_type, signature, block_positions)
                 );
