@@ -8,7 +8,7 @@ pub enum StackFrame {
         ip: usize,
         current_block: usize,
         block_positions: &'static FxHashMap<usize, usize>,
-        variables: [StackValue; 256],
+        //variables: [StackValue; 256],
         method_name: MethodName,
     },
     Light {
@@ -18,22 +18,22 @@ pub enum StackFrame {
 
 impl StackFrame {
     pub fn new(
-        args: &[StackValue],
+        //args: &[StackValue],
         method_name: MethodName,
         block_positions: &'static FxHashMap<usize, usize>,
     ) -> Self {
-        let mut variables = [StackValue::Blank; 256];
+        /*let mut variables = [StackValue::Blank; 256];
         for (arg, variable) in args.iter().zip(variables.iter_mut()) {
             if arg.is_blank() {
                 break;
             }
             *variable = *arg;
-        }
+        }*/
         Self::Full {
             ip: 0,
             current_block: 0,
             block_positions,
-            variables,
+            //variables,
             method_name,
         }
     }
@@ -56,7 +56,7 @@ impl StackFrame {
         }
     }
 
-    pub fn variables(&self) -> &[StackValue] {
+    /*pub fn variables(&self) -> &[StackValue] {
         match self {
             StackFrame::Full { variables, .. } => variables,
             StackFrame::Light { .. } => unreachable!("Can't get variables from a light frame"),
@@ -68,7 +68,7 @@ impl StackFrame {
             StackFrame::Full { variables, .. } => variables,
             StackFrame::Light { .. } => unreachable!("Can't get variables from a light frame"),
         }
-    }
+    }*/
 
     pub fn ip(&self) -> &usize {
         match self {
@@ -102,7 +102,7 @@ impl StackFrame {
         }
     }
 
-    pub fn vars_len(&self) -> usize {
+    /*pub fn vars_len(&self) -> usize {
         match self {
             StackFrame::Full {
                 variables,
@@ -139,5 +139,5 @@ impl StackFrame {
             }
             StackFrame::Light { .. } => {}
         }
-    }
+    }*/
 }

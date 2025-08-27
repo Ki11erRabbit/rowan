@@ -1,4 +1,5 @@
 mod stackframe;
+mod frame_vars;
 
 use std::collections::HashSet;
 use std::sync::TryLockError;
@@ -10,6 +11,7 @@ use crate::context::{call_function_pointer, MethodName, WrappedReference};
 use crate::runtime::{FunctionDetails, Reference, Runtime, DO_GARBAGE_COLLECTION};
 use crate::runtime::object::Object;
 use paste::paste;
+use crate::context::interpreter::frame_vars::FrameVars;
 use crate::context::interpreter::stackframe::{StackFrame};
 use crate::runtime::core::interned_string_init;
 use crate::runtime::garbage_collection::GarbageCollection;
@@ -209,6 +211,7 @@ pub struct BytecodeContext {
     active_frames: Vec<StackFrame>,
     current_exception: Reference,
     call_args: [StackValue; 256],
+    vars: FrameVars,
 }
 
 
@@ -220,6 +223,7 @@ impl BytecodeContext {
             active_frames: Vec::new(),
             current_exception: std::ptr::null_mut(),
             call_args: [StackValue::Blank; 256],
+            vars: FrameVars::new(),
         }
     }
     
@@ -246,11 +250,11 @@ impl BytecodeContext {
 
     pub fn store_local(&mut self, index: u8) {
         let value = self.pop_value();
-        self.current_frame_mut().variables_mut()[index as usize] = value;
+        self.vars[index as usize] = value;
     }
 
     pub fn load_local(&mut self, index: u8) {
-        let value = self.current_frame().variables()[index as usize];
+        let value = self.vars[index as usize];
         self.push_value(value);
     }
 
@@ -288,18 +292,25 @@ impl BytecodeContext {
 
     pub fn push(&mut self, bytecode: &'static [Bytecode], is_for_bytecode: bool, method_name: MethodName, block_positions: &'static FxHashMap<usize, usize>) {
         self.active_bytecodes.push(bytecode);
-        let args = self.get_args();
-        let name = Runtime::get_method_name(method_name);
+        self.vars.push();
+        for (i, arg) in self.call_args.iter().enumerate() {
+            if arg.is_blank() {
+                break;
+            }
+            self.vars[i] = *arg;
+        }
         if is_for_bytecode {
-            self.active_frames.push(StackFrame::new(args, method_name, block_positions));
+            self.active_frames.push(StackFrame::new(method_name, block_positions));
         } else {
             self.active_frames.push(StackFrame::new_light(method_name));
         }
+        
     }
 
     pub fn pop(&mut self) {
         self.active_bytecodes.pop();
         self.active_frames.pop();
+        self.vars.pop();
     }
 
     pub fn current_frame(&self) -> &StackFrame {
@@ -474,8 +485,8 @@ impl BytecodeContext {
         };
         self.active_bytecodes.push(details.bytecode);
         // TODO: add passing of cmdline args
-        self.active_frames.push(StackFrame::new(&[], method_name, details.block_positions));
-        self.current_frame_mut().variables_mut()[0] = StackValue::Reference(std::ptr::null_mut());
+        self.active_frames.push(StackFrame::new(method_name, details.block_positions));
+        self.vars[0] = StackValue::Reference(std::ptr::null_mut());
         self.main_loop();
     }
 
@@ -558,7 +569,7 @@ impl BytecodeContext {
 
     pub fn run_bytecode(&mut self, bytecode: &'static [Bytecode], block_positions: &'static FxHashMap<usize, usize>) {
         self.active_bytecodes.push(bytecode);
-        self.active_frames.push(StackFrame::new(&[], MethodName::StaticMethod { method_name: 0, class_symbol: 0 }, block_positions));
+        self.active_frames.push(StackFrame::new(MethodName::StaticMethod { method_name: 0, class_symbol: 0 }, block_positions));
         self.main_loop();
         self.pop();
     }
@@ -602,9 +613,6 @@ impl BytecodeContext {
     }
 
     fn collect_interpreter_references(&mut self, references: &mut HashSet<WrappedReference>) {
-        for frame in self.active_frames.iter() {
-            frame.collect(references);
-        }
         for call_arg in self.call_args.iter() {
             match call_arg {
                 StackValue::Reference(value) =>  {
