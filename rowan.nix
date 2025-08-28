@@ -17,6 +17,7 @@ let
 
         nativeBuildInputs = [
             cargo
+            pkg-config
         ];
 
         buildInputs = [

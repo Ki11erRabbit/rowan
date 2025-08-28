@@ -16,8 +16,10 @@ rustPlatform.buildRustPackage  {
     src = builtins.path { name = "rowan"; path = ./.; };
 
     nativeBuildInputs = [
+        pkg-config
     ];
     buildInputs = [
+        libunwind
     ];
 
     cargoLock = {
