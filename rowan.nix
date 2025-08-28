@@ -1,0 +1,76 @@
+{
+    lib,
+    stdenv,
+    rustPlatform,
+    libunwind,
+    pkg-config,
+    cargo,
+
+
+}:
+let
+    rowan-runtime = stdenv.mkDerivation ({
+        pname = "rowan-runtime";
+        version = "0.0.0";
+
+        src = builtins.path { name = "rowan-runtime"; path = ./.; };
+
+        nativeBuildInputs = [
+            cargo
+        ];
+
+        buildInputs = [
+            libunwind
+        ];
+
+        outputs = [ "out" "dev" ];
+
+        buildPhase = ''
+        cargo build --release -p rowan-runtime
+        cp target/release/librowan_runtime.so $(out)
+        cp target/release/librowan_runtime.so $(dev)
+        '';
+        meta = {
+            description = "The Runtime for the Rowan Programming Language";
+            homepage = "https://github.com/Ki11erRabbit/rowan";
+            license = lib.licenses.mit;
+            maintainers = [];
+            platforms = [
+                "x86_64-linux"
+            ];
+        };
+    });
+in
+rustPlatform.buildRustPackage  {
+    pname = "rowan";
+    version = "0.0.0";
+
+    src = builtins.path { name = "rowan"; path = ./.; };
+
+    nativeBuildInputs = [
+    ];
+    buildInputs = [
+        rowan-runtime
+        libunwind
+    ];
+
+    cargoLock = {
+        lockFile = ./Cargo.lock;
+        outputHashes = {
+            "unwind-sys-0.1.4" = "";
+        };
+    };
+
+
+
+    meta = {
+        description = "The Runtime for the Rowan Programming Language";
+        homepage = "https://github.com/Ki11erRabbit/rowan";
+        licenses = lib.licenses.mit;
+        maintainers = [];
+        mainProgram = "rowan";
+        platforms = [
+            "x86_64-linux"
+        ];
+    };
+}
