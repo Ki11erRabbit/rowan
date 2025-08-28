@@ -1,43 +1,76 @@
 {
     lib,
     stdenv,
+    rustPlatform,
     libunwind,
     pkg-config,
     cargo,
 
 
 }:
+let
+    rowan-runtime = stdenv.mkDerivation ({
+        pname = "rowan-runtime";
+        version = "0.0.0";
 
-stdenv.mkDerivation ({
+        src = builtins.path { name = "rowan-runtime"; path = ./.; };
+
+        nativeBuildInputs = [
+            cargo
+        ];
+
+        buildInputs = [
+            libunwind
+        ];
+
+        outputs = [ "out" "dev" ];
+
+        buildPhase = ''
+        cargo build --release -p rowan-runtime
+        cp target/release/librowan_runtime.so $(out)
+        cp target/release/librowan_runtime.so $(dev)
+        '';
+        meta = {
+            description = "The Runtime for the Rowan Programming Language";
+            homepage = "https://github.com/Ki11erRabbit/rowan";
+            license = lib.licenses.mit;
+            maintainers = [];
+            platforms = [
+                "x86_64-linux"
+            ];
+        };
+    });
+in
+rustPlatform.buildRustPackage  {
     pname = "rowan";
     version = "0.0.0";
 
     src = builtins.path { name = "rowan"; path = ./.; };
 
     nativeBuildInputs = [
-        cargo
     ];
-
     buildInputs = [
+        rowan-runtime
         libunwind
     ];
 
-    outputs = [ "out" "dev" ];
+    cargoLock = {
+        lockFile = ./Cargo.lock;
+        outputHashes = {
+            "unwind-sys-0.1.4" = "";
+        };
+    };
 
-    buildPhase = ''
-    cargo build --release -p rowan-runtime
-    cargo build --release -p rowan
-    cp target/release/librowan_runtime.so $(out)
-    cp target/release/librowan_runtime.so $(dev)
-    cp target/release/rowan $(out)
-    '';
+
+
     meta = {
         description = "The Runtime for the Rowan Programming Language";
         homepage = "https://github.com/Ki11erRabbit/rowan";
-        license = lib.licenses.mit;
+        licenses = lib.licenses.mit;
         maintainers = [];
+        mainProgram = "rowan";
         platforms = [
             "x86_64-linux"
         ];
     };
-})
+}

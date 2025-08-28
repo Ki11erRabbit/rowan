@@ -18,7 +18,6 @@ rustPlatform.buildRustPackage  {
     nativeBuildInputs = [
     ];
     buildInputs = [
-        rowan-runtime
     ];
 
     cargoLock = {
