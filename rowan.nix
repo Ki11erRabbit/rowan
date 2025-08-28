@@ -30,11 +30,12 @@ let
             };
         };
 
-        outputs = [ "out" "dev" ];
+        outputs = [ "out" "dev" "lib" ];
 
         installPhase = ''
         cp target/release/librowan_runtime.so $(out)
         cp target/release/librowan_runtime.so $(dev)
+        cp target/release/librowan_runtime.so $(lib)
         '';
         meta = {
             description = "The Runtime for the Rowan Programming Language";
