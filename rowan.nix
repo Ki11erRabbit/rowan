@@ -9,7 +9,7 @@
 
 }:
 let
-    rowan-runtime = stdenv.mkDerivation ({
+    rowan-runtime = rustPlatform.buildRustPackage {
         pname = "rowan-runtime";
         version = "0.0.0";
 
@@ -23,11 +23,16 @@ let
         buildInputs = [
             libunwind
         ];
+        cargoLock = {
+            lockFile = ./Cargo.lock;
+            outputHashes = {
+                "unwind-sys-0.1.4" = "sha256-kpONieYR+Nex/2K3fYGw4+QVlX5TiZ21tyNgd6gDc6c=";
+            };
+        };
 
         outputs = [ "out" "dev" ];
 
-        buildPhase = ''
-        cargo build --release -p rowan-runtime
+        installPhase = ''
         cp target/release/librowan_runtime.so $(out)
         cp target/release/librowan_runtime.so $(dev)
         '';
@@ -40,7 +45,7 @@ let
                 "x86_64-linux"
             ];
         };
-    });
+    };
 in
 rustPlatform.buildRustPackage  {
     pname = "rowan";
