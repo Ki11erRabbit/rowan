@@ -557,7 +557,7 @@ extern "C" fn string_buffer_push_string(_: &mut BytecodeContext, this: *mut Stri
     
     let string = unsafe {
         let slice = from_raw_parts(buf, size as usize);
-        str::from_utf8(slice).unwrap()
+        std::str::from_utf8_unchecked(slice)
     };
     
     object.push_str(string);
@@ -580,7 +580,7 @@ extern "C" fn string_buffer_insert_string(_: &mut BytecodeContext, this: *mut St
 
     let string = unsafe {
         let slice = from_raw_parts(buf, size as usize);
-        str::from_utf8(slice).unwrap()
+        std::str::from_utf8_unchecked(slice)
     };
 
     object.insert_str(index as usize, string);
