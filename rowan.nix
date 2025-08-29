@@ -24,7 +24,7 @@ let
             libunwind
         ];
         cargoLock = {
-            lockFile = ../Cargo.lock;
+            lockFile = ./../Cargo.lock;
             outputHashes = {
                 "unwind-sys-0.1.4" = "sha256-kpONieYR+Nex/2K3fYGw4+QVlX5TiZ21tyNgd6gDc6c=";
             };
@@ -62,7 +62,7 @@ rustPlatform.buildRustPackage  {
     ];
 
     cargoLock = {
-        lockFile = ../Cargo.lock;
+        lockFile = ./../Cargo.lock;
         outputHashes = {
             "unwind-sys-0.1.4" = "sha256-kpONieYR+Nex/2K3fYGw4+QVlX5TiZ21tyNgd6gDc6c=";
         };
