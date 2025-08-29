@@ -37,6 +37,11 @@ let
 
         outputs = [ "out" "dev" "lib" ];
 
+        installPhase = ''
+        cp target/${CARGO_BUILD_TARGET:-}/release/librowan_runtime.so $out
+        cp target/${CARGO_BUILD_TARGET:-}/release/librowan_runtime.so $dev
+        cp target/${CARGO_BUILD_TARGET:-}/release/librowan_runtime.so $lib
+        '';
         meta = {
             description = "The Runtime for the Rowan Programming Language";
             homepage = "https://github.com/Ki11erRabbit/rowan";
@@ -62,7 +67,7 @@ in
             rowan-runtime
             libunwind
         ];
-        outputs = [ "out"  ];
+        outputs = [ "out" ];
 
         cargoBuildFlags = ["-p" "rowan"];
 
@@ -72,6 +77,9 @@ in
                 "unwind-sys-0.1.4" = "sha256-kpONieYR+Nex/2K3fYGw4+QVlX5TiZ21tyNgd6gDc6c=";
             };
         };
+        installPhase = ''
+            cp target/${CARGO_BUILD_TARGET:-}/release/rowan $out
+        '';
 
 
         meta = {
@@ -108,6 +116,9 @@ in
                  "unwind-sys-0.1.4" = "sha256-kpONieYR+Nex/2K3fYGw4+QVlX5TiZ21tyNgd6gDc6c=";
              };
          };
+         installPhase = ''
+             cp target/${CARGO_BUILD_TARGET:-}/release/rowanc $out
+         '';
 
 
          meta = {
