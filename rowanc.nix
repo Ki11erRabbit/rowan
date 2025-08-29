@@ -1,8 +1,6 @@
 {
     lib,
-    stdenv,
     rustPlatform,
-    libunwind,
     pkg-config,
     cargo,
 
@@ -21,10 +19,9 @@ rustPlatform.buildRustPackage  {
         pkg-config
     ];
     buildInputs = [
-        libunwind
     ];
 
-    outputs = [ "out" "dev" "lib" ];
+    outputs = [ "out" ];
 
     cargoLock = {
         lockFile = ./Cargo.lock;
