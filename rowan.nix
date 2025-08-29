@@ -39,10 +39,12 @@ let
         outputs = [ "out" "dev" "lib" ];
 
         installPhase = ''
-        mkdir -p $lib $dev $out/lib
-        cp target/${triple}/release/librowan_runtime.so $lib
-        cp headers/* $dev
-        ln -s $lib $out/lib
+            runHook preInstall
+        mkdir -p $lib/lib $dev $out/lib $dev/include
+        cp target/${triple}/release/librowan_runtime.so $lib/lib/
+        cp headers/* $dev/include/
+        ln -s $lib/lib $out/lib
+        runHook postInstall
         '';
         meta = {
             description = "The Runtime for the Rowan Programming Language";
@@ -69,6 +71,10 @@ in
             rowan-runtime
             libunwind
         ];
+
+        LIBRARY_PATH = "${rowan-runtime.lib}/lib";
+        LD_LIBRARY_PATH = "${rowan-runtime.lib}/lib";
+
         outputs = [ "out" ];
 
         cargoBuildFlags = ["-p" "rowan"];
@@ -80,7 +86,12 @@ in
             };
         };
         installPhase = ''
-            cp target/${triple}/release/rowan $out
+            runHook preInstall
+
+            mkdir -p $out/bin
+            cp target/${triple}/release/rowan $out/bin/
+
+            runHook postInstall
         '';
 
 
@@ -119,7 +130,12 @@ in
              };
          };
          installPhase = ''
-             cp target/${triple}/release/rowanc $out
+             runHook preInstall
+
+             mkdir -p $out/bin
+             cp target/${triple}/release/rowanc $out/bin/
+
+             runHook postInstall
          '';
 
 
