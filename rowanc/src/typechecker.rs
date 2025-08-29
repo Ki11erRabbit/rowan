@@ -1319,7 +1319,7 @@ impl TypeChecker {
 
         self.annotate_expr(&Type::Boolean, condition.as_mut())?;
         let condition_type = self.get_type(condition.as_mut())?;
-        if condition_type != Type::Boolean {
+        if condition_type != Type::Boolean || condition_type != Type::U8 {
             todo!("report type mismatch if condition");
         }
 
