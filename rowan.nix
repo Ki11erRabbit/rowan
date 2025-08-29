@@ -38,9 +38,9 @@ let
         outputs = [ "out" "dev" "lib" ];
 
         installPhase = ''
-        cp target/${CARGO_BUILD_TARGET:-}/release/librowan_runtime.so $out
-        cp target/${CARGO_BUILD_TARGET:-}/release/librowan_runtime.so $dev
-        cp target/${CARGO_BUILD_TARGET:-}/release/librowan_runtime.so $lib
+        cp target/${CARGO_BUILD_TARGET:-release}/release/librowan_runtime.so $out
+        cp target/${CARGO_BUILD_TARGET:-release}/release/librowan_runtime.so $dev
+        cp target/${CARGO_BUILD_TARGET:-release}/release/librowan_runtime.so $lib
         '';
         meta = {
             description = "The Runtime for the Rowan Programming Language";
@@ -78,7 +78,7 @@ in
             };
         };
         installPhase = ''
-            cp target/${CARGO_BUILD_TARGET:-}/release/rowan $out
+            cp target/${CARGO_BUILD_TARGET:-release}/release/rowan $out
         '';
 
 
@@ -117,7 +117,7 @@ in
              };
          };
          installPhase = ''
-             cp target/${CARGO_BUILD_TARGET:-}/release/rowanc $out
+             cp target/${CARGO_BUILD_TARGET:-release}/release/rowanc $out
          '';
 
 
