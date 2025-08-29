@@ -1833,7 +1833,7 @@ impl TypeChecker {
                 match access_ty {
                     Type::Function(_, ret_ty, _) => {
                         if !self.compare_types(&TypeCheckerType::from(ty), &TypeCheckerType::from(ret_ty.as_ref())) {
-                            todo!("report type mismatch")
+                            todo!("report type mismatch {:?} vs {:?} at {:?}", ty, ret_ty, span);
                         }
                     }
                     x => todo!("report not a function: {:?} spanning: {:?}", x, span)
