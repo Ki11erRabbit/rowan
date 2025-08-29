@@ -469,7 +469,9 @@ pub fn link_class_files(
                     // We also update vtables_map to hold updated function values so that we can link future vtables
 
 
-                    let derived_functions = vtables_map.get(class_name).unwrap().get(&class_symbol).unwrap();
+                    let derived_functions = vtables_map.get(class_name).expect(&format!("failed to look up class_name: {class_name} {class_name_str}"))
+                        .get(&class_symbol)
+                        .expect(&format!("failed to look up class_symbol: {class_symbol}"));
                     //println!("\n\n\nclass_name: {class_name}");
                     //println!("vtables map: {:#?}", vtables_map);
                     let base_functions = vtables_map.get(class_name).unwrap().get(&class_name).unwrap();
