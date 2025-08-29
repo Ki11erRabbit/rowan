@@ -52,26 +52,24 @@ impl NativeAttributes {
                 _ => unreachable!("return type can't be native")
             }
 
-            output.push_str(&format!(" {name}(rowan_context_t context, "));
+            output.push_str(&format!(" {name}(rowan_context_t context"));
 
-            for (i, arg) in args.iter().enumerate() {
+            for arg in args.iter() {
+                output.push_str(", ");
                 match arg {
-                    TypeTag::I8 => output.push_str("int_8_t"),
-                    TypeTag::U8 => output.push_str("uint_8_t"),
-                    TypeTag::I16 => output.push_str("int_16_t"),
-                    TypeTag::U16 => output.push_str("uint_16_t"),
-                    TypeTag::I32 => output.push_str("int_32_t"),
-                    TypeTag::U32 => output.push_str("uint_32_t"),
-                    TypeTag::I64 => output.push_str("int_64_t"),
-                    TypeTag::U64 => output.push_str("uint_64_t"),
+                    TypeTag::I8 => output.push_str("int8_t"),
+                    TypeTag::U8 => output.push_str("uint8_t"),
+                    TypeTag::I16 => output.push_str("int16_t"),
+                    TypeTag::U16 => output.push_str("uint16_t"),
+                    TypeTag::I32 => output.push_str("int32_t"),
+                    TypeTag::U32 => output.push_str("uint32_t"),
+                    TypeTag::I64 => output.push_str("int64_t"),
+                    TypeTag::U64 => output.push_str("uint64_t"),
                     TypeTag::F32 => output.push_str("float"),
                     TypeTag::F64 => output.push_str("double"),
                     TypeTag::Object | TypeTag::Str => output.push_str("object_t*"),
                     TypeTag::Void => output.push_str("void"),
                     _ => unreachable!("return type can't be native")
-                }
-                if i < args.len() - 1 {
-                    output.push_str(", ");
                 }
             }
 
