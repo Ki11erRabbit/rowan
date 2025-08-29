@@ -13,7 +13,7 @@ rustPlatform.buildRustPackage  {
     pname = "rowanc";
     version = "0.0.0";
 
-    src = builtins.path { name = "rowan"; path = ./.; };
+    src = builtins.path { name = "rowanc"; path = ./rowanc; };
 
     nativeBuildInputs = [
         pkg-config

@@ -13,7 +13,7 @@ let
         pname = "rowan-runtime";
         version = "0.0.0";
 
-        src = builtins.path { name = "rowan-runtime"; path = ./.; };
+        src = builtins.path { name = "rowan-runtime"; path = ./rowan-runtime; };
 
         nativeBuildInputs = [
             cargo
@@ -52,7 +52,7 @@ rustPlatform.buildRustPackage  {
     pname = "rowan";
     version = "0.0.0";
 
-    src = builtins.path { name = "rowan"; path = ./.; };
+    src = builtins.path { name = "rowan"; path = ./rowan; };
 
     nativeBuildInputs = [
     ];
