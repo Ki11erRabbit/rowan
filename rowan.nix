@@ -36,11 +36,10 @@ let
             };
         };
 
-        outputs = [ "out" "dev" "lib" ];
+        outputs = [ "dev" "lib" ];
 
         installPhase = ''
         mkdir -p $lib $dev
-        cp target/${triple}/release/librowan_runtime.so $out
         cp target/${triple}/release/librowan_runtime.so $lib
         cp headers/* $dev
         '';
