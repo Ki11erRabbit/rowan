@@ -1126,10 +1126,10 @@ impl TypeChecker {
                 let method_name = &name.segments[name.segments.len() - 1];
 
                 let (_, attributes) = self.class_information.get(&class_name)
-                    .expect("class missing or not loaded");
+                    .expect(&format!("class missing or not loaded: {}", class_name.join("::")));
 
                 let ClassAttribute::Method(method) = attributes.get(method_name.as_str())
-                    .expect("method missing or not loaded") else {
+                    .expect("method missing or not loaded: {method_name}") else {
                     todo!("report attribute not a method")
                 };
 
@@ -1218,7 +1218,7 @@ impl TypeChecker {
                 let member_name = &field.segments[field.segments.len() - 1];
 
                 let (_, attributes) = self.class_information.get(&path)
-                    .expect("class missing or not loaded");
+                    .expect(&format!("class missing or not loaded: {}",path.join("::")));
 
                 let member = match attributes.get(member_name.as_str()) {
                     Some(ClassAttribute::Method(method)) => method,
@@ -1710,7 +1710,7 @@ impl TypeChecker {
                         let member_name = &field.segments[field.segments.len() - 1];
 
                         let (_, attributes) = self.class_information.get(&path)
-                            .expect("class missing or not loaded");
+                            .expect(&format!("class missing or not loaded: {}",path.join("::")));
 
 
                         let member = match attributes.get(member_name.as_str()) {
