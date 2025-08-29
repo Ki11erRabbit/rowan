@@ -36,7 +36,7 @@ let
             };
         };
 
-        outputs = [ "dev" "lib" ];
+        outputs = [ "out" "dev" "lib" ];
 
         installPhase = ''
         mkdir -p $lib $dev
