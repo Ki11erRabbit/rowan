@@ -24,9 +24,12 @@ typedef void* context_t;
 void rowan_block_collection(object_t*);
 void rowan_allow_collection(object_t*);
 object_t* rowan_create_object(unsigned char* class_name);
-object_t* rowan_create_string(unsigned char* string_contents);
-object_t* rowan_create_empty_string();
+object_t* rowan_create_empty_string_buffer();
+object_t* rowan_create_string_buffer(const unsigned char* string_contents);
 void rowan_get_string_buffer(object_t* string, uint8_t** buf, uint64_t* len);
+
+object_t* rowan_create_array(context_t ctx, const unsigned char* type, uint64_t size);
+void rowan_get_array_buffer(object_t* array, void** buf, uint64_t* len);
 
 void* rowan_call_virtual_function(context_t ctx, object_t* object, unsigned char* class_name, unsigned char* method_name);
 void* rowan_call_static_function(context_t ctx, unsigned char* class_name, unsigned char* method_name);

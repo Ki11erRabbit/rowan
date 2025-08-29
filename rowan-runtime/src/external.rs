@@ -1,7 +1,7 @@
-use std::ffi::{c_char, CStr};
+use std::ffi::{c_char, c_void, CStr};
 use crate::context::{BytecodeContext, StackValue};
 use crate::runtime::{Runtime, Reference};
-use crate::runtime::core::{string_buffer_from_str, InternedString, StringBuffer};
+use crate::runtime::core::{array16_init, array32_init, array64_init, array8_init, arrayf32_init, arrayf64_init, arrayobject_init, string_buffer_from_str, Array, InternedString, StringBuffer};
 
 /// This function constructs an object from a given class name from a CStr.
 /// The CStr should be valid utf-8 as to prevent misses.
@@ -11,6 +11,58 @@ pub extern "C" fn rowan_create_object(class_name: *const c_char) -> Reference {
     let class_name = unsafe { CStr::from_ptr(class_name) };
     let name = class_name.to_string_lossy();
     Runtime::new_object(name.as_ref())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rowan_create_array(context: &mut BytecodeContext, array_type: *const c_char, length: u64) -> Reference {
+    let class_name = unsafe { CStr::from_ptr(array_type) };
+    let name = class_name.to_string_lossy();
+    match name.as_ref() {
+        "8" => {
+            let object = Runtime::new_object("core::Array8");
+            array8_init(context, object, length);
+            object
+        }
+        "16" => {
+            let object = Runtime::new_object("core::Array16");
+            array16_init(context, object, length);
+            object
+        }
+        "32" => {
+            let object = Runtime::new_object("core::Array32");
+            array32_init(context, object, length);
+            object
+        }
+        "64" => {
+            let object = Runtime::new_object("core::Array64");
+            array64_init(context, object, length);
+            object
+        }
+        "f32" => {
+            let object = Runtime::new_object("core::Arrayf32");
+            arrayf32_init(context, object, length);
+            object
+        }
+        "f64" => {
+            let object = Runtime::new_object("core::Arrayf64");
+            arrayf64_init(context, object, length);
+            object
+        }
+        "object" => {
+            let object = Runtime::new_object("core::ArrayObject");
+            arrayobject_init(context, object, length);
+            object
+        }
+        _ => std::ptr::null_mut(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rowan_get_array_buffer(array: &mut Array, buf: *mut *mut c_void, length: &mut u64) {
+    unsafe {
+        *buf = array.buffer as *mut c_void;
+    }
+    *length = array.length;
 }
 
 /// This function will mark an object and its parent objects to be uncollectable.
