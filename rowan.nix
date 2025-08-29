@@ -39,7 +39,8 @@ let
         outputs = [ "out" "dev" "lib" ];
 
         installPhase = ''
-        mkdir -p $lib $dev
+        mkdir -p $lib $dev $out/lib
+        cp target/${triple}/release/librowan_runtime.so $out/lib
         cp target/${triple}/release/librowan_runtime.so $lib
         cp headers/* $dev
         '';
