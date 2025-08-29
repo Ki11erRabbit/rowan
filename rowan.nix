@@ -39,9 +39,10 @@ let
         outputs = [ "out" "dev" "lib" ];
 
         installPhase = ''
+        mkdir -p $lib $dev
         cp target/${triple}/release/librowan_runtime.so $out
-        cp target/${triple}/release/librowan_runtime.so $dev
         cp target/${triple}/release/librowan_runtime.so $lib
+        cp headers/* $dev
         '';
         meta = {
             description = "The Runtime for the Rowan Programming Language";
