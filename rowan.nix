@@ -37,11 +37,6 @@ let
 
         outputs = [ "out" "dev" "lib" ];
 
-        installPhase = ''
-        cp target/release/librowan_runtime.so $(out)
-        cp target/release/librowan_runtime.so $(dev)
-        cp target/release/librowan_runtime.so $(lib)
-        '';
         meta = {
             description = "The Runtime for the Rowan Programming Language";
             homepage = "https://github.com/Ki11erRabbit/rowan";
@@ -77,9 +72,6 @@ in
                 "unwind-sys-0.1.4" = "sha256-kpONieYR+Nex/2K3fYGw4+QVlX5TiZ21tyNgd6gDc6c=";
             };
         };
-        installPhase = ''
-            cp target/release/rowan $(out)
-        '';
 
 
         meta = {
@@ -116,9 +108,6 @@ in
                  "unwind-sys-0.1.4" = "sha256-kpONieYR+Nex/2K3fYGw4+QVlX5TiZ21tyNgd6gDc6c=";
              };
          };
-         installPhase = ''
-             cp target/release/rowanc $(out)
-         '';
 
 
          meta = {
