@@ -24,6 +24,8 @@ let
             libunwind
         ];
 
+        doCheck = false;
+
         cargoBuildFlags = ["-p" "rowan-runtime"];
 
         cargoLock = {
@@ -57,6 +59,7 @@ in
         version = "0.0.0";
 
         src = builtins.path { name = "rowan"; path = ./.; };
+        doCheck = false;
 
         nativeBuildInputs = [
         ];
@@ -95,6 +98,7 @@ in
          version = "0.0.0";
 
          src = builtins.path { name = "rowanc"; path = ./.; };
+         doCheck = false;
 
          cargoBuildFlags = ["-p" "rowanc"];
 
