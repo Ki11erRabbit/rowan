@@ -24,7 +24,7 @@ impl NativeAttributes {
             .replace("-", "_dash_")
             .to_uppercase();
         let mut output = format!("#ifndef {header_name}_H\n#define {header_name}_H\n\n#include <rowan.h>\n");
-        output.push_str("#include <stdint.h>\n#include<stddef.h>\n\n");
+        output.push_str("#include <stdint.h>\n#include <stddef.h>\n\n");
         
         for member_size in self.native_member_sizes.iter() {
             let name = member_size.replace("::", "__")
@@ -37,14 +37,14 @@ impl NativeAttributes {
                 .replace("-", "_dash_");
             
             match return_type {
-                TypeTag::I8 => output.push_str("int_8_t"),
-                TypeTag::U8 => output.push_str("uint_8_t"),
-                TypeTag::I16 => output.push_str("int_16_t"),
-                TypeTag::U16 => output.push_str("uint_16_t"),
-                TypeTag::I32 => output.push_str("int_32_t"),
-                TypeTag::U32 => output.push_str("uint_32_t"),
-                TypeTag::I64 => output.push_str("int_64_t"),
-                TypeTag::U64 => output.push_str("uint_64_t"),
+                TypeTag::I8 => output.push_str("int8_t"),
+                TypeTag::U8 => output.push_str("uint8_t"),
+                TypeTag::I16 => output.push_str("int16_t"),
+                TypeTag::U16 => output.push_str("uint16_t"),
+                TypeTag::I32 => output.push_str("int32_t"),
+                TypeTag::U32 => output.push_str("uint32_t"),
+                TypeTag::I64 => output.push_str("int64_t"),
+                TypeTag::U64 => output.push_str("uint64_t"),
                 TypeTag::F32 => output.push_str("float"),
                 TypeTag::F64 => output.push_str("double"),
                 TypeTag::Object | TypeTag::Str => output.push_str("object_t*"),
