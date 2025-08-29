@@ -11,7 +11,7 @@ typedef size_t symbol_t;
 typedef struct object {
     // The symbol to a class object. This should not be manipulated directly ever
     symbol_t class;
-    object_t *parent;
+    struct object *parent;
     // A function for freeing up resources created for this object. Rowanc should have generated a header for you that provides the way of defining this.
     void (*custom_drop)(struct object*);
 } object_t;
