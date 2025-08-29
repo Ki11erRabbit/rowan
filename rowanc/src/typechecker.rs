@@ -1849,7 +1849,7 @@ impl TypeChecker {
                     name.segments[..name.segments.len() - 1].iter().map(ToString::to_string).collect()
                 };
 
-                let (_, attributes) = self.class_information.get(&path).unwrap();
+                let (_, attributes) = self.class_information.get(&path).expect(&format!("no information for class {}", path.join("::")));
                 let ClassAttribute::Method(access_ty) = attributes.get(name.segments.last().expect("static call is a single item").as_str())
                     .expect(&format!("attribute, {} not found", name.segments.last().expect("static call is a single item").as_str())) else {
                     unreachable!("report missing method");
