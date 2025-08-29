@@ -1951,7 +1951,9 @@ impl Compiler {
         methods: &Vec<Method>,
     ) -> Result<(), CompilerError> {
         
-        let mut partial_class = self.classes.get(name).cloned().unwrap();
+        let mut partial_class = self.classes.get(name)
+            .cloned()
+            .expect(&format!("unable to find class {}", name.join("::")));
 
         self.compile_methods(name, &mut CurrentCompilationUnit::Class(&mut partial_class), methods)?;
 
