@@ -10,8 +10,6 @@
 }:
 let
     triple = "${stdenv.hostPlatform.config}";
-in
-{
     rowan-runtime = rustPlatform.buildRustPackage {
         pname = "rowan-runtime";
         version = "0.0.0";
@@ -58,6 +56,8 @@ in
             ];
         };
     };
+in
+{
     rowan = rustPlatform.buildRustPackage  {
         pname = "rowan";
         version = "0.0.0";
@@ -106,6 +106,7 @@ in
             ];
         };
     };
+    rowan-runtime = rowan-runtime;
     rowanc = rustPlatform.buildRustPackage  {
          pname = "rowanc";
          version = "0.0.0";
