@@ -13,7 +13,7 @@ let
         pname = "rowan-runtime";
         version = "0.0.0";
 
-        src = builtins.path { name = "rowan-runtime"; path = ./rowan-runtime; };
+        src = builtins.path { name = "rowan-runtime"; path = ./.; };
 
         nativeBuildInputs = [
             cargo
@@ -23,6 +23,9 @@ let
         buildInputs = [
             libunwind
         ];
+
+        cargoBuildFlags = ["-p" "rowan-runtime"];
+
         cargoLock = {
             lockFile = ./Cargo.lock;
             outputHashes = {
@@ -52,7 +55,7 @@ rustPlatform.buildRustPackage  {
     pname = "rowan";
     version = "0.0.0";
 
-    src = builtins.path { name = "rowan"; path = ./rowan; };
+    src = builtins.path { name = "rowan"; path = ./.; };
 
     nativeBuildInputs = [
     ];
@@ -61,13 +64,14 @@ rustPlatform.buildRustPackage  {
         libunwind
     ];
 
+    cargoBuildFlags = ["-p" "rowan"];
+
     cargoLock = {
         lockFile = ./Cargo.lock;
         outputHashes = {
             "unwind-sys-0.1.4" = "sha256-kpONieYR+Nex/2K3fYGw4+QVlX5TiZ21tyNgd6gDc6c=";
         };
     };
-
 
 
     meta = {

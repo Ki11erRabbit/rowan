@@ -13,7 +13,9 @@ rustPlatform.buildRustPackage  {
     pname = "rowanc";
     version = "0.0.0";
 
-    src = builtins.path { name = "rowanc"; path = ./rowanc; };
+    src = builtins.path { name = "rowanc"; path = ./.; };
+
+    cargoBuildFlags = ["-p" "rowanc"];
 
     nativeBuildInputs = [
         pkg-config
@@ -22,13 +24,17 @@ rustPlatform.buildRustPackage  {
         libunwind
     ];
 
+    outputs = [ "out" "dev" "lib" ];
+
     cargoLock = {
         lockFile = ./Cargo.lock;
         outputHashes = {
             "unwind-sys-0.1.4" = "sha256-kpONieYR+Nex/2K3fYGw4+QVlX5TiZ21tyNgd6gDc6c=";
         };
     };
-
+    installPhase = ''
+        cp target/release/rowanc $(out)
+    '';
 
 
     meta = {
