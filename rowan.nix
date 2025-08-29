@@ -9,6 +9,7 @@
 
 }:
 let
+    triple = "${stdenv.hostPlatform.config}";
     rowan-runtime = rustPlatform.buildRustPackage {
         pname = "rowan-runtime";
         version = "0.0.0";
@@ -38,9 +39,9 @@ let
         outputs = [ "out" "dev" "lib" ];
 
         installPhase = ''
-        cp target/${CARGO_BUILD_TARGET:-release}/release/librowan_runtime.so $out
-        cp target/${CARGO_BUILD_TARGET:-release}/release/librowan_runtime.so $dev
-        cp target/${CARGO_BUILD_TARGET:-release}/release/librowan_runtime.so $lib
+        cp target/${triple}/release/librowan_runtime.so $out
+        cp target/${triple}/release/librowan_runtime.so $dev
+        cp target/${triple}/release/librowan_runtime.so $lib
         '';
         meta = {
             description = "The Runtime for the Rowan Programming Language";
@@ -78,7 +79,7 @@ in
             };
         };
         installPhase = ''
-            cp target/${CARGO_BUILD_TARGET:-release}/release/rowan $out
+            cp target/${triple}/release/rowan $out
         '';
 
 
@@ -117,7 +118,7 @@ in
              };
          };
          installPhase = ''
-             cp target/${CARGO_BUILD_TARGET:-release}/release/rowanc $out
+             cp target/${triple}/release/rowanc $out
          '';
 
 
