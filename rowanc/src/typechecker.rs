@@ -1317,9 +1317,9 @@ impl TypeChecker {
     fn check_if_expr<'a>(&mut self, return_type: &TypeCheckerType, expr: &mut IfExpression<'a>) -> Result<(), TypeCheckerError> {
         let IfExpression { condition, then_branch, else_branch, .. } = expr;
 
-        self.annotate_expr(&Type::U8, condition.as_mut())?;
+        self.annotate_expr(&Type::Boolean, condition.as_mut())?;
         let condition_type = self.get_type(condition.as_mut())?;
-        if condition_type != Type::U8 {
+        if condition_type != Type::Boolean {
             todo!("report type mismatch if condition");
         }
 
