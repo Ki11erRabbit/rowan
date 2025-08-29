@@ -1104,7 +1104,7 @@ impl TypeChecker {
                     }
                 }
             }
-            Expression::StaticCall { name, type_args: _, args, annotation, .. } => {
+            Expression::StaticCall { name, type_args: _, args, annotation, span, .. } => {
                 let class_name = if self.active_paths.contains_key(name.segments[0].as_str()) {
                     let mut active_path = self.active_paths.get(name.segments[0].as_str()).unwrap().clone();
                     active_path.extend(
@@ -1153,7 +1153,7 @@ impl TypeChecker {
                                 self.annotate_expr(&expected_ty.into(), arg)?;
                                 *annotation = Some((*return_type.clone()).into());
                             } else {
-                                todo!("report too many arguments in method call");
+                                todo!("report too many arguments in method call at {:?}", span);
                             }
 
                         }
