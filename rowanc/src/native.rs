@@ -23,7 +23,7 @@ impl NativeAttributes {
         let header_name = self.name.replace("::", "__")
             .replace("-", "_dash_")
             .to_uppercase();
-        let mut output = format!("#ifndef {header_name}_H\n#define {header_name}_H\n\n#include <rowan.h>\n");
+        let mut output = format!("#ifndef {header_name}_H\n#define {header_name}_H\n\n#include <rowan_runtime.h>\n");
         output.push_str("#include <stdint.h>\n#include <stddef.h>\n\n");
         
         for member_size in self.native_member_sizes.iter() {
