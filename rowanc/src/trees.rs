@@ -214,6 +214,7 @@ impl PartialEq for Type<'_> {
             (Type::F32, Type::F32) => true,
             (Type::F64, Type::F64) => true,
             (Type::Char, Type::Char) => true,
+            (Type::Boolean, Type::Boolean) => true,
             (Type::Native, Type::Native) => false,
             (Type::Existential(left), Type::Existential(right)) => left.eq(right),
             (Type::Object(l_txt, ..), Type::Object(r_txt, ..)) => {
