@@ -3,6 +3,7 @@ extern crate core;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use ariadne::Source;
 use clap::Parser;
 use petgraph::graph::UnGraph;
 use crate::backend::pre_compilation;
@@ -97,80 +98,35 @@ fn main() {
     let mut index = HashMap::new();
     for (name, path, contents) in files.iter() {
         println!("{name} {path:?}");
-        let file = parser::parse(&name, &contents).unwrap();
+        let file = parser::parse(&name, &contents);
         index.insert(path.join("::"), class_files.len());
         class_files.push((path, file, contents));
     }
 
-    /*let mut edges = Vec::new();
-    for (i, (_, file, _)) in class_files.iter().enumerate() {
-        let imports = file.content.iter()
-            .filter_map(|x| {
-                match x {
-                    TopLevelStatement::Import(import) => {
-                        let mut import = import.path.segments.clone();
-                        import.pop();
-
-                        Some(import.join("::"))
-                    }
-                    _ => None
+    let class_files = if class_files.iter().any(|(_, file, _)| {
+        file.is_err()
+    }) {
+        let errors = class_files.into_iter()
+            .filter_map(|(path, file, contents)| {
+                if file.is_err() {
+                    Some((path, file.unwrap_err(), contents))
+                }
+                else {
+                    None
                 }
             }).collect::<Vec<_>>();
-
-        for import in imports {
-            println!("import {import}");
-            edges.push((i as u32, *index.get(&import).expect("import not found") as u32));
+        for (path, error, contents) in errors {
+            error.finish()
+                .print((&path.join("/"), Source::from(contents)))
+                .expect("TODO: panic message");
         }
-    }
-    let mut class_files = class_files.into_iter().map(Some).collect::<Vec<_>>();
-    drop(index);
-    for edge in edges.iter() {
-        println!("{edge:?}");
-    }
-
-    // Use Strongly Connected Components algo to figure out the propper order of compiling
-    let graph = UnGraph::<u32, ()>::from_edges(edges);
-
-    let sccs = petgraph::algo::tarjan_scc(&graph);
-    for group in sccs.iter() {
-        for node in group {
-            print!("{node:?}");
-        }
-        println!();
-    }
-    let mut seen_indicies = HashSet::new();
-    let mut new_class_files = Vec::new();
-    for scc in sccs {
-        for index in scc.into_iter() {
-            if seen_indicies.contains(&index.index()) {
-                continue;
-            }
-            let class_file = class_files[index.index()].take().unwrap();
-            new_class_files.push(class_file);
-            seen_indicies.insert(index.index());
-        }
-    }
-
-    for class_file in class_files {
-        if class_file.is_some() {
-            new_class_files.push(class_file.unwrap());
-        }
-    }
-
-    // Ensure that all stdlib files get compiled first
-    new_class_files.sort_by(|(ap, _, _), (bp, _ ,_)| {
-        if ap[0].as_str() == "std" && bp[0].as_str() != "std" {
-            Ordering::Less
-        } else if ap[0].as_str() != "std" && bp[0].as_str() == "std" {
-            Ordering::Greater
-        } else {
-            Ordering::Equal
-        }
-    });
-
-    let class_files = new_class_files;*/
-
-
+        std::process::exit(1);
+    } else {
+        class_files.into_iter()
+            .map(|(path, file, contents)| {
+                (path, file.unwrap(), contents)
+            }).collect::<Vec<_>>()
+    };
 
     class_files.iter().for_each(|(path, file, _)| {
         println!("path: {:?}", path);
