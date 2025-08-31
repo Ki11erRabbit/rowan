@@ -237,6 +237,56 @@ impl PartialEq for Type<'_> {
     }
 }
 
+impl std::fmt::Display for Type<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Type::Void => write!(f, "void"),
+            Type::U8 => write!(f, "u8"),
+            Type::U16 => write!(f, "u16"),
+            Type::U32 => write!(f, "u32"),
+            Type::U64 => write!(f, "u64"),
+            Type::I8 => write!(f, "i8"),
+            Type::I16 => write!(f, "i16"),
+            Type::I32 => write!(f, "i32"),
+            Type::I64 => write!(f, "i64"),
+            Type::F32 => write!(f, "f32"),
+            Type::F64 => write!(f, "f64"),
+            Type::Char => write!(f, "char"),
+            Type::Boolean => write!(f, "bool"),
+            Type::Native => write!(f, "native"),
+            Type::Object(name, ..) => write!(f, "{}", name),
+            Type::TypeArg(name, args, ..) => {
+                write!(f, "{}[{}]", name, args.iter()
+                    .map(|ty| format!("{ty}"))
+                    .collect::<Vec<_>>().join(", ")
+                )
+            },
+            Type::Function(args, return_type, ..) => {
+                write!(f, "fn(")?;
+                for (i, ty) in args.iter().enumerate() {
+                    write!(f, "{}", ty)?;
+                    if i + 1 != args.len() {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, ") -> {return_type}")
+            }
+            Type::Tuple(args, ..) => {
+                write!(f, "(")?;
+                for (i, ty) in args.iter().enumerate() {
+                    write!(f, "{}", ty)?;
+                    if i + 1 != args.len() {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, ")")
+            }
+            Type::Existential(ty) => write!(f, "impl {}", ty),
+            Type::Array(ty, ..) => write!(f, "[{}]", ty),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Hash, PartialOrd)]
 pub struct Annotation<'a> {
     pub name: Text<'a>,

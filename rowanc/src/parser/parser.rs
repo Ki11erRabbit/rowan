@@ -9,7 +9,7 @@ use super::lexer;
 lalrpop_mod!(grammar, "/parser/grammar.rs");
 
 
-pub fn parse<'a>(name: &'a str, path: &'a str, input: &'a str) -> Result<ast::File<'a>, ReportBuilder<'a, (&'a str, Range<usize>)>> {
+pub fn parse<'a>(_: &'a str, path: &'a str, input: &'a str) -> Result<ast::File<'a>, ReportBuilder<'a, (&'a str, Range<usize>)>> {
     let lexer = lexer::TokenLexer::new(input);
     match grammar::FileParser::new().parse(input, lexer) {
         Err(err) => {

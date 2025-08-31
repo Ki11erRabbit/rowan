@@ -321,8 +321,7 @@ TypeList: Vec<Type<'a>> = {
 
 
 Method: ClassMember<'a> = {
-    <start: @L> <annotations:MethodAnnotations?> <vis:Visibility> "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <body:Block> <end: @R> => {
-        let span = Span::new(start, end);
+    <start: @L> <annotations:MethodAnnotations?> <vis:Visibility> "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret_type_start: @L> <ret:ReturnType> <sig_end: @R> <body:Block> <end: @R> => {
         let type_params = match typaram {
             Some(typ) => typ,
             None => Vec::new(),
@@ -341,34 +340,37 @@ Method: ClassMember<'a> = {
                 parameters: params,
                 return_type: ret,
                 body,
-                span
+                whole_span: Span::new(start, end),
+                signature_span: Span::new(start, sig_end),
+                return_type_span: Span::new(ret_type_start, sig_end),
             }
         )
     },
-    <start: @L> <annotations:MethodAnnotations?> <vis:Visibility> "native" "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <end: @R> => {
-            let span = Span::new(start, end);
-            let type_params = match typaram {
-                Some(typ) => typ,
-                None => Vec::new(),
-            };
-            let annotations = match annotations {
-                Some(a) => a,
-                None => Vec::new(),
-            };
-            ClassMember::Method(
-                Method {
-                    visibility: vis,
-                    is_native: true,
-                    name,
-                    annotations,
-                    type_params,
-                    parameters: params,
-                    return_type: ret,
-                    body: Vec::new(),
-                    span
-                }
-            )
-        }
+    <start: @L> <annotations:MethodAnnotations?> <vis:Visibility> "native" "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret_type_start: @L> <ret:ReturnType> <end: @R> => {
+        let type_params = match typaram {
+            Some(typ) => typ,
+            None => Vec::new(),
+        };
+        let annotations = match annotations {
+            Some(a) => a,
+            None => Vec::new(),
+        };
+        ClassMember::Method(
+            Method {
+                visibility: vis,
+                is_native: true,
+                name,
+                annotations,
+                type_params,
+                parameters: params,
+                return_type: ret,
+                body: Vec::new(),
+                whole_span: Span::new(start, end),
+                signature_span: Span::new(start, end),
+                return_type_span: Span::new(ret_type_start, end),
+            }
+        )
+    }
 };
 
 MethodAnnotations: Vec<Annotation<'a>> = {
@@ -528,7 +530,7 @@ TraitMember: Method<'a> = {
 };
 
 TraitDefinition: Method<'a> = {
-    <start: @L> "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <end: @R> => {
+    <start: @L> "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret_type_start: @L> <ret:ReturnType> <sig_end: @R> <end: @R> => {
         let span = Span::new(start, end);
         let type_params = match typaram {
             Some(typ) => typ,
@@ -544,13 +546,15 @@ TraitDefinition: Method<'a> = {
             parameters: params,
             return_type: ret,
             body: Vec::new(),
-            span
+            whole_span: span,
+            signature_span: Span::new(start, sig_end),
+            return_type_span: Span::new(ret_type_start, sig_end),
         }
     },
 };
 
 TraitDefault: Method<'a> = {
-    <start: @L> "default" "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <body:Block> <end: @R> => {
+    <start: @L> "default" "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret_type_start: @L> <ret:ReturnType> <sig_end: @R> <body:Block> <end: @R> => {
         let span = Span::new(start, end);
         let type_params = match typaram {
             Some(typ) => typ,
@@ -566,7 +570,9 @@ TraitDefault: Method<'a> = {
             parameters: params,
             return_type: ret,
             body,
-            span
+            whole_span: span,
+            signature_span: Span::new(start, sig_end),
+            return_type_span: Span::new(ret_type_start, sig_end),
         }
     },
 };
@@ -586,7 +592,7 @@ TraitImplMembers: Vec<Method<'a>> = {
 };
 
 TraitImplMethod: Method<'a> = {
-    <start: @L> "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret:ReturnType> <body:Block> <end: @R> => {
+    <start: @L> "fn" <name:Identifier> <typaram:TypeParamList?> <params:ParamList> <ret_type_start: @L> <ret:ReturnType> <sig_end: @L> <body:Block> <end: @R> => {
         let span = Span::new(start, end);
         let type_params = match typaram {
             Some(typ) => typ,
@@ -602,7 +608,9 @@ TraitImplMethod: Method<'a> = {
             parameters: params,
             return_type: ret,
             body,
-            span
+            whole_span: span,
+            signature_span: Span::new(start, sig_end),
+            return_type_span: Span::new(ret_type_start, sig_end),
         }
     },
 };

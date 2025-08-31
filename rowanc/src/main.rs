@@ -7,7 +7,7 @@ use ariadne::Source;
 use clap::Parser;
 use petgraph::graph::UnGraph;
 use crate::backend::pre_compilation;
-use crate::trees::ast::TopLevelStatement;
+use crate::trees::ast::{File, TopLevelStatement};
 
 pub mod backend;
 pub mod parser;
@@ -117,13 +117,11 @@ fn main() {
                     None
                 }
             }).collect::<Vec<_>>();
-        for (path, string_path, error, contents) in errors {
+        for (_, string_path, error, contents) in errors {
             let contents_ptr = contents.as_ptr();
             let contents_len = contents.len();
             let contents_slice = unsafe { std::slice::from_raw_parts(contents_ptr, contents_len) };
             let contents_str = std::str::from_utf8(contents_slice).unwrap();
-
-
 
             error.finish()
                 .eprint(((string_path.as_str(), Source::from(contents_str))))
@@ -134,19 +132,24 @@ fn main() {
     } else {
         class_files.into_iter()
             .map(|(path, string_path, file, contents)| {
-                (path, file.unwrap(), contents)
+                (path, string_path, file.unwrap(), contents)
             }).collect::<Vec<_>>()
     };
 
-    class_files.iter().for_each(|(path, file, _)| {
+    class_files.iter().for_each(|(path, _, file, _)| {
         println!("path: {:?}", path);
         //println!("file: {:#?}", file);
     });
 
-    let class_files = class_files.into_iter().map(|(_, file, _)| file).collect();
+    let class_files = class_files.into_iter()
+        .map(|(_, string_path, file, source)| (string_path.clone(), file, source))
+        .collect();
 
     let mut typechecker = typechecker::TypeChecker::new();
     let class_files = typechecker.check(class_files).unwrap();
+    let class_files: Vec<File> = class_files.into_iter()
+        .map(|(_, file, _)| file)
+        .collect();
     
     let class_files = class_files.into_iter()
         .map(pre_compilation::ir_pass)

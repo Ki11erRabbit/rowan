@@ -113,7 +113,9 @@ pub struct Method<'a> {
     pub parameters: Vec<Parameter<'a>>,
     pub return_type: Type<'a>,
     pub body: Vec<Statement<'a>>,
-    pub span: Span,
+    pub whole_span: Span,
+    pub signature_span: Span,
+    pub return_type_span: Span,
 }
 
 
@@ -603,6 +605,67 @@ impl Expression<'_> {
         match self {
             Expression::ClassAccess { .. } => true,
             _ => false,
+        }
+    }
+    
+    pub fn get_span(&self) -> Span {
+        match self {
+            Self::Variable(_, _, span) => *span,
+            Self::Literal(Literal::Array(_, _, span)) => *span,
+            Self::Literal(Literal::Tuple(_, _, span)) => *span,
+            Self::Literal(Literal::Constant(Constant::Float(_, _, span))) => *span,
+            Self::Literal(Literal::Constant(Constant::Bool(_, span))) => *span,
+            Self::Literal(Literal::Constant(Constant::Character(_, span))) => *span,
+            Self::Literal(Literal::Constant(Constant::String(_, span))) => *span,
+            Self::This(span) => *span,
+            Self::Call {
+                span,
+                ..
+            } => *span,
+            Self::StaticCall {
+                span,
+                ..
+            } => *span,
+            Self::MemberAccess {
+                span,
+                ..
+            } => *span,
+            Self::ClassAccess {
+                span,
+                ..
+            } => *span,
+            Self::Closure {
+                span,
+                ..
+            } => *span,
+            Self::Parenthesized(_, span) => *span,
+            Self::IfExpression(_, span) => *span,
+            Self::MatchExpression(_, span) => *span,
+            Self::UnaryOperation {
+                span,
+                ..
+            } => *span,
+            Self::BinaryOperation {
+                span,
+                ..
+            } => *span,
+            Self::Return(_, span) => *span,
+            Self::New(_, _, span) => *span,
+            Self::Loop {
+                span,
+                ..
+            } => *span,
+            Self::Continue(_, span) => *span,
+            Self::Break(_, _, span) => *span,
+            Self::As {
+                span,
+                ..
+            } => *span,
+            Self::Into {
+                span,
+                ..
+            } => *span,
+            x => panic!("get span for expression {:?}", x),
         }
     }
 }

@@ -1,6 +1,7 @@
 use std::{borrow::BorrowMut, collections::HashMap};
 use std::cmp::Ordering;
 use std::collections::HashSet;
+use ariadne::{Label, Report, ReportKind, Source};
 use either::Either;
 use itertools::Itertools;
 use crate::trees::ast::{Class, ClosureParameter, Constant, Expression, File, IfExpression, Literal, Method, Parameter, Pattern, Statement, StaticMember, TopLevelStatement, Trait, TraitImpl};
@@ -58,8 +59,82 @@ fn create_stdlib<'a>() -> HashMap<Vec<String>, (String, HashMap<String, ClassAtt
 #[derive(Debug)]
 pub enum TypeCheckerError {
     UnableToDeduceType {
+        current_file: String,
         start: usize,
         end: usize,
+    },
+    MismatchedReturnType {
+        current_file: String,
+        source_file: String,
+        expected: String,
+        found: String,
+        signature_span: Span,
+        error_location: Span,
+    },
+    MismatchedTypeForOperation {
+        current_file: String,
+        expected: String,
+        found: String,
+        operator: String,
+        expression_span: Span,
+        error_location: Span,
+    },
+    UnequalTypes {
+        current_file: String,
+        left: String,
+        right: String,
+        expression_span: Span,
+        left_span: Span,
+        right_span: Span,
+    },
+    MissingImport {
+        current_file: String,
+        suggestion: String,
+        span: Span,
+    },
+    MismatchedFunctionArgument {
+        current_file: String,
+        source_file: String,
+        signature_span: Span,
+        expression_span: Span,
+        expected: String,
+        found: String,
+    },
+    ExtraFunctionArgument {
+        current_file: String,
+        source_file: String,
+        expected: usize,
+        found: usize,
+        signature_span: Span,
+        expression_span: Span,
+    },
+    AttributeTypeMismatch {
+        current_file: String,
+        attribute: String,
+        access_span: Span,
+    },
+    ArrayTypesNotUniform {
+        current_file: String,
+        array_span: Span,
+        array_type: String,
+        found: String,
+        location: Span,
+    },
+    BooleanNotFoundInConditional {
+        current_file: String,
+        expression_span: Span,
+        found: String,
+    },
+    UnboundVariable {
+        current_file: String,
+        name: String,
+        location: Span,
+    },
+    MismatchedType {
+        current_file: String,
+        expected: String,
+        found: String,
+        location: Span,
     }
 }
 
@@ -169,6 +244,56 @@ impl<'a, 'b> Into<Type<'a>> for &'b TypeCheckerType {
     }
 }
 
+impl std::fmt::Display for TypeCheckerType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            TypeCheckerType::Void => write!(f, "void"),
+            TypeCheckerType::U8 => write!(f, "u8"),
+            TypeCheckerType::U16 => write!(f, "u16"),
+            TypeCheckerType::U32 => write!(f, "u32"),
+            TypeCheckerType::U64 => write!(f, "u64"),
+            TypeCheckerType::I8 => write!(f, "i8"),
+            TypeCheckerType::I16 => write!(f, "i16"),
+            TypeCheckerType::I32 => write!(f, "i32"),
+            TypeCheckerType::I64 => write!(f, "i64"),
+            TypeCheckerType::F32 => write!(f, "f32"),
+            TypeCheckerType::F64 => write!(f, "f64"),
+            TypeCheckerType::Char => write!(f, "char"),
+            TypeCheckerType::Boolean => write!(f, "bool"),
+            TypeCheckerType::Native => write!(f, "native"),
+            TypeCheckerType::Object(name) => write!(f, "{}", name),
+            TypeCheckerType::TypeArg(name, args) => {
+                write!(f, "{}[{}]", name, args.iter()
+                    .map(|ty| format!("{ty}"))
+                    .collect::<Vec<_>>().join(", ")
+                )
+            },
+            TypeCheckerType::Function(args, return_type) => {
+                write!(f, "fn(")?;
+                for (i, ty) in args.iter().enumerate() {
+                    write!(f, "{}", ty)?;
+                    if i + 1 != args.len() {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, ") -> {return_type}")
+            }
+            TypeCheckerType::Tuple(args) => {
+                write!(f, "(")?;
+                for (i, ty) in args.iter().enumerate() {
+                    write!(f, "{}", ty)?;
+                    if i + 1 != args.len() {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, ")")
+            }
+            TypeCheckerType::Existential(ty) => write!(f, "impl {}", ty),
+            TypeCheckerType::Array(ty) => write!(f, "[{}]", ty),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ClassAttribute {
     Member(TypeCheckerType),
@@ -210,6 +335,9 @@ pub struct TypeChecker {
     current_class: Vec<String>,
     active_paths: HashMap<String, Vec<String>>,
     active_module: Vec<String>,
+    current_function_sig_span: Span,
+    collected_errors: Vec<TypeCheckerError>,
+    current_path: String,
 }
 
 
@@ -223,6 +351,9 @@ impl TypeChecker {
             active_module: Vec::new(),
             trait_decl: HashMap::new(),
             trait_impls: HashMap::new(),
+            current_function_sig_span: Span::new(0, 0),
+            collected_errors: Vec::new(),
+            current_path: String::new(),
         }
     }
 
@@ -503,24 +634,305 @@ impl TypeChecker {
         }
     }
 
-    pub fn check<'a>(&mut self, files: Vec<File<'a>>) -> Result<Vec<File<'a>>, TypeCheckerError> {
+    pub fn check<'a>(&mut self, files: Vec<(String, File<'a>, &'a String)>) -> Result<Vec<(String, File<'a>, &'a String)>, TypeCheckerError> {
         self.check_files(files)
     }
 
-    fn check_files<'a>(&mut self, mut files: Vec<File<'a>>) -> Result<Vec<File<'a>>, TypeCheckerError> {
+    fn check_files<'a>(&mut self, mut files: Vec<(String, File<'a>, &'a String)>) -> Result<Vec<(String, File<'a>, &'a String)>, TypeCheckerError> {
         // Load all files into the typechecker
-        for file in files.iter() {
+        for (_, file, _) in files.iter() {
             let module: Vec<String> = file.path.segments.iter().map(ToString::to_string).collect();
             self.active_module = module.clone();
 
             self.load_content(file.content.iter(), &module)?;
         }
-        
-        for file in files.iter_mut() {
+
+        let mut errors = Vec::new();
+
+        for (path, file, _) in files.iter_mut() {
+            self.current_path = path.clone();
             self.check_file(file)?;
             self.active_paths.clear();
+            errors.append(&mut self.collected_errors);
         }
-        Ok(files)
+
+        if errors.is_empty() {
+            return Ok(files)
+        }
+
+        for error in errors {
+            match error {
+                TypeCheckerError::UnableToDeduceType {
+                    current_file,
+                    start,
+                    end
+                } => {
+                    let mut contents = None;
+                    for (path, _, content) in files.iter() {
+                        if current_file == *path {
+                            contents = Some(*content);
+                            break;
+                        }
+                    }
+                    Report::build(ReportKind::Error, (current_file.clone(), start..end))
+                        .with_message("Unable to Deduce Type")
+                        .finish()
+                        .eprint((current_file.clone(), Source::from(contents.unwrap())))
+                        .unwrap();
+                }
+                TypeCheckerError::MismatchedReturnType {
+                    current_file,
+                    source_file,
+                    expected,
+                    found,
+                    signature_span,
+                    error_location
+                } => {
+                    let mut current_content = None;
+                    for (path, _, content) in files.iter() {
+                        if current_file == *path {
+                            current_content = Some(*content);
+                            break;
+                        }
+                    }
+                    Report::build(ReportKind::Error, (current_file.clone(), error_location.start..error_location.end))
+                        .with_message(format!("Mismatched ReturnType (expected: {}, found: {})", expected, found))
+                        .with_label(Label::new((source_file.clone(), signature_span.start..signature_span.end))
+                            .with_message("WithSignature Here"))
+                        .finish()
+                        .eprint((current_file.clone(), Source::from(current_content.unwrap())))
+                        .unwrap();
+                }
+                TypeCheckerError::MismatchedTypeForOperation {
+                    current_file,
+                    expected,
+                    found,
+                    operator,
+                    expression_span,
+                    error_location
+                } => {
+                    let mut current_content = None;
+                    for (path, _, content) in files.iter() {
+                        if current_file == *path {
+                            current_content = Some(*content);
+                            break;
+                        }
+                    }
+                    Report::build(ReportKind::Error, (current_file.clone(), expression_span.start..expression_span.end))
+                        .with_message(format!("Mismatched Type for Operation ({operator}) (expected: {}, found: {})", expected, found))
+                        .with_label(Label::new((current_file.clone(), error_location.start..error_location.end))
+                            .with_message(String::from("Because of error here")))
+                        .finish()
+                        .eprint((current_file.clone(), Source::from(current_content.unwrap())))
+                        .unwrap();
+                }
+                TypeCheckerError::UnequalTypes {
+                    current_file,
+                    left,
+                    right,
+                    expression_span,
+                    left_span,
+                    right_span
+                } => {
+                    let mut current_content = None;
+                    for (path, _, content) in files.iter() {
+                        if current_file == *path {
+                            current_content = Some(*content);
+                            break;
+                        }
+                    }
+                    Report::build(ReportKind::Error, (current_file.clone(), expression_span.start..expression_span.end))
+                        .with_message(format!("{left} does not equal {right}"))
+                        .with_label(Label::new((current_file.clone(), left_span.start..left_span.end))
+                            .with_message("Left"))
+                        .with_label(Label::new((current_file.clone(), right_span.start..right_span.end))
+                            .with_message("Right"))
+                        .finish()
+                        .eprint((current_file.clone(), Source::from(current_content.unwrap())))
+                        .unwrap();
+                }
+                TypeCheckerError::MissingImport {
+                    current_file,
+                    suggestion,
+                    span
+                } => {
+                    let mut current_content = None;
+                    for (path, _, content) in files.iter() {
+                        if current_file == *path {
+                            current_content = Some(*content);
+                            break;
+                        }
+                    }
+                    Report::build(ReportKind::Error, (current_file.clone(), span.start..span.end))
+                        .with_message("Missing Import".to_string())
+                        .with_help(format!("try importing {} from (TODO: add a suggested path)", suggestion))
+                        .finish()
+                        .eprint((current_file.clone(), Source::from(current_content.unwrap())))
+                        .unwrap();
+                }
+                TypeCheckerError::MismatchedFunctionArgument {
+                    current_file,
+                    source_file,
+                    signature_span,
+                    expression_span,
+                    expected,
+                    found
+                } => {
+                    let mut current_content = None;
+                    let mut source_content = None;
+                    for (path, _, content) in files.iter() {
+                        if current_file == *path {
+                            current_content = Some(*content);
+                        }
+                        if source_file == *path {
+                            source_content = Some(*content);
+                        }
+                        if current_content.is_some() && source_content.is_some() {
+                            break;
+                        }
+                    }
+                    Report::build(ReportKind::Error, (current_file.clone(), signature_span.start..signature_span.end))
+                        .with_message(format!("Mismatched Function Arguments (expected: {}, found: {})", expected, found))
+                        .with_label(Label::new((source_file.clone(), signature_span.start..signature_span.end))
+                            .with_message("with signature here"))
+                        .with_label(Label::new((current_file.clone(), expression_span.start..expression_span.end))
+                            .with_message("From expression here"))
+                        .finish()
+                        .eprint((current_file.clone(), Source::from(current_content.unwrap())))
+                        .unwrap();
+                }
+                TypeCheckerError::ExtraFunctionArgument {
+                    current_file,
+                    source_file,
+                    expected,
+                    found,
+                    signature_span,
+                    expression_span
+                } => {
+                    let mut current_content = None;
+                    let mut source_content = None;
+                    for (path, _, content) in files.iter() {
+                        if current_file == *path {
+                            current_content = Some(*content);
+                        }
+                        if source_file == *path {
+                            source_content = Some(*content);
+                        }
+                        if current_content.is_some() && source_content.is_some() {
+                            break;
+                        }
+                    }
+                    Report::build(ReportKind::Error, (current_file.clone(), expression_span.start..expression_span.end))
+                        .with_message(format!("Extra function arguments (expected: {}, found: {})", expected, found))
+                        .with_label(Label::new((source_file.clone(), signature_span.start..signature_span.end))
+                            .with_message("with signature here"))
+                        .with_label(Label::new((source_file.clone(), signature_span.start..signature_span.end))
+                        .with_message("From expression here"))
+                        .finish()
+                        .eprint((current_file.clone(), Source::from(current_content.unwrap())))
+                        .unwrap();
+                }
+                TypeCheckerError::AttributeTypeMismatch {
+                    current_file, attribute, access_span
+                } => {
+                    let mut current_content = None;
+                    for (path, _, content) in files.iter() {
+                        if current_file == *path {
+                            current_content = Some(*content);
+                            break;
+                        }
+                    }
+                    Report::build(ReportKind::Error, (current_file.clone(), access_span.start..access_span.end))
+                        .with_message(format!("Attribute type mismatch for {attribute}"))
+                        .finish()
+                        .eprint((current_file.clone(), Source::from(current_content.unwrap())))
+                        .unwrap();
+                }
+                TypeCheckerError::ArrayTypesNotUniform {
+                    current_file,
+                    array_span,
+                    array_type,
+                    found,
+                    location
+                } => {
+                    let mut current_content = None;
+                    for (path, _, content) in files.iter() {
+                        if current_file == *path {
+                            current_content = Some(*content);
+                            break;
+                        }
+                    }
+                    Report::build(ReportKind::Error, (current_file.clone(), array_span.start..array_span.end))
+                        .with_message(format!("Array type mismatch for [{array_type}]"))
+                        .with_label(Label::new((current_file.clone(), location.start..location.end))
+                            .with_message(format!("Found mismatched type, {found}, here")))
+                        .finish()
+                        .eprint((current_file.clone(), Source::from(current_content.unwrap())))
+                        .unwrap();
+                }
+                TypeCheckerError::BooleanNotFoundInConditional {
+                    current_file, 
+                    expression_span, 
+                    found
+                } => {
+                    let mut current_content = None;
+                    for (path, _, content) in files.iter() {
+                        if current_file == *path {
+                            current_content = Some(*content);
+                            break;
+                        }
+                    }
+                    Report::build(ReportKind::Error, (current_file.clone(), expression_span.start..expression_span.end))
+                        .with_message(format!("Expected boolean, found {found}, here"))
+                        .finish()
+                        .eprint((current_file.clone(), Source::from(current_content.unwrap())))
+                        .unwrap();
+                }
+                TypeCheckerError::UnboundVariable {
+                    current_file, 
+                    name, 
+                    location
+                } => {
+                    let mut current_content = None;
+                    for (path, _, content) in files.iter() {
+                        if current_file == *path {
+                            current_content = Some(*content);
+                            break;
+                        }
+                    }
+                    Report::build(ReportKind::Error, (current_file.clone(), location.start..location.end))
+                        .with_message(format!("Unbound variable {name}, here"))
+                        .with_label(Label::new((current_file.clone(), location.start..location.end))
+                            .with_message(format!("Found unbound variable {name}, here")))
+                        .finish()
+                        .eprint((current_file.clone(), Source::from(current_content.unwrap())))
+                        .unwrap();
+                }
+                TypeCheckerError::MismatchedType {
+                    current_file, 
+                    expected, 
+                    found, 
+                    location
+                } => {
+                    let mut current_content = None;
+                    for (path, _, content) in files.iter() {
+                        if current_file == *path {
+                            current_content = Some(*content);
+                            break;
+                        }
+                    }
+                    Report::build(ReportKind::Error, (current_file.clone(), location.start..location.end))
+                        .with_message(format!("Mismatched type, expected {expected}, found {found}"))
+                        .with_label(Label::new((current_file.clone(), location.start..location.end)))
+                        .finish()
+                        .eprint((current_file.clone(), Source::from(current_content.unwrap())))
+                        .unwrap();
+                }
+            }
+        }
+
+
+        std::process::exit(1);
     }
 
     fn check_file<'a>(&mut self, file: &mut File<'a>) -> Result<(), TypeCheckerError> {
@@ -618,8 +1030,8 @@ impl TypeChecker {
                         _ => todo!("allow for more types to be in trait impl implementer slot"),
                     };
                     
-                    println!("{:?}", trait_path);
-                    println!("{:#?}", self.trait_decl);
+                    //println!("{:?}", trait_path);
+                    //println!("{:#?}", self.trait_decl);
                     let (parents, attrs) = self.trait_decl.get(&trait_path)
                         .expect("TODO: handle missing trait decl");
                     let parents = parents.iter()
@@ -874,7 +1286,9 @@ impl TypeChecker {
     }
 
     fn check_method<'a>(&mut self, method: &mut Method<'a>) -> Result<(), TypeCheckerError> {
-        let crate::trees::ast::Method { parameters, return_type, body, .. } = method;
+        let Method { parameters, return_type, body, signature_span, .. } = method;
+
+        self.current_function_sig_span = *signature_span;
         self.push_scope();
 
         for parameter in parameters {
@@ -887,7 +1301,12 @@ impl TypeChecker {
         }
 
 
-        self.check_body(&TypeCheckerType::from(return_type.clone()), body)?;
+        match self.check_body(&TypeCheckerType::from(return_type.clone()), body) {
+            Ok(_) => {}
+            Err(error) => {
+                self.collected_errors.push(error);
+            }
+        }
         
         self.pop_scope();
         Ok(())
@@ -959,12 +1378,21 @@ impl TypeChecker {
                 // TODO: check if if expression return values are the same
                 self.check_if_expr(return_type, expr)?;
             }
-            Expression::Return(value, _) => {
+            Expression::Return(value, span) => {
                 let result = value.as_mut().map(|value| {
                     self.annotate_expr(&return_type.into(), value.as_mut())?;
                     let ty = self.get_type(value.as_mut())?;
                     if <&TypeCheckerType as Into<Type>>::into(return_type) != ty {
-                        todo!("report type mismatch in return value")
+                        return Err(
+                            TypeCheckerError::MismatchedReturnType {
+                                current_file: self.current_path.clone(),
+                                source_file: self.current_path.clone(),
+                                expected: return_type.to_string(),
+                                found: ty.to_string(),
+                                signature_span: self.current_function_sig_span,
+                                error_location: *span,
+                            }
+                        );
                     } else {
                         self.check_expr(return_type, value.as_mut())?;
                         Ok(())
@@ -974,57 +1402,86 @@ impl TypeChecker {
                     _ = result?;
                 }
             }
-            Expression::BinaryOperation { operator: BinaryOperator::And, left, right, .. } => {
+            Expression::BinaryOperation { operator: BinaryOperator::And, left, right,  span, .. } => {
                 let lhs = self.get_type(left)?;
                 let rhs = self.get_type(right)?;
 
-                if lhs != Type::U8 || rhs != Type::U8 {
-                    todo!("report boolean operands aren't booleans")
+                if lhs != Type::Boolean {
+                    return Err(
+                        TypeCheckerError::MismatchedTypeForOperation {
+                            current_file: self.current_path.clone(),
+                            expected: "bool".to_string(),
+                            found: lhs.to_string(),
+                            operator: "&&".to_string(),
+                            expression_span: *span,
+                            error_location: left.get_span(),
+                        }
+                    )
+                }
+                if rhs != Type::Boolean {
+                    return Err(
+                        TypeCheckerError::MismatchedTypeForOperation {
+                            current_file: self.current_path.clone(),
+                            expected: "bool".to_string(),
+                            found: rhs.to_string(),
+                            operator: "&&".to_string(),
+                            expression_span: *span,
+                            error_location: right.get_span(),
+                        }
+                    )
                 }
                 if lhs != rhs {
-                    todo!("report type mismatch");
+                    return Err(
+                        TypeCheckerError::UnequalTypes {
+                            current_file: self.current_path.clone(),
+                            left: lhs.to_string(),
+                            right: rhs.to_string(),
+                            expression_span: *span,
+                            left_span: left.get_span(),
+                            right_span: right.get_span(),
+                        }
+                    )
                 }
             }
-            Expression::BinaryOperation { operator: BinaryOperator::Or, left, right, .. } => {
+            Expression::BinaryOperation { operator: BinaryOperator::Or, left, right, span, .. } => {
                 let lhs = self.get_type(left)?;
                 let rhs = self.get_type(right)?;
 
-                if lhs != Type::U8 || rhs != Type::U8 {
-                    todo!("report boolean operands aren't booleans")
+                if lhs != Type::Boolean {
+                    return Err(
+                        TypeCheckerError::MismatchedTypeForOperation {
+                            current_file: self.current_path.clone(),
+                            expected: "bool".to_string(),
+                            found: lhs.to_string(),
+                            operator: "||".to_string(),
+                            expression_span: *span,
+                            error_location: left.get_span(),
+                        }
+                    )
+                }
+                if rhs != Type::Boolean {
+                    return Err(
+                        TypeCheckerError::MismatchedTypeForOperation {
+                            current_file: self.current_path.clone(),
+                            expected: "bool".to_string(),
+                            found: rhs.to_string(),
+                            operator: "||".to_string(),
+                            expression_span: *span,
+                            error_location: right.get_span(),
+                        }
+                    )
                 }
                 if lhs != rhs {
-                    todo!("report type mismatch");
-                }
-            }
-            Expression::BinaryOperation { operator: BinaryOperator::And, left, right, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Or, left, right, .. }=> {
-                // TODO: add conversion when traits are added
-                // TODO: make it so that types get upgraded if they are compatable
-
-                let lhs = match self.get_type(left) {
-                    Ok(ty) => Some(ty),
-                    Err(TypeCheckerError::UnableToDeduceType {..}) => None,
-                };
-                let rhs = match self.get_type(right) {
-                    Ok(ty) => Some(ty),
-                    Err(TypeCheckerError::UnableToDeduceType {..}) => None,
-                };
-
-                let (lhs, rhs) = match (lhs, rhs) {
-                    (Some(lhs), Some(rhs)) => (lhs, rhs),
-                    (Some(lhs), None) => {
-                        self.annotate_expr(&lhs, right.as_mut())?;
-                        (lhs.clone(), lhs)
-                    }
-                    (None, Some(rhs)) => {
-                        self.annotate_expr(&rhs, left.as_mut())?;
-                        (rhs.clone(), rhs)
-                    }
-                    _ => todo!("report missing type information"),
-                };
-
-                if lhs != rhs && (lhs != Type::U8 || rhs != Type::U8) {
-                    todo!("report type mismatch for logical and or logical or {:?} {:?}", lhs, rhs);
+                    return Err(
+                        TypeCheckerError::UnequalTypes {
+                            current_file: self.current_path.clone(),
+                            left: lhs.to_string(),
+                            right: rhs.to_string(),
+                            expression_span: *span,
+                            left_span: left.get_span(),
+                            right_span: right.get_span(),
+                        }
+                    )
                 }
             }
             Expression::BinaryOperation { operator: BinaryOperator::Index, left, right, .. } => {
@@ -1067,7 +1524,13 @@ impl TypeChecker {
                 } else {
                     let path = self.attach_module_if_needed(name.to_string());
                     if path.is_empty() {
-                        todo!("report unbound variable");
+                        return Err(
+                            TypeCheckerError::MissingImport {
+                                current_file: self.current_path.clone(),
+                                suggestion: name.to_string(),
+                                span: *span,
+                            }
+                        )
                     }
                     if self.class_information.contains_key(&path) {
                         *expr = Expression::ClassAccess {
@@ -1081,6 +1544,7 @@ impl TypeChecker {
                 self.check_expr(return_type, name)?;
                 let method = self.get_type(name)?;
 
+                let args_len = args.len();
                 for (i, arg) in args.iter_mut().enumerate() {
                     // check each argument in the call
                     self.check_expr(return_type, arg)?;
@@ -1091,12 +1555,30 @@ impl TypeChecker {
                                 let expected_ty = &arg_types[i];
                                 //println!("left: {:?}\nright: {:?}", arg_ty, expected_ty);
                                 if !self.compare_types(&TypeCheckerType::from(&arg_ty), &TypeCheckerType::from(expected_ty)) {
-                                    todo!("report type mismatch for argument {} in method call {:?} ({:?}, {:?})", i, name, arg_ty, expected_ty);
+                                    return Err(
+                                        TypeCheckerError::MismatchedFunctionArgument {
+                                            current_file: self.current_path.clone(),
+                                            source_file: self.current_path.clone(),// TODO: change this to a different file path if needed
+                                            signature_span: Span::new(0,0),
+                                            expression_span: arg.get_span(),
+                                            expected: expected_ty.to_string(),
+                                            found: arg_ty.to_string(),
+                                        }
+                                    );
                                 }
                                 self.annotate_expr(expected_ty, arg)?;
                                 *annotation = Some(return_type.clone().into());
                             } else {
-                                todo!("report too many arguments in method call");
+                                return Err(
+                                    TypeCheckerError::ExtraFunctionArgument {
+                                        current_file: self.current_path.clone(),
+                                        source_file: self.current_path.clone(),// TODO: change this to a different file path if needed
+                                        expected: arg_types.len(),
+                                        found: args_len,
+                                        signature_span: Span::new(0,0),
+                                        expression_span: arg.get_span(),
+                                    }
+                                );
                             }
                         
                         }
@@ -1130,11 +1612,18 @@ impl TypeChecker {
 
                 let ClassAttribute::Method(method) = attributes.get(method_name.as_str())
                     .expect("method missing or not loaded: {method_name}") else {
-                    todo!("report attribute not a method")
+                    return Err(
+                        TypeCheckerError::AttributeTypeMismatch {
+                            current_file: self.current_path.clone(),
+                            attribute: method_name.to_string(),
+                            access_span: *span,
+                        }
+                    )
                 };
 
                 let method = method.clone();
 
+                let args_len = args.len();
                 for (i, arg) in args.iter_mut().enumerate() {
                     //println!("i: {i} arg: {arg:?}");
                     // check each argument in the call
@@ -1144,16 +1633,32 @@ impl TypeChecker {
                         TypeCheckerType::Function(arg_types, return_type) => {
                             if i < arg_types.len() {
                                 let expected_ty = &arg_types[i];
-                                //("\tleft: {:?}\n\tright: {:?}", arg_ty, expected_ty);
+                                //println!("left: {:?}\nright: {:?}", arg_ty, expected_ty);
                                 if !self.compare_types(&TypeCheckerType::from(&arg_ty), expected_ty) {
-                                    todo!("report type mismatch for argument {} in method call {:?} ({:?}, {:?})", i, name, arg_ty, expected_ty);
+                                    return Err(
+                                        TypeCheckerError::MismatchedFunctionArgument {
+                                            current_file: self.current_path.clone(),
+                                            source_file: self.current_path.clone(),// TODO: change this to a different file path if needed
+                                            signature_span: Span::new(0,0),
+                                            expression_span: arg.get_span(),
+                                            expected: expected_ty.to_string(),
+                                            found: arg_ty.to_string(),
+                                        }
+                                    );
                                 }
-                                self.check_expr(return_type, arg)?;
-                                //println!("arg: {arg:?}");
-                                self.annotate_expr(&expected_ty.into(), arg)?;
-                                *annotation = Some((*return_type.clone()).into());
+                                self.annotate_expr(&expected_ty.clone().into(), arg)?;
+                                *annotation = Some((**return_type).clone().into());
                             } else {
-                                todo!("report too many arguments in method call at {:?}", span);
+                                return Err(
+                                    TypeCheckerError::ExtraFunctionArgument {
+                                        current_file: self.current_path.clone(),
+                                        source_file: self.current_path.clone(),// TODO: change this to a different file path if needed
+                                        expected: arg_types.len(),
+                                        found: args_len,
+                                        signature_span: Span::new(0,0),
+                                        expression_span: arg.get_span(),
+                                    }
+                                );
                             }
 
                         }
@@ -1162,7 +1667,7 @@ impl TypeChecker {
                 }
 
             }
-            Expression::MemberAccess { object, field, annotation, .. } => {
+            Expression::MemberAccess { object, field, annotation, span, .. } => {
                 self.check_expr(return_type, object)?;
                 let ty = match object.as_mut() {
                     object if object.is_class_access() => {
@@ -1212,7 +1717,13 @@ impl TypeChecker {
                 let class_name = name;
                 let path = self.attach_module_if_needed(class_name.to_string());
                 if path.len() == 0 {
-                    todo!("report missing import");
+                    return Err(
+                        TypeCheckerError::MissingImport {
+                            current_file: self.current_path.clone(),
+                            suggestion: class_name.to_string(),
+                            span: *span,
+                        }
+                    )
                 }
 
                 let member_name = &field.segments[field.segments.len() - 1];
@@ -1230,12 +1741,21 @@ impl TypeChecker {
                 *annotation = Some(member.into());
                 
             }
-            Expression::Literal(Literal::Array(body, typ, _)) => {
+            Expression::Literal(Literal::Array(body, typ, span)) => {
                 for body in body {
                     self.check_expr(return_type, body)?;
                     if let Some(typ) = typ {
-                        if self.get_type(body)? != *typ {
-                            todo!("report type mismatch in array body")
+                        let body_ty = self.get_type(body)?;
+                        if body_ty != *typ {
+                            return Err(
+                                TypeCheckerError::ArrayTypesNotUniform {
+                                    current_file: self.current_path.clone(),
+                                    array_span: *span,
+                                    array_type: typ.to_string(),
+                                    found: body_ty.to_string(),
+                                    location: body.get_span(),
+                                }
+                            )
                         }
                     }
                 }
@@ -1319,8 +1839,14 @@ impl TypeChecker {
 
         self.annotate_expr(&Type::Boolean, condition.as_mut())?;
         let condition_type = self.get_type(condition.as_mut())?;
-        if condition_type != Type::Boolean && condition_type != Type::U8 {
-            todo!("report type mismatch if condition. found: {:?}", condition_type);
+        if condition_type != Type::Boolean {
+            return Err(
+                TypeCheckerError::BooleanNotFoundInConditional {
+                    current_file: self.current_path.clone(),
+                    expression_span: condition.get_span(),
+                    found: condition_type.to_string(),
+                }
+            );
         }
 
         self.check_body(return_type, then_branch)?;
@@ -1345,24 +1871,35 @@ impl TypeChecker {
             Expression::Literal(Literal::Constant(Constant::Bool(_, _))) => Ok(Type::U8),
             Expression::Literal(Literal::Constant(Constant::Float(_, annotation, span))) => match annotation {
                 Some(ty) => Ok(ty.clone()),
-                None => Err(TypeCheckerError::UnableToDeduceType { start: span.start, end: span.end }),
+                None => Err(TypeCheckerError::UnableToDeduceType { 
+                    current_file: self.current_path.clone(),
+                    start: span.start, end: span.end 
+                }),
             },
             Expression::Literal(Literal::Constant(Constant::Integer(_, annotation, span))) => match annotation {
                 Some(ty) => Ok(ty.clone()),
-                None => Err(TypeCheckerError::UnableToDeduceType { start: span.start, end: span.end }),
+                None => Err(TypeCheckerError::UnableToDeduceType { 
+                    current_file: self.current_path.clone(),
+                    start: span.start, end: span.end 
+                }),
             },
             Expression::Literal(Literal::Constant(Constant::Character(_, _))) => Ok(Type::Char),
-            Expression::Variable(name, annotation, _) => {
+            Expression::Variable(name, annotation, span) => {
                 if let Some(ty) = self.lookup_var(&name) {
                     *annotation = Some(ty.into());
                     //println!("annotation: {:?}", annotation);
                     Ok(ty.into())
                 } else {
-                    todo!("report unbound variable {}", name);
+                    Err(
+                        TypeCheckerError::UnboundVariable {
+                            current_file: self.current_path.clone(),
+                            name: name.to_string(),
+                            location: *span,
+                        }
+                    )
                 }
             }
             Expression::This(_) => {
-
                 Ok(TypeCheckerType::Object(self.current_class.last().unwrap().clone()).into())
             }
             Expression::As { source, typ, .. } => {
@@ -1438,11 +1975,11 @@ impl TypeChecker {
             Expression::MemberAccess { .. } => {
                 self.get_type_member_access(expr)
             }
-            Expression::BinaryOperation { operator: BinaryOperator::Add, left, right, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Sub, left, right, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Mul, left, right, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Div, left, right, .. }
-            | Expression::BinaryOperation { operator: BinaryOperator::Mod, left, right, .. } => {
+            Expression::BinaryOperation { operator: BinaryOperator::Add, left, right, span, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Sub, left, right, span, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Mul, left, right, span, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Div, left, right, span, .. }
+            | Expression::BinaryOperation { operator: BinaryOperator::Mod, left, right, span, .. } => {
                 let lhs = self.get_type(left.as_mut());
                 let rhs = self.get_type(right.as_mut());
 
@@ -1471,7 +2008,16 @@ impl TypeChecker {
                     }
                     (lhs, rhs) => {
                         if lhs != rhs {
-                            todo!("Report mismatch type")
+                            return Err(
+                                TypeCheckerError::UnequalTypes {
+                                    current_file: self.current_path.clone(),
+                                    left: lhs.to_string(),
+                                    right: rhs.to_string(),
+                                    expression_span: *span,
+                                    left_span: left.get_span(),
+                                    right_span: right.get_span(),
+                                }
+                            )
                         }
                         Ok(lhs)
                     }
@@ -1483,11 +2029,11 @@ impl TypeChecker {
             | Expression::BinaryOperation { operator: BinaryOperator::Le, .. }
             | Expression::BinaryOperation { operator: BinaryOperator::Gt, .. }
             | Expression::BinaryOperation { operator: BinaryOperator::Ge, .. } => {
-                Ok(Type::U8)
+                Ok(Type::Boolean)
             }
             Expression::BinaryOperation { operator: BinaryOperator::And, .. }
             | Expression::BinaryOperation { operator: BinaryOperator::Or, .. }=> {
-                Ok(Type::U8)
+                Ok(Type::Boolean)
             }
             Expression::Literal(Literal::Array(_, ty, _)) => {
                 if let Some(ty) = ty {
@@ -1769,12 +2315,19 @@ impl TypeChecker {
             (Type::F64, Expression::Literal(Literal::Constant(Constant::Float(_, annotation, _)))) => {
                 *annotation = Some(Type::F64);
             }
-            (ty, Expression::Variable(var, annotation, _)) => {
+            (ty, Expression::Variable(var, annotation, span)) => {
                 if let Some(var_ty) = self.lookup_var(var) {
                     if self.compare_types(var_ty, &TypeCheckerType::from(ty)) {
                         *annotation = Some(ty.clone());
                     } else {
-                        todo!("report type mismatch {:?} vs {:?}", ty, var_ty);
+                        return Err(
+                            TypeCheckerError::MismatchedType {
+                                current_file: self.current_path.clone(),
+                                expected: ty.to_string(),
+                                found: var_ty.to_string(),
+                                location: *span,
+                            }
+                        );
                     }
                 } else {
                     *annotation = Some(ty.clone());

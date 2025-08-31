@@ -211,7 +211,8 @@ impl<'convert> IRConverter {
             parameters,
             return_type,
             body,
-            span
+            whole_span,
+            ..
         } = method;
 
         let type_params = type_params.into_iter()
@@ -235,7 +236,7 @@ impl<'convert> IRConverter {
             parameters,
             return_type,
             body,
-            span
+            span: whole_span,
         })
     }
 
