@@ -24,7 +24,7 @@ pub struct Args {
     pub stdlib_path: Option<String>,
 }
 
-fn explore_directories<P: AsRef<Path>>(path: P, files: &mut Vec<(String, Vec<String>, String)>) {
+fn explore_directories<P: AsRef<Path>>(path: P, files: &mut Vec<(String, Vec<String>, String, String)>) {
     let mut dirs_to_explore = Vec::new();
     let dir_path = path.as_ref().to_path_buf();
     for entry in std::fs::read_dir(path).unwrap() {
@@ -45,15 +45,16 @@ fn explore_directories<P: AsRef<Path>>(path: P, files: &mut Vec<(String, Vec<Str
             .map(|p| p.to_str().unwrap().to_string())
         .collect::<Vec<String>>();
 
+        let path_string = path.join("/");
 
-        files.push((name, path, content));
+        files.push((name, path, path_string, content));
     }
     for dir in dirs_to_explore {
         explore_directories(dir, files);
     }
 }
 
-fn explore_directories_start<P: AsRef<Path>>(path: P, files: &mut Vec<(String, Vec<String>, String)>) {
+fn explore_directories_start<P: AsRef<Path>>(path: P, files: &mut Vec<(String, Vec<String>, String, String)>) {
     let mut dirs_to_explore = Vec::new();
     let dir_path = path.as_ref().to_path_buf();
     for entry in std::fs::read_dir(path).unwrap() {
@@ -72,8 +73,9 @@ fn explore_directories_start<P: AsRef<Path>>(path: P, files: &mut Vec<(String, V
         let name = entry.file_name().to_str().unwrap().to_string();
         let path = vec![name.replace(".rowan", "")];
 
+        let path_string = path.join("/");
 
-        files.push((name, path, content));
+        files.push((name, path, path_string, content));
     }
     for dir in dirs_to_explore {
         explore_directories(dir, files);
@@ -96,34 +98,42 @@ fn main() {
 
     let mut class_files = Vec::new();
     let mut index = HashMap::new();
-    for (name, path, contents) in files.iter() {
+    for (name, path, string_path, contents) in files.iter() {
         println!("{name} {path:?}");
-        let file = parser::parse(&name, &contents);
+        let file = parser::parse(&name, string_path, &contents);
         index.insert(path.join("::"), class_files.len());
-        class_files.push((path, file, contents));
+        class_files.push((path, string_path, file, contents));
     }
 
-    let class_files = if class_files.iter().any(|(_, file, _)| {
+    let class_files = if class_files.iter().any(|(_, _, file, _)| {
         file.is_err()
     }) {
         let errors = class_files.into_iter()
-            .filter_map(|(path, file, contents)| {
+            .filter_map(|(path, string_path, file, contents)| {
                 if file.is_err() {
-                    Some((path, file.unwrap_err(), contents))
+                    Some((path, string_path, file.unwrap_err(), contents))
                 }
                 else {
                     None
                 }
             }).collect::<Vec<_>>();
-        for (path, error, contents) in errors {
+        for (path, string_path, error, contents) in errors {
+            let contents_ptr = contents.as_ptr();
+            let contents_len = contents.len();
+            let contents_slice = unsafe { std::slice::from_raw_parts(contents_ptr, contents_len) };
+            let contents_str = std::str::from_utf8(contents_slice).unwrap();
+
+
+
             error.finish()
-                .print((&path.join("/"), Source::from(contents)))
+                .eprint(((string_path.as_str(), Source::from(contents_str))))
                 .expect("TODO: panic message");
+            eprintln!();
         }
         std::process::exit(1);
     } else {
         class_files.into_iter()
-            .map(|(path, file, contents)| {
+            .map(|(path, string_path, file, contents)| {
                 (path, file.unwrap(), contents)
             }).collect::<Vec<_>>()
     };

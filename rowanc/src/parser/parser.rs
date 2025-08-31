@@ -9,19 +9,31 @@ use super::lexer;
 lalrpop_mod!(grammar, "/parser/grammar.rs");
 
 
-pub fn parse<'a>(name: &'a str, input: &'a str) -> Result<ast::File<'a>, ReportBuilder<'a, (&'a str, Range<usize>)>> {
+pub fn parse<'a>(name: &'a str, path: &'a str, input: &'a str) -> Result<ast::File<'a>, ReportBuilder<'a, (&'a str, Range<usize>)>> {
     let lexer = lexer::TokenLexer::new(input);
     match grammar::FileParser::new().parse(input, lexer) {
         Err(err) => {
             let mut start = 0;
             let mut end = 0;
             let mut message = String::new();
+            let mut main_label = None;
             let mut label = None;
-            
+            let mut called_once = false;
+
             err.map_location(|x| {
-                start = x;
-                end = x + 1;
-                message.push_str("Unexpected Token");
+                if called_once {
+                    end = x;
+                    main_label = Some(
+                        Label::new((path, (start..end)))
+                            .with_message("here")
+                            .with_color(Color::Red),
+                    );
+                } else {
+                    message.push_str("Unexpected Token");
+                    start = x;
+                    called_once = true;
+                }
+                
             }).map_error(|err| {
                 start = err.start;
                 end = err.end;
@@ -32,7 +44,7 @@ pub fn parse<'a>(name: &'a str, input: &'a str) -> Result<ast::File<'a>, ReportB
                     LexerError::InvalidIdentifier(start, stop) => {
                         message.push_str("Invalid Identifier");
                         label = Some(
-                            Label::new((name, start..stop))
+                            Label::new((path, start..stop))
                                 .with_color(Color::Blue)
                         );
                     }
@@ -62,9 +74,15 @@ pub fn parse<'a>(name: &'a str, input: &'a str) -> Result<ast::File<'a>, ReportB
                     }
                 }
             });
-            let span = (name, start..end);
+            
+            let span = (path, start..end);
             let mut builder = Report::build(ReportKind::Error, span)
                 .with_message(message);
+            builder = if let Some(main_label) = main_label {
+                builder.with_label(main_label)
+            } else {
+                builder
+            };
             builder = if let Some(label) = label {
                 builder.with_label(label)
             } else {
