@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use ariadne::{Label, Report, ReportKind, Source};
 use either::Either;
 use itertools::Itertools;
-use crate::trees::ast::{Class, ClosureParameter, Constant, Expression, File, IfExpression, Literal, Method, Parameter, Pattern, Statement, StaticMember, TopLevelStatement, Trait, TraitImpl};
+use crate::trees::ast::{Class, ClosureParameter, Constant, Expression, File, IfExpression, Literal, Method, Parameter, ParentDec, Pattern, Statement, StaticMember, TopLevelStatement, Trait, TraitImpl};
 use crate::trees::{BinaryOperator, PathName, Span, Text, Type, UnaryOperator};
 
 fn create_stdlib<'a>() -> HashMap<Vec<String>, (String, HashMap<String, ClassAttribute>)> {
@@ -2098,7 +2098,9 @@ impl TypeChecker {
 
                                 let path = self.attach_module_if_needed(name.to_string());
 
-                                match self.get_attribute(&path, field.to_string()) {
+                                let (parent, attributes) = self.class_information.get(&path).unwrap();
+                                let mut parent = parent;
+                                match attributes.get(&field.to_string()) {
                                     Some(ClassAttribute::Member(ty)) => {
                                         *annotation = Some(ty.into());
                                         Ok(ty.clone().into())
@@ -2112,6 +2114,32 @@ impl TypeChecker {
                                         Ok(ty.clone().into())
                                     }
                                     _ => {
+                                        loop {
+                                            let path = self.attach_module_if_needed(parent.to_string());
+                                            let (new_parent, attributes) = self.class_information.get(&path).unwrap();
+
+                                            parent = new_parent;
+
+                                            match attributes.get(&field.to_string()) {
+                                                Some(ClassAttribute::Member(ty)) => {
+                                                    *annotation = Some(ty.into());
+                                                    return Ok(ty.clone().into())
+                                                }
+                                                Some(ClassAttribute::Method(ty)) => {
+                                                    *annotation = Some(ty.into());
+                                                    return Ok(ty.clone().into())
+                                                }
+                                                Some(ClassAttribute::StaticMember(ty)) => {
+                                                    *annotation = Some(ty.into());
+                                                    return Ok(ty.clone().into())
+                                                }
+                                                _ => {}
+                                            }
+
+                                            if parent.as_str() == "" {
+                                                break;
+                                            }
+                                        }
                                         eprintln!("Failed to find attribute {} in class {}", field.to_string(), name);
                                         todo!("report unknown member access")
                                     }
