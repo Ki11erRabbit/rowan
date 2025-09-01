@@ -32,7 +32,7 @@ let
         cargoLock = {
             lockFile = ./Cargo.lock;
             outputHashes = {
-                "unwind-sys-0.1.4" = "sha256-kpONieYR+Nex/2K3fYGw4+QVlX5TiZ21tyNgd6gDc6c=";
+                "unwind-sys-0.1.4" = "sha256-DLOzDFZr5VeRypsxIvZrJN/jePNpYGOg/N/8Qsw0bhc=";
             };
         };
 
@@ -82,7 +82,7 @@ in
         cargoLock = {
             lockFile = ./Cargo.lock;
             outputHashes = {
-                "unwind-sys-0.1.4" = "sha256-kpONieYR+Nex/2K3fYGw4+QVlX5TiZ21tyNgd6gDc6c=";
+                "unwind-sys-0.1.4" = "sha256-DLOzDFZr5VeRypsxIvZrJN/jePNpYGOg/N/8Qsw0bhc=";
             };
         };
         installPhase = ''
@@ -127,7 +127,7 @@ in
          cargoLock = {
              lockFile = ./Cargo.lock;
              outputHashes = {
-                 "unwind-sys-0.1.4" = "sha256-kpONieYR+Nex/2K3fYGw4+QVlX5TiZ21tyNgd6gDc6c=";
+                 "unwind-sys-0.1.4" = "sha256-DLOzDFZr5VeRypsxIvZrJN/jePNpYGOg/N/8Qsw0bhc=";
              };
          };
          installPhase = ''
