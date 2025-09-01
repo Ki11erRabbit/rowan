@@ -16,6 +16,10 @@ impl InterfaceTable {
         self.interfaces.push(interface);
         index
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Interface> {
+        self.interfaces.iter()
+    }
 }
 
 impl std::ops::Index<usize> for InterfaceTable {

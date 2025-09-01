@@ -198,8 +198,8 @@ unsafe impl Sync for Class {}
 
 #[derive(Debug)]
 pub struct MemberInfo {
-    name: Symbol,
-    ty: TypeTag,
+    pub name: Symbol,
+    pub ty: TypeTag,
 }
 
 impl MemberInfo {

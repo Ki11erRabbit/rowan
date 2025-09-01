@@ -3,6 +3,120 @@ use crate::context::{BytecodeContext, StackValue};
 use crate::runtime::{Runtime, Reference};
 use crate::runtime::core::{array16_init, array32_init, array64_init, array8_init, arrayf32_init, arrayf64_init, arrayobject_init, string_buffer_from_str, Array, InternedString, StringBuffer};
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union FFIValueUnion {
+    blank: u8,
+    byte: u8,
+    short: u16,
+    int: u32,
+    long: u64,
+    float: f32,
+    double: f64,
+    reference: Reference,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct FFIValue {
+    tag: u64,
+    value: FFIValueUnion,
+}
+
+impl FFIValue {
+    #[unsafe(no_mangle)]
+    pub extern "C"  fn rowan_new_value() -> FFIValue {
+        FFIValue {
+            tag: 0,
+            value: FFIValueUnion { blank: 0 },
+        }
+    }
+}
+
+impl From<StackValue> for FFIValue {
+    fn from(value: StackValue) -> Self {
+        match value {
+            StackValue::Blank => {
+                FFIValue {
+                    tag: 0,
+                    value: FFIValueUnion { blank: 0 },
+                }
+            }
+            StackValue::Int8(v) => {
+                FFIValue {
+                    tag: 1,
+                    value: FFIValueUnion { byte: v },
+                }
+            }
+            StackValue::Int16(v) => {
+                FFIValue {
+                    tag: 2,
+                    value: FFIValueUnion { short: v },
+                }
+            }
+            StackValue::Int32(v) => {
+                FFIValue {
+                    tag: 3,
+                    value: FFIValueUnion { int: v },
+                }
+            }
+            StackValue::Int64(v) => {
+                FFIValue {
+                    tag: 4,
+                    value: FFIValueUnion { long: v },
+                }
+            }
+            StackValue::Float32(v) => {
+                FFIValue {
+                    tag: 5,
+                    value: FFIValueUnion { float: v },
+                }
+            }
+            StackValue::Float64(v) => {
+                FFIValue {
+                    tag: 6,
+                    value: FFIValueUnion { double: v },
+                }
+            }
+            StackValue::Reference(v) => {
+                FFIValue {
+                    tag: 7,
+                    value: FFIValueUnion { reference: v },
+                }
+            }
+        }
+    }
+}
+
+impl Into<StackValue> for FFIValue {
+    fn into(self) -> StackValue {
+        match self.tag {
+            0 => StackValue::Blank,
+            1 => unsafe {
+                StackValue::Int8(self.value.byte)
+            }
+            2 => unsafe {
+                StackValue::Int16(self.value.short)
+            }
+            3 => unsafe {
+                StackValue::Int32(self.value.int)
+            }
+            4 => unsafe {
+                StackValue::Int64(self.value.long)
+            }
+            5 => unsafe {
+                StackValue::Float32(self.value.float)
+            }
+            6 => unsafe {
+                StackValue::Float64(self.value.double)
+            }
+            7 => unsafe {
+                StackValue::Reference(self.value.reference)
+            }
+            _ => panic!("Invalid stack value type"),
+        }
+    }
+}
+
 /// This function constructs an object from a given class name from a CStr.
 /// The CStr should be valid utf-8 as to prevent misses.
 /// Returns a valid reference to an object
@@ -120,6 +234,12 @@ pub extern "C" fn rowan_get_string_buffer(string: Reference, buf: &mut *const u8
     get_buffer(string, buf, length);
 }
 
+pub extern "C" fn rowan_set_call_argument(context: &mut BytecodeContext, index: u8, value: FFIValue) {
+    let stack_value: StackValue = value.into();
+    context.store_argument_raw(index, stack_value);
+}
+
+
 /// This function retrieves the function pointer for a virtual function for a given object.
 /// object: the object to get the function pointer
 /// class: the class with the particular method
@@ -142,7 +262,20 @@ pub extern "C" fn rowan_call_virtual_function(
         return 2;
     };
 
-    let result = context.invoke_virtual_extern(class, method_name, return_slot);
+    let mut return_value = StackValue::Blank;
+
+    let result = if return_slot.is_some() {
+        context.invoke_virtual_extern(class, method_name, Some(&mut return_value))
+    } else {
+        context.invoke_virtual_extern(class, method_name, None)
+    };
+
+    match return_slot {
+        Some(slot) => {
+            *slot = return_value.into();
+        }
+        _ => {}
+    }
 
     if result {
         0
@@ -164,7 +297,7 @@ pub extern "C" fn rowan_call_static_function(
     context: &mut BytecodeContext,
     class: *const c_char,
     method_name: *const c_char,
-    return_slot: Option<&mut StackValue>,
+    return_slot: Option<&mut FFIValue>,
 ) -> i32 {
     let class = unsafe { CStr::from_ptr(class) };
     let class = class.to_string_lossy();
@@ -175,7 +308,64 @@ pub extern "C" fn rowan_call_static_function(
         return 2;
     };
 
-    let result = context.invoke_static_extern(class_name, method_name, return_slot);
+    let mut return_value = StackValue::Blank;
+
+    let result = if return_slot.is_some() {
+        context.invoke_static_extern(class_name, method_name, Some(&mut return_value))
+    } else {
+        context.invoke_static_extern(class_name, method_name, None)
+    };
+
+    match return_slot {
+        Some(slot) => {
+            *slot = return_value.into();
+        }
+        _ => {}
+    }
+
+    if result {
+        0
+    } else {
+        1
+    }
+}
+
+/// This function retrieves the function pointer for a virtual function for a given object.
+/// object: the object to get the function pointer
+/// class: the class with the particular method
+/// source_class: the parent class of the object to start looking. Can be null.
+/// method_name: the name of the method to return
+/// Returns a pointer to a function. It is up to the caller to cast it correctly
+#[unsafe(no_mangle)]
+pub extern "C" fn rowan_call_interface_function(
+    context: &mut BytecodeContext,
+    interface: *const c_char,
+    method_name: *const c_char,
+    return_slot: Option<&mut StackValue>,
+) -> i32 {
+    let interface = unsafe { CStr::from_ptr(interface) };
+    let interface = interface.to_string_lossy();
+    let method_name = unsafe { CStr::from_ptr(method_name) };
+    let method_name = method_name.to_string_lossy();
+
+    let Some((interface, method_name)) = Runtime::get_interface_method_name(&interface, &method_name) else {
+        return 2;
+    };
+
+    let mut return_value = StackValue::Blank;
+
+    let result = if return_slot.is_some() {
+        context.invoke_interface_extern(interface, method_name, Some(&mut return_value))
+    } else {
+        context.invoke_interface_extern(interface, method_name, None)
+    };
+
+    match return_slot {
+        Some(slot) => {
+            *slot = return_value.into();
+        }
+        _ => {}
+    }
 
     if result {
         0
@@ -187,4 +377,46 @@ pub extern "C" fn rowan_call_static_function(
 #[unsafe(no_mangle)]
 pub extern "C" fn rowan_set_exception(_context: &mut Runtime, _exception: Reference) {
     //context.set_exception(exception);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rowan_set_object_field(
+    context: &mut BytecodeContext,
+    object: Reference,
+    field: *const c_char,
+    value: FFIValue,
+) -> i32 {
+    let field = unsafe { CStr::from_ptr(field) };
+    let field_name = field.to_string_lossy();
+
+    let mut value: StackValue = value.into();
+
+    let result = Runtime::set_object_field(context, object, &field_name, &mut value);
+
+    match result {
+        Some(_) => 0,
+        _ => 1,
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rowan_get_object_field(
+    context: &mut BytecodeContext,
+    object: Reference,
+    field: *const c_char,
+    value: &mut FFIValue,
+) -> i32 {
+    let field = unsafe { CStr::from_ptr(field) };
+    let field_name = field.to_string_lossy();
+
+    let mut slot: StackValue = (*value).into();
+
+    let result = Runtime::get_object_field(context, object, &field_name, &mut slot);
+
+    *value = FFIValue::from(slot);
+
+    match result {
+        Some(_) => 0,
+        _ => 1,
+    }
 }

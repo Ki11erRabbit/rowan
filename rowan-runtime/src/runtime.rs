@@ -18,9 +18,9 @@ use fxhash::FxHashMap;
 use rowan_shared::bytecode::linked::Bytecode;
 use rowan_shared::interfacefile::InterfaceFile;
 use rowan_shared::interfaceimplfile::InterfaceImplFile;
-use crate::context::{BytecodeContext, MethodName, WrappedReference};
+use crate::context::{BytecodeContext, MethodName, StackValue, WrappedReference};
 use crate::fake_lock::FakeLock;
-use crate::runtime::class::{ClassMember, ClassMemberData};
+use crate::runtime::class::{ClassMember, ClassMemberData, TypeTag};
 
 mod tables;
 pub mod class;
@@ -106,6 +106,11 @@ static STRING_MAP: LazyLock<RwLock<HashMap<&'static str, Symbol>>> = LazyLock::n
 static INTERFACE_TABLE: LazyLock<RwLock<InterfaceTable>> = LazyLock::new(|| {
     let table = InterfaceTable::new();
     RwLock::new(table)
+});
+
+static INTERFACE_MAP: LazyLock<RwLock<HashMap<&'static str, Symbol>>> = LazyLock::new(|| {
+    let map = HashMap::new();
+    RwLock::new(map)
 });
 
 pub trait StaticMemberAccess<T>: Sized + Default {
@@ -621,7 +626,7 @@ impl Runtime {
         interfaces: Vec<InterfaceFile>,
         interface_impls: Vec<InterfaceImplFile>,
         pre_interface_table: Vec<TableEntry<Interface>>,
-        interface_map: HashMap<&'static str, Symbol>,
+        mut interface_map: HashMap<&'static str, Symbol>,
         pre_class_table: &mut Vec<TableEntry<Class>>,
     ) {
         let Ok(mut string_table) = STRING_TABLE.write() else {
@@ -658,8 +663,12 @@ impl Runtime {
             &mut interface_table,
             &mut string_map,
             &mut class_map,
-            interface_map
+            &mut interface_map
         );
+        let Ok(mut interface_mapper) = INTERFACE_MAP.write() else {
+            panic!("Lock poisoned");
+        };
+        *interface_mapper = interface_map;
     }
 
     pub fn finish_linking_classes(
@@ -807,6 +816,168 @@ impl Runtime {
             interface_symbol,
             method_name,
         })
+    }
+
+    pub fn get_object_field(
+        context: &mut BytecodeContext,
+        object: Reference,
+        field: &str,
+        value: &mut StackValue,
+    ) -> Option<()> {
+        if object == std::ptr::null_mut() {
+            return None;
+        }
+        let object = unsafe { object.as_mut()? };
+
+        {
+            let Ok(class_table) = CLASS_TABLE.read() else {
+                panic!("Lock poisoned");
+            };
+            let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+                panic!("Lock poisoned");
+            };
+            let Ok(string_map) = STRING_MAP.read() else {
+                panic!("Lock poisoned");
+            };
+
+            let field_symbol = *string_map.get(field)?;
+
+            let SymbolEntry::ClassRef(index) = symbol_table[object.class] else {
+                panic!("class wasn't a class");
+            };
+
+            let class = &class_table[index];
+            let mut offset = 0;
+
+            for member in class.members.iter() {
+                if member.name == field_symbol {
+                    match member.ty {
+                        TypeTag::I8 | TypeTag::U8 => {
+                            unsafe {
+                                *value = StackValue::from(object.get::<u8>(offset));
+                            }
+                        }
+                        TypeTag::I16 | TypeTag::U16 => {
+                            unsafe {
+                                *value = StackValue::from(object.get::<u16>(offset));
+                            }
+                        }
+                        TypeTag::I32 | TypeTag::U32 => {
+                            unsafe {
+                                *value = StackValue::from(object.get::<u32>(offset));
+                            }
+                        }
+                        TypeTag::I64 | TypeTag::U64 => {
+                            unsafe {
+                                *value = StackValue::from(object.get::<u64>(offset));
+                            }
+                        }
+                        TypeTag::F32 => {
+                            unsafe {
+                                *value = StackValue::from(object.get::<f32>(offset));
+                            }
+                        }
+                        TypeTag::F64 => {
+                            unsafe {
+                                *value = StackValue::from(object.get::<f64>(offset));
+                            }
+                        }
+                        TypeTag::Object => {
+                            unsafe {
+                                *value = StackValue::from(object.get::<Reference>(offset));
+                            }
+                        }
+                        _ => todo!("throw exception"),
+                    }
+                    return Some(());
+                }
+                offset += member.get_size_and_padding()
+            }
+        }
+        Runtime::get_object_field(context, object.parent_object, field, value)
+    }
+
+    pub fn set_object_field(
+        context: &mut BytecodeContext,
+        object: Reference,
+        field: &str,
+        value: &mut StackValue,
+    ) -> Option<()> {
+        if object == std::ptr::null_mut() {
+            return None;
+        }
+        let object = unsafe { object.as_mut()? };
+
+        {
+            let Ok(class_table) = CLASS_TABLE.read() else {
+                panic!("Lock poisoned");
+            };
+            let Ok(symbol_table) = SYMBOL_TABLE.read() else {
+                panic!("Lock poisoned");
+            };
+            let Ok(string_map) = STRING_MAP.read() else {
+                panic!("Lock poisoned");
+            };
+
+            let field_symbol = *string_map.get(field)?;
+
+            let SymbolEntry::ClassRef(index) = symbol_table[object.class] else {
+                panic!("class wasn't a class");
+            };
+
+            let class = &class_table[index];
+            let mut offset = 0;
+
+            for member in class.members.iter() {
+                if member.name == field_symbol {
+                    match (member.ty, value) {
+                        (TypeTag::I8, StackValue::Int8(v)) |
+                        (TypeTag::U8, StackValue::Int8(v)) => {
+                            unsafe {
+                                object.set(offset, v)
+                            }
+                        }
+                        (TypeTag::I16, StackValue::Int16(v)) |
+                        (TypeTag::U16, StackValue::Int16(v)) => {
+                            unsafe {
+                                object.set(offset, v)
+                            }
+                        }
+                        (TypeTag::I32, StackValue::Int32(v)) |
+                        (TypeTag::U32, StackValue::Int32(v)) => {
+                            unsafe {
+                                object.set(offset, v)
+                            }
+                        }
+                        (TypeTag::I64, StackValue::Int64(v)) |
+                        (TypeTag::U64, StackValue::Int64(v)) => {
+                            unsafe {
+                                object.set(offset, v)
+                            }
+                        }
+                        (TypeTag::F32, StackValue::Float32(v)) => {
+                            unsafe {
+                                object.set(offset, v)
+                            }
+                        }
+                        (TypeTag::F64, StackValue::Float64(v)) => {
+                            unsafe {
+                                object.set(offset, v)
+                            }
+                        }
+                        (TypeTag::Object, StackValue::Reference(v)) => {
+                            unsafe {
+                                object.set(offset, v)
+                            }
+                        }
+                        _ => todo!("throw exception"),
+                    }
+                    return Some(());
+                }
+                offset += member.get_size_and_padding()
+            }
+        }
+        Runtime::set_object_field(context, object.parent_object, field, value)
     }
 
     pub fn jit_virtual_method(
@@ -1344,10 +1515,10 @@ impl Runtime {
 
 
     pub fn get_virtual_method_name(class: &str, method_name: &str) -> Option<(Symbol, Symbol)> {
-        let Ok(class_map) = CLASS_MAPPER.write() else {
+        let Ok(class_map) = CLASS_MAPPER.read() else {
             panic!("Lock poisoned");
         };
-        let Ok(string_map) = STRING_MAP.write() else {
+        let Ok(string_map) = STRING_MAP.read() else {
             panic!("Lock poisoned");
         };
 
@@ -1358,10 +1529,10 @@ impl Runtime {
     }
 
     pub fn get_static_method_name(class: &str, method_name: &str) -> Option<(Symbol, Symbol)> {
-        let Ok(class_map) = CLASS_MAPPER.write() else {
+        let Ok(class_map) = CLASS_MAPPER.read() else {
             panic!("Lock poisoned");
         };
-        let Ok(string_map) = STRING_MAP.write() else {
+        let Ok(string_map) = STRING_MAP.read() else {
             panic!("Lock poisoned");
         };
 
@@ -1369,6 +1540,19 @@ impl Runtime {
         let method_name = *string_map.get(method_name)?;
 
         Some((class_symbol, method_name))
+    }
+
+    pub fn get_interface_method_name(interface: &str, method_name: &str) -> Option<(Symbol, Symbol)> {
+        let Ok(interface_map) = INTERFACE_MAP.read() else {
+            panic!("Lock poisoned");
+        };
+        let Ok(string_map) = STRING_MAP.read() else {
+            panic!("Lock poisoned");
+        };
+        let interface_symbol = *interface_map.get(interface)?;
+        let method_name = *string_map.get(method_name)?;
+
+        Some((interface_symbol, method_name))
     }
 
     pub fn get_static_member<T>(_ctx: &mut BytecodeContext, class: Symbol, index: u64) -> T

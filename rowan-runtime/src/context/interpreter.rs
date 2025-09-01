@@ -443,11 +443,13 @@ impl BytecodeContext {
                 //println!("calling function pointer");
                 let var_len = self.args_len();
                 let mut variables = self.call_args[0..var_len].to_vec();
-                let return_value = call_function_pointer(
+                let mut return_value = StackValue::Blank;
+                call_function_pointer(
                     self,
                     &mut variables,
                     fn_ptr.as_ptr(),
                     details.return_type,
+                    &mut return_value
                 );
                 self.pop();
                 if let Some(return_slot) = return_slot {

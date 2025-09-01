@@ -1632,7 +1632,7 @@ pub fn link_interfaces(
     interface_table: &mut InterfaceTable,
     string_map: &mut HashMap<&'static str, Symbol>,
     class_map: &mut HashMap<&'static str, Symbol>,
-    mut interface_map: HashMap<&'static str, Symbol>,
+    interface_map: &mut HashMap<&'static str, Symbol>,
 ) {
     for interface in interfaces.iter() {
         let InterfaceFile {
@@ -1705,7 +1705,7 @@ pub fn link_interfaces(
                     symbol_table,
                     class_table,
                     &mut interface_pre_table,
-                    &mut interface_map,
+                    interface_map,
                 );
                 let block_positions = Box::new(create_block_positions(&bytecode));
 
@@ -1814,7 +1814,7 @@ pub fn link_interfaces(
                     symbol_table,
                     class_table,
                     &mut interface_pre_table,
-                    &mut interface_map,
+                    interface_map,
                 );
                 let block_positions = Box::new(create_block_positions(&bytecode));
                 let signature_entry = &signature_table[*signature as usize];

@@ -40,8 +40,9 @@ pub extern "C" fn call_function_pointer(
     mut context: &mut BytecodeContext,
     call_args: &mut [StackValue],
     fn_pointer: *const (),
-    return_type: TypeTag
-) -> StackValue {
+    return_type: TypeTag,
+    return_value: &mut StackValue,
+) {
     let mut cif = ffi_cif::default();
     let mut types = Vec::new();
     let mut values = Vec::new();
@@ -143,49 +144,49 @@ pub extern "C" fn call_function_pointer(
             let out = unsafe {
                 call::<u8>(&mut cif, ptr, values.as_mut_ptr())
             };
-            StackValue::from(out)
+            *return_value = StackValue::from(out)
         }
         TypeTag::I16 | TypeTag::U16 => {
             let out = unsafe {
                 call::<u16>(&mut cif, ptr, values.as_mut_ptr())
             };
-            StackValue::from(out)
+            *return_value = StackValue::from(out)
         }
         TypeTag::I32 | TypeTag::U32 => {
             let out = unsafe {
                 call::<u32>(&mut cif, ptr, values.as_mut_ptr())
             };
-            StackValue::from(out)
+            *return_value = StackValue::from(out)
         }
         TypeTag::I64 | TypeTag::U64=> {
             let out = unsafe {
                 call::<u64>(&mut cif, ptr, values.as_mut_ptr())
             };
-            StackValue::from(out)
+            *return_value = StackValue::from(out)
         }
         TypeTag::F32 => {
             let out = unsafe {
                 call::<f32>(&mut cif, ptr, values.as_mut_ptr())
             };
-            StackValue::from(out)
+            *return_value = StackValue::from(out)
         }
         TypeTag::F64 => {
             let out = unsafe {
                 call::<f64>(&mut cif, ptr, values.as_mut_ptr())
             };
-            StackValue::from(out)
+            *return_value = StackValue::from(out)
         }
         TypeTag::Object => {
             let out = unsafe {
                 call::<Reference>(&mut cif, ptr, values.as_mut_ptr())
             };
-            StackValue::from(out)
+            *return_value = StackValue::from(out)
         }
         TypeTag::Void => {
             unsafe {
                 call::<()>(&mut cif, ptr, values.as_mut_ptr());
             };
-            StackValue::Blank
+            *return_value = StackValue::Blank
         }
         x => unreachable!("return type: {x:?}")
     }
