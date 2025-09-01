@@ -15,6 +15,7 @@ pub union FFIValueUnion {
     double: f64,
     reference: Reference,
 }
+
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct FFIValue {
