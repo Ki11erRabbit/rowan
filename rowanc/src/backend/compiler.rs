@@ -1269,23 +1269,6 @@ impl Compiler {
         let path_name = name.join("::");
         partial_class.set_name(&path_name);
 
-        let parent_vtables = parent.as_ref().map(|parent_name| {
-            let path = self.add_path_if_needed(parent_name.name.clone().to_string());
-            self.classes.display_classes();
-            let partial_class = self.classes.get(&path).expect(&format!("unable to find class: {}", path.join("::")));
-            let vtables = partial_class.get_vtables(&path);
-            vtables.into_iter().map(|(table, names, signatures)| {
-                let class_name = partial_class.index_string_table(table.class_name).split("::")
-                    .map(|name| name.to_string()).collect::<Vec<String>>();
-                let source_class = if table.sub_class_name == 0 {
-                    None
-                } else {
-                    Some(partial_class.index_string_table(table.sub_class_name))
-                };
-                (class_name, source_class, table, names, signatures)
-            }).collect::<Vec<_>>()
-
-        });
 
         parent.as_ref().map(|parent| {
             let path = self.add_path_if_needed(parent.name.clone().to_string()).join("::");
@@ -1328,21 +1311,6 @@ impl Compiler {
 
             partial_class.add_vtable(&vec![String::from("core"), String::from("Object")], vtable, &names, signatures);
             partial_class.set_parent("core::Object");
-        }
-
-        if let Some(vtables) = parent_vtables {
-            for (class_name, source_class, vtable, names, signatures) in vtables {
-                let names = names.into_iter()
-                    .map(|n| self.add_path_if_needed(n).join("::"))
-                    .collect::<Vec<String>>();
-                let class_name = if let Some(source) = source_class {
-                    let path = self.add_path_if_needed(source.to_string());
-                    path
-                } else {
-                    class_name
-                };
-                partial_class.add_vtable(&class_name, vtable.clone(), &names, &signatures);
-            }
         }
 
         members.into_iter().map(|member| {
@@ -1896,13 +1864,14 @@ impl Compiler {
         let Class {
             name,
             methods,
+            parent,
             ..
         } = class;
 
         let class_name = self.add_path_if_needed(name.to_string());
         self.current_type_args = type_args;
 
-        self.compile_class_inner(&class_name, &methods)?;
+        self.compile_class_inner(&class_name, &methods, parent)?;
 
         Ok(())
     }
@@ -1950,11 +1919,46 @@ impl Compiler {
         &mut self,
         name: &Vec<String>,
         methods: &Vec<Method>,
+        parent: Option<ParentDec>,
     ) -> Result<(), CompilerError> {
         
         let mut partial_class = self.classes.get(name)
             .cloned()
             .expect(&format!("unable to find class {}", name.join("::")));
+
+        let parent_vtables = parent.as_ref().map(|parent_name| {
+            let path = self.add_path_if_needed(parent_name.name.clone().to_string());
+            self.classes.display_classes();
+            let partial_class = self.classes.get(&path).expect(&format!("unable to find class: {}", path.join("::")));
+            let vtables = partial_class.get_vtables(&path);
+            vtables.into_iter().map(|(table, names, signatures)| {
+                let class_name = partial_class.index_string_table(table.class_name).split("::")
+                    .map(|name| name.to_string()).collect::<Vec<String>>();
+                let source_class = if table.sub_class_name == 0 {
+                    None
+                } else {
+                    Some(partial_class.index_string_table(table.sub_class_name))
+                };
+                (class_name, source_class, table, names, signatures)
+            }).collect::<Vec<_>>()
+
+        });
+
+        if let Some(vtables) = parent_vtables {
+            for (class_name, source_class, vtable, names, signatures) in vtables {
+                let names = names.into_iter()
+                    .map(|n| self.add_path_if_needed(n).join("::"))
+                    .collect::<Vec<String>>();
+                let class_name = if let Some(source) = source_class {
+                    let path = self.add_path_if_needed(source.to_string());
+                    path
+                } else {
+                    class_name
+                };
+                partial_class.add_vtable(&class_name, vtable.clone(), &names, &signatures);
+            }
+        }
+
 
         self.compile_methods(name, &mut CurrentCompilationUnit::Class(&mut partial_class), methods)?;
 
