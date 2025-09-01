@@ -105,6 +105,24 @@ impl Object {
 
         }
     }
+
+    pub unsafe fn write(&mut self, offset: usize, src: *mut u8, size: usize) {
+        let mut pointer = self as *mut Self;
+        pointer = unsafe { pointer.add(1) };
+        let pointer = pointer.cast::<u8>();
+        unsafe {
+            std::ptr::copy(src, pointer.add(offset), size);
+        }
+    }
+
+    pub unsafe fn read(&mut self, offset: usize, dest: *mut u8, size: usize) {
+        let mut pointer = self as *mut Self;
+        pointer = unsafe { pointer.add(1) };
+        let pointer = pointer.cast::<u8>();
+        unsafe {
+            std::ptr::copy(pointer.add(offset), dest, size);
+        }
+    }
     
     pub fn get_safe<T: Sized>(&self, mut offset: usize) -> Option<T> {
         let class = Runtime::get_class(self.class);

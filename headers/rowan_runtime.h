@@ -35,6 +35,9 @@ typedef struct value {
     }
 } rowan_value_t;
 
+rowan_value_t rowan_new_value(void);
+rowan_value_t rowan_new_ref_value(void*);
+
 void rowan_block_collection(object_t*);
 void rowan_allow_collection(object_t*);
 object_t* rowan_create_object(unsigned char* class_name);

@@ -887,6 +887,16 @@ impl Runtime {
                                 *value = StackValue::from(object.get::<Reference>(offset));
                             }
                         }
+                        TypeTag::Sized(size) => {
+                            unsafe {
+                                match value {
+                                    StackValue::Reference(reference) => {
+                                        object.read(offset, *reference as *mut u8, size);
+                                    }
+                                    _ => panic!("expecting a reference to copy pointer data to"),
+                                }
+                            }
+                        }
                         _ => todo!("throw exception"),
                     }
                     return Some(());
@@ -968,6 +978,11 @@ impl Runtime {
                         (TypeTag::Object, StackValue::Reference(v)) => {
                             unsafe {
                                 object.set(offset, v)
+                            }
+                        }
+                        (TypeTag::Sized(size), StackValue::Reference(pointer)) => {
+                            unsafe {
+                                object.write(offset, *pointer as *mut u8, size);
                             }
                         }
                         _ => todo!("throw exception"),

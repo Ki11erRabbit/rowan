@@ -31,6 +31,15 @@ impl FFIValue {
             value: FFIValueUnion { blank: 0 },
         }
     }
+
+    /// This function is to allow for smuggling pointers for fetching native fields of objects.
+    #[unsafe(no_mangle)]
+    pub extern "C"  fn rowan_new_ref_value(pointer: *mut c_void) -> FFIValue {
+        FFIValue {
+            tag: 7,
+            value: FFIValueUnion { reference: pointer as Reference },
+        }
+    }
 }
 
 impl From<StackValue> for FFIValue {
