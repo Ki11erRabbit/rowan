@@ -40,6 +40,10 @@ rowan_value_t rowan_new_ref_value(void*);
 
 void rowan_block_collection(object_t*);
 void rowan_allow_collection(object_t*);
+
+context_t rowan_create_context();
+void rowan_destroy_context(context_t ctx);
+
 object_t* rowan_create_object(unsigned char* class_name);
 object_t* rowan_create_empty_string_buffer();
 object_t* rowan_create_string_buffer(const unsigned char* string_contents);

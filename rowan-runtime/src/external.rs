@@ -127,6 +127,16 @@ impl Into<StackValue> for FFIValue {
     }
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn rowan_create_context() -> &'static mut BytecodeContext {
+    Box::leak(Box::new(BytecodeContext::new()))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rowan_destroy_context(context: *mut BytecodeContext) {
+    drop(unsafe { Box::from_raw(context) });
+}
+
 /// This function constructs an object from a given class name from a CStr.
 /// The CStr should be valid utf-8 as to prevent misses.
 /// Returns a valid reference to an object
