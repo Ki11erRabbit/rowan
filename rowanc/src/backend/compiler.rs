@@ -3347,8 +3347,8 @@ impl Compiler {
             method_name.push(name.to_string());
 
             let method_name = method_name.join("::");
-            let vtable = match partial_class.get_vtable(&method_name) {
-                Ok(vtable) => vtable,
+            let (vtable, method_name) = match partial_class.get_vtable(&method_name) {
+                Ok(vtable) => (vtable, method_name),
                 Err(e) => {
                     let mut current_partial_class: &PartialClass = match partial_class {
                         CurrentCompilationUnit::Class(class) => *class,
@@ -3358,9 +3358,9 @@ impl Compiler {
                     while let Some(parent_path) = current_partial_class.get_parent_name() {
                         let mut method_name = parent_path.clone();
                         method_name.push(name.to_string());
-                        match partial_class.get_vtable(parent_path.join("::")) {
+                        match partial_class.get_vtable(method_name.join("::")) {
                             Ok(vtbl) => {
-                                vtable = Some(vtbl);
+                                vtable = Some((vtbl, method_name.join("::")));
                                 break;
                             }
                             _ => {}
@@ -3378,7 +3378,7 @@ impl Compiler {
                     }
                 }
             };
-            let method_entry = partial_class.get_method_entry(&name).expect("add proper handling of missing method");
+            let method_entry = partial_class.get_method_entry(&method_name).expect("add proper handling of missing method");
 
             //println!("{}", partial_class.index_string_table(vtable.class_name));
 
