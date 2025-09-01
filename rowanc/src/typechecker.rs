@@ -2114,7 +2114,6 @@ impl TypeChecker {
                                     }
                                     _ => {
                                         loop {
-                                            println!("parent: {parent}");
                                             let path = self.attach_module_if_needed(parent.to_string());
                                             let (new_parent, attributes) = self.class_information.get(&path).unwrap();
 
@@ -2167,7 +2166,6 @@ impl TypeChecker {
                                             }
                                             _ => {
                                                 loop {
-                                                    println!("parent: {parent}");
                                                     let path = self.attach_module_if_needed(parent.to_string());
                                                     let (new_parent, attributes) = self.class_information.get(&path).unwrap();
 

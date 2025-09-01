@@ -1271,7 +1271,7 @@ impl Compiler {
 
         let parent_vtables = parent.as_ref().map(|parent_name| {
             let path = self.add_path_if_needed(parent_name.name.clone().to_string());
-            let partial_class = self.classes.get(&path).expect("Order of files is wrong");
+            let partial_class = self.classes.get(&path).expect(&format!("unable to find class: {}", path.join("::")));
             let vtables = partial_class.get_vtables(&path);
             vtables.into_iter().map(|(table, names, signatures)| {
                 let class_name = partial_class.index_string_table(table.class_name).split("::")
