@@ -49,7 +49,7 @@ impl ClassMap {
 
     pub fn display_classes(&self) {
         println!("Classmap {{");
-        for key in &self.aliases.keys() {
+        for key in self.aliases.keys() {
             println!("\t{}", key.join("::"))
         }
         println!("}}");
