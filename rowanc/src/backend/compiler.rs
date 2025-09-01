@@ -3346,11 +3346,36 @@ impl Compiler {
             let mut method_name = class_name.clone();
             method_name.push(name.to_string());
 
-            let name = method_name.join("::");
-            let vtable = match partial_class.get_vtable(&name) {
+            let method_name = method_name.join("::");
+            let vtable = match partial_class.get_vtable(&method_name) {
                 Ok(vtable) => vtable,
                 Err(e) => {
-                    panic!("Unable to find vtable {:?}", e);
+                    let mut current_partial_class: &PartialClass = match partial_class {
+                        CurrentCompilationUnit::Class(class) => *class,
+                        _ => unreachable!(),
+                    };
+                    let mut vtable = None;
+                    while let Some(parent_path) = current_partial_class.get_parent_name() {
+                        let mut method_name = parent_path.clone();
+                        method_name.push(name.to_string());
+                        match partial_class.get_vtable(parent_path.join("::")) {
+                            Ok(vtbl) => {
+                                vtable = Some(vtbl);
+                                break;
+                            }
+                            _ => {}
+                        }
+                        current_partial_class = self.classes.get(&parent_path).unwrap();
+                    }
+
+                    match vtable {
+                        Some(vtable) => {
+                            vtable
+                        }
+                        None => {
+                            panic!("Unable to find vtable {:?}", e);
+                        }
+                    }
                 }
             };
             let method_entry = partial_class.get_method_entry(&name).expect("add proper handling of missing method");

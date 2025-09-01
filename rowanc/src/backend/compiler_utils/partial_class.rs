@@ -101,12 +101,7 @@ impl PartialClass {
     pub fn get_vtable(&self, method_name: impl AsRef<str>) -> Result<&VTable, PartialClassError> {
         //println!("{}: {:#?}", method_name.as_ref(), self.method_to_class);
 
-        let method_name = if self.method_to_class.get(method_name.as_ref()).is_some() {
-            method_name.as_ref()
-        } else {
-            let method_name = method_name.as_ref().split("::").last().unwrap();
-            method_name
-        };
+        let method_name = method_name.as_ref();
 
         let class_names = self.method_to_class.get(method_name)
             .ok_or(PartialClassError::ClassNotNotFound(method_name.to_string()))?;
