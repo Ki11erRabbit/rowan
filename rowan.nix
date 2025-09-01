@@ -33,7 +33,7 @@ let
             lockFile = ./Cargo.lock;
             outputHashes = {
                 "unwind-sys-0.1.4" = "sha256-DLOzDFZr5VeRypsxIvZrJN/jePNpYGOg/N/8Qsw0bhc=";
-                "rstack-40e45bf"   = "sha256-DLOzDFZr5VeRypsxIvZrJN/jePNpYGOg/N/8Qsw0bhc="
+                "rstack-40e45bf3ea0105985ca4b292f0d97593c992437b"   = "sha256-DLOzDFZr5VeRypsxIvZrJN/jePNpYGOg/N/8Qsw0bhc="
             };
         };
 
@@ -84,7 +84,7 @@ in
             lockFile = ./Cargo.lock;
             outputHashes = {
                 "unwind-sys-0.1.4" = "sha256-DLOzDFZr5VeRypsxIvZrJN/jePNpYGOg/N/8Qsw0bhc=";
-                "rstack-40e45bf"   = "sha256-DLOzDFZr5VeRypsxIvZrJN/jePNpYGOg/N/8Qsw0bhc="
+                "rstack-40e45bf3ea0105985ca4b292f0d97593c992437b"   = "sha256-DLOzDFZr5VeRypsxIvZrJN/jePNpYGOg/N/8Qsw0bhc="
             };
         };
         installPhase = ''
@@ -130,7 +130,7 @@ in
              lockFile = ./Cargo.lock;
              outputHashes = {
                  "unwind-sys-0.1.4" = "sha256-DLOzDFZr5VeRypsxIvZrJN/jePNpYGOg/N/8Qsw0bhc=";
-                 "rstack-40e45bf"   = "sha256-DLOzDFZr5VeRypsxIvZrJN/jePNpYGOg/N/8Qsw0bhc="
+                 "rstack-40e45bf3ea0105985ca4b292f0d97593c992437b"   = "sha256-DLOzDFZr5VeRypsxIvZrJN/jePNpYGOg/N/8Qsw0bhc="
              };
          };
          installPhase = ''
