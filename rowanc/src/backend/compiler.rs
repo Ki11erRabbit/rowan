@@ -1271,6 +1271,7 @@ impl Compiler {
 
         let parent_vtables = parent.as_ref().map(|parent_name| {
             let path = self.add_path_if_needed(parent_name.name.clone().to_string());
+            self.classes.display_classes();
             let partial_class = self.classes.get(&path).expect(&format!("unable to find class: {}", path.join("::")));
             let vtables = partial_class.get_vtables(&path);
             vtables.into_iter().map(|(table, names, signatures)| {

@@ -46,6 +46,10 @@ impl ClassMap {
     pub fn contains_key(&self, path: &Vec<String>) -> bool {
         self.aliases.contains_key(path)
     }
+
+    pub fn display_classes(&self) {
+        println!("{:#?}", self.aliases);
+    }
 }
 
 impl IntoIterator for ClassMap {
