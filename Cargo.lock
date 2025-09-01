@@ -907,7 +907,6 @@ dependencies = [
  "libloading",
  "log",
  "paste",
- "pool-box",
  "rowan-unwind",
  "rowan_shared",
 ]
@@ -1090,7 +1089,6 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 [[package]]
 name = "unwind-sys"
 version = "0.1.4"
-source = "git+https://github.com/Ki11erRabbit/rstack#40e45bf3ea0105985ca4b292f0d97593c992437b"
 dependencies = [
  "libc",
  "pkg-config",

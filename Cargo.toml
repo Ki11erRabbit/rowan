@@ -1,5 +1,5 @@
 [workspace]
-members = [ "rowan", "rowan_shared", "rowan-runtime", "rowanc", "rowan-unwind", "pool-box", ]
+members = [ "rowan", "rowan_shared", "rowan-runtime", "rowanc", "rowan-unwind", "pool-box", "unwind-sys"]
 resolver = "2"
 
 [profile.release]
@@ -9,3 +9,4 @@ debug = true
 rowan_shared = { path = "rowan_shared" }
 rowan-unwind = { path = "rowan-unwind" }
 pool-box = { path = "pool-box" }
+unwind-sys = { path = "unwind-sys" }
