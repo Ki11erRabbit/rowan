@@ -3326,7 +3326,12 @@ impl Compiler {
             method_name.push(name.to_string());
 
             let name = method_name.join("::");
-            let vtable = partial_class.get_vtable(&name).expect("add proper handling of missing vtable").clone();
+            let vtable = match partial_class.get_vtable(&name) {
+                Ok(vtable) => vtable,
+                Err(e) => {
+                    panic!("Unable to find vtable {:?}", e);
+                }
+            };
             let method_entry = partial_class.get_method_entry(&name).expect("add proper handling of missing method");
 
             //println!("{}", partial_class.index_string_table(vtable.class_name));

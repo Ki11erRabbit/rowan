@@ -100,25 +100,36 @@ impl PartialClass {
 
     pub fn get_vtable(&self, method_name: impl AsRef<str>) -> Result<&VTable, PartialClassError> {
         //println!("{}: {:#?}", method_name.as_ref(), self.method_to_class);
-        let class_names = self.method_to_class.get(method_name.as_ref()).ok_or(PartialClassError::ClassNotNotFound(method_name.as_ref().to_string()))?;
+
+        let method_name = if self.method_to_class.get(method_name.as_ref()).is_some() {
+            method_name.as_ref()
+        } else {
+            let method_name = method_name.as_ref().split("::").last().unwrap();
+            method_name
+        };
+
+        let class_names = self.method_to_class.get(method_name)
+            .ok_or(PartialClassError::ClassNotNotFound(method_name.to_string()))?;
         if class_names.len() > 1 {
             return Err(PartialClassError::Ambiguity);
         }
         let class_name = &class_names[0];
 
-        let vtable_indices = self.class_to_vtable.get(class_name).ok_or(PartialClassError::VTableNotNotFound(method_name.as_ref().to_string()))?;
+        let vtable_indices = self.class_to_vtable.get(class_name)
+            .ok_or(PartialClassError::VTableNotNotFound(method_name.to_string()))?;
         if vtable_indices.len() > 1 {
             return Err(PartialClassError::Ambiguity);
         }
         let vtable_index = vtable_indices[0];
-        let vtable_indices = self.method_to_function.get(method_name.as_ref()).ok_or(PartialClassError::MethodNotNotFound(method_name.as_ref().to_string()))?;
+        let vtable_indices = self.method_to_function.get(method_name)
+            .ok_or(PartialClassError::MethodNotNotFound(method_name.to_string()))?;
 
         for (vtable, _) in vtable_indices {
             if vtable_index == *vtable {
                 return Ok(&self.vtables[vtable_index])
             }
         }
-        Err(PartialClassError::VTableNotNotFound(method_name.as_ref().to_string()))
+        Err(PartialClassError::VTableNotNotFound(method_name.to_string()))
     }
 
     pub fn get_method_entry(&self, method_name: impl AsRef<str>) -> Result<VTableEntry, PartialClassError> {
@@ -225,9 +236,13 @@ impl PartialClass {
                 .and_modify(|v| v.push(class_name.clone()))
                 .or_insert(vec![class_name.clone()]);
 
+            let vtable_len = self.vtables.len();
             self.method_to_function.entry(String::from(names[i].as_ref()))
-                .and_modify(|v| v.push((self.vtables.len(), i)))
-                .or_insert(vec![(self.vtables.len(), i)]);
+                .and_modify(|v| v.push((vtable_len, i)))
+                .or_insert(vec![(vtable_len, i)]);
+            self.method_to_function.entry(String::from(names[i].as_ref().split("::").last().unwrap()))
+                .and_modify(|v| v.push((vtable_len, i)))
+                .or_insert(vec![(vtable_len, i)]);
         }
         self.class_to_vtable.entry(class_name.clone())
             .and_modify(|v| v.push(self.vtables.len()))
@@ -428,6 +443,16 @@ impl PartialClass {
         self.index_string_table(index).split("::")
             .map(String::from)
             .collect()
+    }
+
+    pub fn get_parent_name(&self) -> Option<Vec<String>> {
+        if self.parent == 0 {
+            return None;
+        }
+        let index = self.parent;
+        Some(self.index_string_table(index).split("::")
+            .map(String::from)
+            .collect())
     }
 
     pub fn contains_field(&self, field: &str) -> bool{
