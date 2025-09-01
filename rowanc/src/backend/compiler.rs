@@ -1922,9 +1922,10 @@ impl Compiler {
         parent: Option<ParentDec>,
     ) -> Result<(), CompilerError> {
         
-        let mut partial_class = self.classes.get(name)
-            .cloned()
-            .expect(&format!("unable to find class {}", name.join("::")));
+        let Some(mut partial_class) = self.classes.get(name)
+            .cloned() else {
+            return Ok(())
+        };
 
         let parent_vtables = parent.as_ref().map(|parent_name| {
             let path = self.add_path_if_needed(parent_name.name.clone().to_string());
