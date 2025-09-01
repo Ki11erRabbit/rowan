@@ -1930,9 +1930,10 @@ impl Compiler {
         let parent_vtables = parent.as_ref().map(|parent_name| {
             let path = self.add_path_if_needed(parent_name.name.clone().to_string());
             self.classes.display_classes();
-            let partial_class = self.classes.get(&path).expect(&format!("unable to find class: {}", path.join("::")));
+            let mut all_vtables = Vec::new();
+            let mut partial_class = self.classes.get(&path).expect(&format!("unable to find class: {}", path.join("::")));
             let vtables = partial_class.get_vtables(&path);
-            vtables.into_iter().map(|(table, names, signatures)| {
+            let vtable = vtables.into_iter().map(|(table, names, signatures)| {
                 let class_name = partial_class.index_string_table(table.class_name).split("::")
                     .map(|name| name.to_string()).collect::<Vec<String>>();
                 let source_class = if table.sub_class_name == 0 {
@@ -1941,23 +1942,43 @@ impl Compiler {
                     Some(partial_class.index_string_table(table.sub_class_name))
                 };
                 (class_name, source_class, table, names, signatures)
-            }).collect::<Vec<_>>()
+            }).collect::<Vec<_>>();
+            all_vtables.push(vtable);
+            while let Some(parent_path) = partial_class.get_parent_name() {
+                partial_class = self.classes.get(&parent_path).expect(&format!("unable to find class: {}", parent_path.join("::")));
+                let vtables = partial_class.get_vtables(&parent_path);
+                let vtable = vtables.into_iter().map(|(table, names, signatures)| {
+                    let class_name = partial_class.index_string_table(table.class_name).split("::")
+                        .map(|name| name.to_string()).collect::<Vec<String>>();
+                    let source_class = if table.sub_class_name == 0 {
+                        None
+                    } else {
+                        Some(partial_class.index_string_table(table.sub_class_name))
+                    };
+                    (class_name, source_class, table, names, signatures)
+                }).collect::<Vec<_>>();
+                all_vtables.push(vtable);
+            }
 
+            all_vtables
         });
 
-        if let Some(vtables) = parent_vtables {
-            for (class_name, source_class, vtable, names, signatures) in vtables {
-                let names = names.into_iter()
-                    .map(|n| self.add_path_if_needed(n).join("::"))
-                    .collect::<Vec<String>>();
-                let class_name = if let Some(source) = source_class {
-                    let path = self.add_path_if_needed(source.to_string());
-                    path
-                } else {
-                    class_name
-                };
-                partial_class.add_vtable(&class_name, vtable.clone(), &names, &signatures);
+        if let Some(all_vtables) = parent_vtables {
+            for vtables in all_vtables {
+                for (class_name, source_class, vtable, names, signatures) in vtables {
+                    let names = names.into_iter()
+                        .map(|n| self.add_path_if_needed(n).join("::"))
+                        .collect::<Vec<String>>();
+                    let class_name = if let Some(source) = source_class {
+                        let path = self.add_path_if_needed(source.to_string());
+                        path
+                    } else {
+                        class_name
+                    };
+                    partial_class.add_vtable(&class_name, vtable.clone(), &names, &signatures);
+                }
             }
+
         }
 
 
