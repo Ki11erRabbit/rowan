@@ -2095,7 +2095,6 @@ impl TypeChecker {
                         *ty = Some(var_ty.into()); // annotate the type of the variable
                         match var_ty {
                             TypeCheckerType::Object(name) => {
-
                                 let path = self.attach_module_if_needed(name.to_string());
 
                                 let (parent, attributes) = self.class_information.get(&path).unwrap();
@@ -2115,6 +2114,7 @@ impl TypeChecker {
                                     }
                                     _ => {
                                         loop {
+                                            println!("parent: {parent}");
                                             let path = self.attach_module_if_needed(parent.to_string());
                                             let (new_parent, attributes) = self.class_information.get(&path).unwrap();
 
@@ -2150,7 +2150,9 @@ impl TypeChecker {
                                     TypeCheckerType::Object(name) => {
                                         let path = self.attach_module_if_needed(name.to_string());
 
-                                        match self.get_attribute(&path, field.to_string()) {
+                                        let (parent, attributes) = self.class_information.get(&path).unwrap();
+                                        let mut parent = parent;
+                                        match attributes.get(&field.to_string()) {
                                             Some(ClassAttribute::Member(ty)) => {
                                                 *annotation = Some(ty.into());
                                                 Ok(ty.clone().into())
@@ -2164,6 +2166,33 @@ impl TypeChecker {
                                                 Ok(ty.clone().into())
                                             }
                                             _ => {
+                                                loop {
+                                                    println!("parent: {parent}");
+                                                    let path = self.attach_module_if_needed(parent.to_string());
+                                                    let (new_parent, attributes) = self.class_information.get(&path).unwrap();
+
+                                                    parent = new_parent;
+
+                                                    match attributes.get(&field.to_string()) {
+                                                        Some(ClassAttribute::Member(ty)) => {
+                                                            *annotation = Some(ty.into());
+                                                            return Ok(ty.clone().into())
+                                                        }
+                                                        Some(ClassAttribute::Method(ty)) => {
+                                                            *annotation = Some(ty.into());
+                                                            return Ok(ty.clone().into())
+                                                        }
+                                                        Some(ClassAttribute::StaticMember(ty)) => {
+                                                            *annotation = Some(ty.into());
+                                                            return Ok(ty.clone().into())
+                                                        }
+                                                        _ => {}
+                                                    }
+
+                                                    if parent.as_str() == "" {
+                                                        break;
+                                                    }
+                                                }
                                                 eprintln!("Failed to find attribute {} in class {}", field.to_string(), name);
                                                 todo!("report unknown member access")
                                             }
