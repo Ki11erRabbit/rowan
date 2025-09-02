@@ -1924,6 +1924,7 @@ impl Compiler {
         
         let Some(mut partial_class) = self.classes.get(name)
             .cloned() else {
+            println!("skipping: {}", name.join("::"));
             return Ok(())
         };
 
