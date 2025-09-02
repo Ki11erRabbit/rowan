@@ -6,6 +6,8 @@ use crate::trees::{ast, ir};
 mod box_closure_captures;
 mod ir_conversion;
 mod fix_types_after_boxing;
+mod inline_imports;
+mod specialize_generics;
 
 pub fn ir_pass<'ir_pass>(file: ast::File<'ir_pass>) -> Result<ir::File<'ir_pass>, ()> {
     let mut converter = IRConverter::new();
