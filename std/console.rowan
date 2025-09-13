@@ -4,8 +4,8 @@ import std::io::iolock::IOLock;
 
 class Console {
 
-    static stdout-lock: IOLock = new IOLock();
-    static stderr-lock: IOLock = new IOLock();
+    static stdout-lock: IOLock = IOLock::create();
+    static stderr-lock: IOLock = IOLock::create();
 
     pub fn print(text: String) {
         Console.stdout-lock.lock();

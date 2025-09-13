@@ -2,7 +2,13 @@ module std::io::iolock;
 
 class IOLock {
     lock: native;
-    lock-initalized: native;
+
+    pub fn create() -> IOLock {
+        let lock: IOLock = new IOLock();
+        lock.create-internal();
+        return lock;
+    }
+    pub native fn create-internal(self)
 
     pub native fn lock(self)
     pub native fn release(self)

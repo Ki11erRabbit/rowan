@@ -58,7 +58,7 @@ int32_t rowan_call_interface_function(rowan_context_t ctx, unsigned char* interf
 
 void rowan_set_exception(rowan_context_t ctx, object_t* exception);
 
-int32_t rowan_set_object_field(rowan_context_t ctx, object_* object, unsigned char* field, rowan_value_t return_slot);
-int32_t rowan_get_object_field(rowan_context_t ctx, object_* object, unsigned char* field, rowan_value_t *return_slot);
+int32_t rowan_set_object_field(rowan_context_t ctx, object_t * object, unsigned char* field, rowan_value_t return_slot);
+int32_t rowan_get_object_field(rowan_context_t ctx, object_t * object, unsigned char* field, rowan_value_t *return_slot);
 
 #endif
