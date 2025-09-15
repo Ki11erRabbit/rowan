@@ -832,9 +832,7 @@ impl SpecializeGenerics {
                 value,
                 ..
             } => {
-                println!("specializing let type: {:?}", ty);
                 self.specialize_type(ty);
-                println!("specializing value");
                 self.specialize_expression(path, value);
             }
             Statement::Const {
@@ -1038,7 +1036,6 @@ impl SpecializeGenerics {
                 }
 
                 *ty = Type::Object(Text::Owned(new_name), span.clone());
-                println!("\tspecialized type: {:?}", ty);
             }
             Type::Function(args, ret, ..) => {
                 for arg in args {
@@ -1051,7 +1048,7 @@ impl SpecializeGenerics {
                     self.specialize_type(value);
                 }
             }
-            x => println!("\tskipping: {x:?}"),
+            _ => {},
         }
     }
 }
