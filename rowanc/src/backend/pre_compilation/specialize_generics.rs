@@ -171,6 +171,7 @@ impl SpecializeGenerics {
             path,
             content,
         } = file;
+        println!("Specializing: {:?}", path.segments);
 
         let file_path = path.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>();
 
@@ -219,10 +220,6 @@ impl SpecializeGenerics {
 
     fn specialize_class<'special>(&mut self, path: &Vec<String>, class: Class<'special>) -> Vec<Class<'special>> {
         let type_parameters = &class.type_params;
-
-        if type_parameters.is_empty() {
-            return vec![class];
-        }
 
         let typ_param_names = type_parameters.iter()
             .map(|t| t.name.to_string())
@@ -405,10 +402,6 @@ impl SpecializeGenerics {
     fn specialize_trait<'special>(&mut self, path: &Vec<String>, r#trait: Trait<'special>) -> Vec<Trait<'special>> {
         let type_parameters = &r#trait.type_params;
 
-        if type_parameters.is_empty() {
-            return vec![r#trait];
-        }
-
         let typ_param_names = type_parameters.iter()
             .map(|t| t.name.to_string())
             .collect::<Vec<_>>();
@@ -565,10 +558,6 @@ impl SpecializeGenerics {
 
     fn specialize_impl<'special>(&mut self, path: &Vec<String>, r#impl: TraitImpl<'special>) -> Vec<TraitImpl<'special>> {
         let type_parameters = &r#impl.type_params;
-
-        if type_parameters.is_empty() {
-            return vec![r#impl];
-        }
 
         let typ_param_names = type_parameters.iter()
             .map(|t| t.name.to_string())
@@ -843,7 +832,9 @@ impl SpecializeGenerics {
                 value,
                 ..
             } => {
+                println!("specializing let type: {:?}", ty);
                 self.specialize_type(ty);
+                println!("specializing value");
                 self.specialize_expression(path, value);
             }
             Statement::Const {
@@ -977,6 +968,8 @@ impl SpecializeGenerics {
                 self.specialize_type(typ);
                 self.specialize_expression(path, source.as_mut());
             }
+            Expression::Literal(_) => {}
+            Expression::This(_) => {}
             x => todo!("complete specializing generics for: {x:?}"),
         }
     }
@@ -1012,10 +1005,40 @@ impl SpecializeGenerics {
             Type::Array(ty, ..) => {
                 self.specialize_type(ty.as_mut());
             }
-            Type::TypeArg(_, args, ..) => {
+            Type::TypeArg(obj, args, span) => {
+                let Type::Object(name, _) = obj.as_ref() else {
+                    unreachable!("type arg can only be an object")
+                };
+                let mut new_name = name.to_string();
                 for arg in args {
-                    self.specialize_type(arg);
+                    match arg {
+                        Type::Object(name, _) => {
+                            if let Some(replacement) = self.current_type_argument.get(name.as_str())  {
+                                match replacement {
+                                    Type::U8 | Type::I8 => new_name.push('8'),
+                                    Type::U16 | Type::I16 => new_name.push_str("16"),
+                                    Type::U32 | Type::I32 => new_name.push_str("32"),
+                                    Type::U64 | Type::I64 => new_name.push_str("64"),
+                                    Type::F32 => new_name.push_str("f32"),
+                                    Type::F64 => new_name.push_str("f64"),
+                                    _ => new_name.push_str("object"),
+                                }
+                            } else {
+                                new_name.push_str("object")
+                            }
+                        }
+                        Type::U8 | Type::I8 => new_name.push('8'),
+                        Type::U16 | Type::I16 => new_name.push_str("16"),
+                        Type::U32 | Type::I32 => new_name.push_str("32"),
+                        Type::U64 | Type::I64 => new_name.push_str("64"),
+                        Type::F32 => new_name.push_str("f32"),
+                        Type::F64 => new_name.push_str("f64"),
+                        _ => new_name.push_str("object"),
+                    }
                 }
+
+                *ty = Type::Object(Text::Owned(new_name), span.clone());
+                println!("\tspecialized type: {:?}", ty);
             }
             Type::Function(args, ret, ..) => {
                 for arg in args {
@@ -1028,7 +1051,7 @@ impl SpecializeGenerics {
                     self.specialize_type(value);
                 }
             }
-            _ => {}
+            x => println!("\tskipping: {x:?}"),
         }
     }
 }

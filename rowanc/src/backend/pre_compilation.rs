@@ -11,7 +11,7 @@ mod fix_types_after_boxing;
 mod inline_imports;
 mod specialize_generics;
 
-pub fn ir_pass1<'ir_pass>(file: ast::File<'ir_pass>) -> Result<ir::File<'ir_pass>, ()> {
+pub fn ir_pass1(file: ast::File) -> Result<ir::File, ()> {
     let mut converter = IRConverter::new();
     let mut file = converter.convert(file)?;
     
@@ -24,12 +24,12 @@ pub fn ir_pass1<'ir_pass>(file: ast::File<'ir_pass>) -> Result<ir::File<'ir_pass
     Ok(file)
 }
 
-pub fn ir_pass2<'ir_pass>(files: Vec<ir::File<'ir_pass>>) -> Vec<ir::File<'ir_pass>> {
+pub fn ir_pass2(files: Vec<ir::File>) -> Vec<ir::File> {
     let mut specialize_generics = SpecializeGenerics::new();
     specialize_generics.specialize_generics(files)
 }
 
-pub fn ir_pass3<'ir_pass>(file: ir::File<'ir_pass>) -> ir::File<'ir_pass> {
+pub fn ir_pass3(file: ir::File) -> ir::File {
     let mut inliner = InlineImports::new();
 
     inliner.inline_import(file)

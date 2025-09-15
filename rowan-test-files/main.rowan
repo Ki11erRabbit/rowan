@@ -20,12 +20,12 @@ class Main {
 
             printer.println-int(x + 2);
             return x + 2;
-        })
-        printer.println-int(q)
+        });
+        printer.println-int(q);
         let list: ArrayList[u64] = new ArrayList[u64]();
         list.buffer = [];
         list.length = 0;
-        list.add(q)
+        //list.add(q);
     }
 
     fn fib(n: u64) -> u64 {

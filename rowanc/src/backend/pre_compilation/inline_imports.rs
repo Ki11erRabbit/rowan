@@ -14,9 +14,20 @@ impl InlineImports {
     pub fn new() -> Self {
 
         let mut imports = HashMap::new();
+        imports.insert("Printer".to_string(), "core::Printer".to_string());
         imports.insert("String".to_string(), "core::String".to_string());
         imports.insert("StringBuffer".to_string(), "core::StringBuffer".to_string());
         imports.insert("InternedString".to_string(), "core::InternedString".to_string());
+        imports.insert("U8".to_string(), "core::U8".to_string());
+        imports.insert("I8".to_string(), "core::I8".to_string());
+        imports.insert("U16".to_string(), "core::U16".to_string());
+        imports.insert("I16".to_string(), "core::I16".to_string());
+        imports.insert("U32".to_string(), "core::U32".to_string());
+        imports.insert("I32".to_string(), "core::I32".to_string());
+        imports.insert("U64".to_string(), "core::U64".to_string());
+        imports.insert("I64".to_string(), "core::I64".to_string());
+        imports.insert("F32".to_string(), "core::F32".to_string());
+        imports.insert("F64".to_string(), "core::F64".to_string());
 
         Self {
             imports,
@@ -625,7 +636,7 @@ impl InlineImports {
                 let ret = Box::new(self.inline_type(*ret));
                 Type::Function(new_args, ret, span)
             }
-            Type::TypeArg(..) => unreachable!("we should have normalized all of types"),
+            Type::TypeArg(obj, _, span) => unreachable!("we should have normalized all of types. with {obj:?} error at: {span:?}"),
             x => x,
         }
     }

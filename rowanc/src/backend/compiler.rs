@@ -2947,7 +2947,7 @@ impl Compiler {
         output: &mut Vec<Bytecode>
     ) -> Result<Option<Box<dyn Fn(&mut Vec<Bytecode>) + 'a>>, CompilerError> {
         let Expression::MemberAccess {
-            object, field, ..
+            object, field, span, ..
         } = expr else {
             unreachable!("We have already checked for expr being a MemberAccess");
         };
@@ -3018,7 +3018,7 @@ impl Compiler {
             (class.get_class_name(), Vec::new())
         } else {
             let Some((name, parent)) = class.find_class_with_field(self, field.to_string().as_str()) else {
-                todo!("report error about being unable to find field")
+                todo!("report error about being unable to find field: {} at {:?}", field.to_string(), span);
             };
 
             (name, parent)

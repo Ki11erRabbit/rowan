@@ -2165,6 +2165,7 @@ impl TypeChecker {
                                                 Ok(ty.clone().into())
                                             }
                                             _ => {
+                                                // Here we try to use the parent's attributes to find the attribute
                                                 loop {
                                                     let path = self.attach_module_if_needed(parent.to_string());
                                                     let (new_parent, attributes) = self.class_information.get(&path).unwrap();
@@ -2191,6 +2192,28 @@ impl TypeChecker {
                                                         break;
                                                     }
                                                 }
+
+                                                // Here we try to use attributes from traits
+                                                let attributes = self.trait_impls.get(&path).unwrap();
+
+                                                for (_, attributes) in attributes {
+                                                    match attributes.get(&field.to_string()) {
+                                                        Some(ClassAttribute::Member(ty)) => {
+                                                            *annotation = Some(ty.into());
+                                                            return Ok(ty.clone().into())
+                                                        }
+                                                        Some(ClassAttribute::Method(ty)) => {
+                                                            *annotation = Some(ty.into());
+                                                            return Ok(ty.clone().into())
+                                                        }
+                                                        Some(ClassAttribute::StaticMember(ty)) => {
+                                                            *annotation = Some(ty.into());
+                                                            return Ok(ty.clone().into())
+                                                        }
+                                                        _ => {}
+                                                    }
+                                                }
+
                                                 eprintln!("Failed to find attribute {} in class {}", field.to_string(), name);
                                                 todo!("report unknown member access")
                                             }
