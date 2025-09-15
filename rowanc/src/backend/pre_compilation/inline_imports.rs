@@ -577,7 +577,7 @@ impl InlineImports {
         let else_branch = match else_branch {
             None => None,
             Some(Either::Left(if_expr)) => {
-                Some(Either::Left(Box:::new(self.inline_if_expr(*if_expr))))
+                Some(Either::Left(Box::new(self.inline_if_expr(*if_expr))))
             }
             Some(Either::Right(else_branch)) => {
                 Some(Either::Right(self.inline_body(else_branch)))
@@ -610,7 +610,7 @@ impl InlineImports {
             Type::Tuple(inner, span) => {
                 let mut new_inner = Vec::new();
                 for inner in inner {
-                    new_inner.push(self.inline_type(*inner));
+                    new_inner.push(self.inline_type(inner));
                 }
                 Type::Tuple(new_inner, span)
             }

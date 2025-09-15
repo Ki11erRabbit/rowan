@@ -152,8 +152,13 @@ fn main() {
         .collect();
     
     let class_files = class_files.into_iter()
-        .map(pre_compilation::ir_pass)
+        .map(pre_compilation::ir_pass1)
         .collect::<Result<Vec<_>, ()>>().unwrap();
+
+    let class_files = pre_compilation::ir_pass2(class_files);
+    let class_files = class_files.into_iter()
+        .map(pre_compilation::ir_pass3)
+        .collect::<Vec<_>>();
 
     let mut compiler = backend::Compiler::new();
     compiler.compile_files(class_files).unwrap();
